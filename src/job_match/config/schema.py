@@ -64,4 +64,6 @@ class Settings:
     dedup_window_days: int = 30
     fuzzy_title_threshold: float = 0.85
     fuzzy_desc_threshold: float = 0.80
+    base_score: int = 50
+    title_bonus: int = 10
     scoring: ScoringConfig = field(default_factory=ScoringConfig)

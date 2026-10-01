@@ -58,6 +58,8 @@ def load_settings(path: Path) -> Settings:
         dedup_window_days=int(raw.get("dedup_window_days", 30)),
         fuzzy_title_threshold=float(raw.get("fuzzy_title_threshold", 0.85)),
         fuzzy_desc_threshold=float(raw.get("fuzzy_desc_threshold", 0.80)),
+        base_score=int(raw.get("base_score", 50)),
+        title_bonus=int(raw.get("title_bonus", 10)),
         scoring=ScoringConfig(
             jms=JMSConfig(
                 enabled=bool(jms_raw.get("enabled", False)),

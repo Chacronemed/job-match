@@ -3,11 +3,17 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-Milestone 3: Experience parser + eligibility engine: **DONE**. Waiting for "start Milestone 4".
+Milestone 4: Native rule-based scoring engine: **DONE**. Waiting for "start Milestone 5".
 
 ## Done
 - Project brief written (`docs/PROJECT_BRIEF.md`, `CLAUDE.md`)
 - `docs/ARCHITECTURE.md` (brief §25, 14 sections).
+- **Milestone 4** (2026-10-01):
+  - `src/job_match/scoring/base.py` — `Scorer` Protocol (`runtime_checkable`)
+  - `src/job_match/scoring/native.py` — `NativeRuleScorer(aliases)`: whole-word/phrase matching via `(?<!\w)…(?!\w)`, alias expansion, title-keyword bonus, score clamped 0–100, full `ScoreResult` with `explanations`
+  - `src/job_match/scoring/engine.py` — `ScoringEngine`: runs scorers safely (exception → `available=False`), native is primary rank, divergence + `needs_review` computed when ≥2 scorers
+  - `src/job_match/config/schema.py` + `config/settings.yaml` — added `base_score=50`, `title_bonus=10` to `Settings`; `loader.py` updated accordingly
+  - 26 new tests (127 total), ruff clean
 - **Milestone 3** (2026-10-01):
   - `src/job_match/experience/parser.py` — `parse(text) → ExperienceRequirement`; regex table (FR+EN), written-number map, smallest-minimum rule, false-positive guard (company founding year), ambiguous→UNKNOWN, nothing→NOT_MENTIONED
   - `src/job_match/eligibility/gate.py` — `evaluate(job, requirement, profile) → EligibilityResult`; hard gate: experience, contract, location; UNKNOWN/NOT_MENTIONED stay eligible; "remote" in location always passes
@@ -32,7 +38,7 @@ Milestone 3: Experience parser + eligibility engine: **DONE**. Waiting for "star
   - 26 tests green, `ruff check .` clean
 
 ## Next step
-- **Milestone 4: Native rule-based scoring engine.** Explainable breakdown, aliases, weights from config.
+- **Milestone 5: SQLite persistence.** Migrations, repositories, rejected jobs stored.
 
 ## Decisions (resolved in M0, see ARCHITECTURE)
 - **The repo is PUBLIC.** Nothing personal is committed or logged. Logs contain aggregate counts only.
@@ -60,3 +66,4 @@ Milestone 3: Experience parser + eligibility engine: **DONE**. Waiting for "star
 - 2026-10-01: M1 complete. Project skeleton, domain model, config loader, 26 tests green.
 - 2026-10-01: M2 complete. France Travail adapter: OAuth2, pagination, retry/backoff, 20 new tests (46 total).
 - 2026-10-01: M3 complete. Experience parser + eligibility gate, 55 new tests (101 total).
+- 2026-10-01: M4 complete. Native scoring engine: `NativeRuleScorer`, `ScoringEngine`, 26 new tests (127 total).
