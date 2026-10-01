@@ -1,0 +1,40 @@
+# Centralized skill/term aliases used by the NativeRuleScorer.
+# Key: canonical name (must match skills.preferred/negative in profile.yaml).
+# Values: list of aliases that resolve to the canonical name.
+
+kubernetes:
+  - k8s
+  - kube
+
+ci/cd:
+  - ci cd
+  - cicd
+  - continuous integration
+  - continuous delivery
+  - continuous deployment
+
+infrastructure as code:
+  - iac
+
+docker:
+  - dockerfile
+  - docker-compose
+  - docker compose
+
+terraform:
+  - tf
+  - opentofu
+
+python:
+  - python3
+  - py
+
+linux:
+  - unix
+  - rhel
+  - ubuntu
+  - debian
+  - centos
+
+ansible:
+  - ansible-playbook

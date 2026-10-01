@@ -48,6 +48,8 @@ frontend framework.
 - Run `pytest -q` before each commit.
 - Record significant decisions as ADRs in `docs/adr/NNNN-title.md`.
 - Tests use fixtures and mocks and never hit real APIs. Keep fixtures small.
+- Commit messages: one short line (~60 chars max), Conventional Commits, no body unless the why isn't obvious.
+- Never prefix commands with cd.
 
 ## Token hygiene
 - Don't read `data/`, `*.sqlite`, large fixtures, `node_modules/` or `.venv/`.

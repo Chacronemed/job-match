@@ -3,19 +3,25 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-Milestone 0: Repository audit + architecture: **DONE**. Waiting for "start Milestone 1".
+Milestone 1: Normalized Job domain model + project skeleton: **DONE**. Waiting for "start Milestone 2".
 
 ## Done
 - Project brief written (`docs/PROJECT_BRIEF.md`, `CLAUDE.md`)
-- `docs/ARCHITECTURE.md` (brief §25, 14 sections). It covers the external repos (job-match-scorer, career-ops), the
-  directory layout, the Mermaid diagram, the domain model, the SQLite schema, adapter interfaces, experience gate,
-  scoring, dedup, testing, roadmap and risks.
+- `docs/ARCHITECTURE.md` (brief §25, 14 sections).
+- **Milestone 1** (2026-10-01):
+  - `.gitattributes` (`* text=auto eol=lf`)
+  - `.gitignore`, `.env.example`
+  - `pyproject.toml` (hatchling, `src/` layout, Python 3.12, ruff + pytest config)
+  - `config/profile.example.yaml` (fake DevOps profile), `config/aliases.yaml`, `config/settings.yaml`
+  - `src/job_match/domain/models.py` — all enums (`StrEnum`) and dataclasses (`frozen=True, slots=True`)
+  - `src/job_match/config/schema.py` — `Profile`, `Settings`, `ConfigError`
+  - `src/job_match/config/loader.py` — `load_profile`, `load_profile_from_env`, `load_settings`
+  - `src/job_match/cli.py` — stub entry point
+  - 26 tests green, `ruff check .` clean
 
 ## Next step
-- **Milestone 1: Normalized Job domain model + project skeleton.** It includes `pyproject.toml`, `.gitignore`,
-  `.env.example`, `config/profile.example.yaml`, the config loader, dataclasses and enums, and tests.
-- Milestone 2 is the France Travail adapter. The order was swapped relative to the brief §22, and ARCHITECTURE §13
-  is authoritative.
+- **Milestone 2: France Travail adapter.** OAuth + search + pagination + retry, `to_job` mapping tested on
+  fixtures. Credentials (`FT_CLIENT_ID`/`FT_CLIENT_SECRET`) needed for live runs; tests use fixtures only.
 
 ## Decisions (resolved in M0, see ARCHITECTURE)
 - **The repo is PUBLIC.** Nothing personal is committed or logged. Logs contain aggregate counts only.
@@ -36,8 +42,8 @@ Milestone 0: Repository audit + architecture: **DONE**. Waiting for "start Miles
 - job-match-scorer: English-only tokenizer (strips accents), no JSON output, young repo (2 commits)
 - France Travail API credentials (`FT_CLIENT_ID`/`FT_CLIENT_SECRET`) are needed before M2 can run live. The tests
   use fixtures.
-- There are no tests yet because there is no code yet, so `pytest` was not run in M0.
 
 ## Session log
 - 2026-09-30: brief created. M0 architecture written, with user-requested changes: M1/M2 swapped, private data
   repo, example profile, JMS experimental.
+- 2026-10-01: M1 complete. Project skeleton, domain model, config loader, 26 tests green.

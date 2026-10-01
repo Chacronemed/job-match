@@ -1,0 +1,12 @@
+# Numeric thresholds — calibrated in M4 and M6 on real data.
+
+strong_threshold: 70
+divergence_threshold: 30
+dedup_window_days: 30
+fuzzy_title_threshold: 0.85
+fuzzy_desc_threshold: 0.80
+
+scoring:
+  jms:
+    enabled: false
+    commit_sha: null

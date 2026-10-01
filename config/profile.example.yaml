@@ -1,0 +1,45 @@
+# Example profile — NOT real personal data.
+# Copy to config/profile.yaml and fill in your real values.
+# config/profile.yaml is gitignored and never committed.
+# In CI it is written from the PROFILE_YAML secret (base64-encoded YAML).
+
+candidate:
+  experience_years: 5
+
+skills:
+  preferred:
+    - {name: kubernetes, weight: 3}
+    - {name: terraform,  weight: 3}
+    - {name: python,     weight: 2}
+    - {name: ci/cd,      weight: 2}
+    - {name: docker,     weight: 2}
+    - {name: linux,      weight: 1}
+    - {name: ansible,    weight: 1}
+  negative:
+    - {name: SAP,   weight: -5}
+    - {name: cobol, weight: -5}
+
+filters:
+  contract_types:
+    - CDI
+  locations:
+    - Paris
+    - remote
+
+ft_search:
+  rome_codes:
+    - M1809
+  keywords:
+    - devops
+    - sre
+    - infrastructure
+  departments:
+    - "75"
+    - "92"
+    - "93"
+    - "94"
+
+scoring:
+  jms:
+    enabled: false
+    commit_sha: null
