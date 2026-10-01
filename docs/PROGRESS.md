@@ -3,11 +3,21 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-Milestone 5: SQLite persistence: **DONE**. Waiting for "start Milestone 6".
+Milestone 6: Fingerprint + deduplication: **DONE**. Waiting for "start Milestone 6b".
 
 ## Done
 - Project brief written (`docs/PROJECT_BRIEF.md`, `CLAUDE.md`)
 - `docs/ARCHITECTURE.md` (brief §25, 14 sections).
+- **Milestone 6** (2026-10-01):
+  - `src/job_match/normalization/` — `text.py`, `company.py`, `title.py`, `location.py`, `url.py`
+    (NFKD folding, dotted-acronym collapse, legal-suffix strip, H/F noise, tracking-param strip)
+  - `src/job_match/dedup/fingerprint.py` — `compute_fingerprint`: sha256 of normalized company|title|location|contract|desc[:500]
+  - `src/job_match/dedup/engine.py` — `DedupEngine`: exact fingerprint check, then RapidFuzz fuzzy
+    blocking on (company_normalized, contract_type); thresholds from Settings
+  - `migrations/0002_add_company_normalized.sql` — adds `company_normalized` column + index to `jobs`
+  - `repositories.py` updated: `company_normalized` stored on save; `get_by_fingerprint`,
+    `list_by_block` added to `JobRepository`; new `JobDuplicateRepository` (save_link, get_canonical_id, list_duplicates_of)
+  - 60 new tests (211 total), ruff clean
 - **Milestone 5** (2026-10-01):
   - `migrations/0001_init.sql` — full schema: `sources`, `raw_payloads`, `companies`, `jobs`, `job_duplicates`, `job_scores`, `articles`, `funding_events`, `leads`, `runs`
   - `src/job_match/persistence/db.py` — `Database`: WAL mode, foreign keys ON, numbered migration runner (`schema_version` bootstrap, idempotent)
@@ -43,7 +53,6 @@ Milestone 5: SQLite persistence: **DONE**. Waiting for "start Milestone 6".
   - 26 tests green, `ruff check .` clean
 
 ## Next step
-- **Milestone 6: Fingerprint + deduplication.** Exact and fuzzy links, never deleted.
 - **Milestone 6b: Job pipeline + CLI.** `pipelines/jobs.py` (fetch → normalize → experience gate → dedup → score → store) + `job-match run` CLI command that prints the RunSummary. No email yet. Thin orchestration only — no new domain logic.
 
 ## Decisions (resolved in M0, see ARCHITECTURE)
@@ -76,3 +85,4 @@ Milestone 5: SQLite persistence: **DONE**. Waiting for "start Milestone 6".
 - 2026-10-01: M3 complete. Experience parser + eligibility gate, 55 new tests (101 total).
 - 2026-10-01: M4 complete. Native scoring engine: `NativeRuleScorer`, `ScoringEngine`, 26 new tests (127 total).
 - 2026-10-01: M5 complete. SQLite persistence: migration runner, 5 repositories, 24 new tests (151 total).
+- 2026-10-01: M6 complete. Normalization module, fingerprint, DedupEngine, migration 0002, 60 new tests (211 total).

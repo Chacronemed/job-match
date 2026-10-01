@@ -15,6 +15,7 @@ from job_match.domain.models import (
     ScoringBreakdown,
     WorkplaceType,
 )
+from job_match.normalization.company import normalize_company
 
 # ---------------------------------------------------------------------------
 # Serialisation helpers
@@ -205,19 +206,21 @@ class JobRepository:
 
         bd_json = _breakdown_to_json(job.scoring_breakdown) if job.scoring_breakdown else None
         needs_review = int(job.scoring_breakdown.needs_review) if job.scoring_breakdown else 0
+        company_n = normalize_company(job.company)
 
         self._conn.execute(
             """
             INSERT INTO jobs(
-                source_id, source_job_id, title, company, company_id, location,
-                workplace_type, contract_type, description, url,
+                source_id, source_job_id, title, company, company_normalized, company_id,
+                location, workplace_type, contract_type, description, url,
                 published_at, collected_at, fingerprint,
                 experience_min, experience_max, experience_status, experience_evidence,
                 eligibility, rejection_reason, score, scoring_breakdown, needs_review
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(source_id, source_job_id) DO UPDATE SET
                 title              = excluded.title,
                 company            = excluded.company,
+                company_normalized = excluded.company_normalized,
                 company_id         = excluded.company_id,
                 location           = excluded.location,
                 workplace_type     = excluded.workplace_type,
@@ -242,6 +245,7 @@ class JobRepository:
                 job.source_job_id,
                 job.title,
                 job.company,
+                company_n,
                 job.company_id,
                 job.location,
                 str(job.workplace_type),
@@ -316,6 +320,25 @@ class JobRepository:
         ).fetchall()
         return [_row_to_job(r) for r in rows]
 
+    def get_by_fingerprint(self, fingerprint: str) -> list[Job]:
+        rows = self._conn.execute(
+            "SELECT * FROM jobs WHERE fingerprint = ?", (fingerprint,)
+        ).fetchall()
+        return [_row_to_job(r) for r in rows]
+
+    def list_by_block(
+        self,
+        company_normalized: str,
+        contract_type: ContractType,
+        since: datetime,
+    ) -> list[Job]:
+        rows = self._conn.execute(
+            "SELECT * FROM jobs WHERE company_normalized = ? AND contract_type = ?"
+            " AND collected_at >= ?",
+            (company_normalized, str(contract_type), since.isoformat()),
+        ).fetchall()
+        return [_row_to_job(r) for r in rows]
+
 
 class JobScoreRepository:
     def __init__(self, conn: sqlite3.Connection) -> None:
@@ -343,6 +366,40 @@ class JobScoreRepository:
             ),
         )
         self._conn.commit()
+
+
+class JobDuplicateRepository:
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def save_link(
+        self,
+        canonical_id: int,
+        duplicate_id: int,
+        reason: str,
+        similarity: float | None = None,
+    ) -> None:
+        self._conn.execute(
+            "INSERT OR IGNORE INTO job_duplicates"
+            "(canonical_job_id, duplicate_job_id, reason, similarity, detected_at)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (canonical_id, duplicate_id, reason, similarity, datetime.now(UTC).isoformat()),
+        )
+        self._conn.commit()
+
+    def get_canonical_id(self, job_id: int) -> int | None:
+        row = self._conn.execute(
+            "SELECT canonical_job_id FROM job_duplicates WHERE duplicate_job_id = ?",
+            (job_id,),
+        ).fetchone()
+        return row["canonical_job_id"] if row else None
+
+    def list_duplicates_of(self, canonical_id: int) -> list[int]:
+        rows = self._conn.execute(
+            "SELECT duplicate_job_id FROM job_duplicates WHERE canonical_job_id = ?",
+            (canonical_id,),
+        ).fetchall()
+        return [r["duplicate_job_id"] for r in rows]
 
 
 class RunRepository:
