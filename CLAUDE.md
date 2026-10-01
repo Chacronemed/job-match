@@ -6,7 +6,7 @@ Full brief: `docs/PROJECT_BRIEF.md` (read only the sections you need). Design: `
 ## Session protocol (IMPORTANT)
 - **At session start:** read `docs/PROGRESS.md` first. Do not re-read the whole repo.
 - **Before ending a session, or when I say "save":** update `docs/PROGRESS.md` (current milestone, done,
-  next step, open decisions, known issues), then commit.
+  next step, open decisions, known issues), then suggest a one-line commit message.
 - Work on ONE milestone at a time. Stop at the end of the milestone and wait for my go.
 - Never start implementing Milestone N+1 without an explicit request.
 
@@ -48,8 +48,9 @@ frontend framework.
 - Run `pytest -q` before each commit.
 - Record significant decisions as ADRs in `docs/adr/NNNN-title.md`.
 - Tests use fixtures and mocks and never hit real APIs. Keep fixtures small.
-- Commit messages: one short line (~60 chars max), Conventional Commits, no body unless the why isn't obvious.
-- Never prefix commands with cd.
+- Never run git add/commit/push. At the end of a task, list changed files and suggest a one-line Conventional Commit message (~60 chars). Read-only git (status, diff, log) is fine.
+- Never prefix commands with cd: the working directory is already the project root.
+- Always use the virtual env: `.venv\Scripts\python` (pip, pytest, ruff).
 
 ## Token hygiene
 - Don't read `data/`, `*.sqlite`, large fixtures, `node_modules/` or `.venv/`.

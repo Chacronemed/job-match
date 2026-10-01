@@ -1,0 +1,49 @@
+{
+  "resultats": [
+    {
+      "id": "167DFDB",
+      "intitule": "Ingénieur DevOps H/F",
+      "description": "Nous recherchons un ingénieur DevOps expérimenté avec une maîtrise de Kubernetes et Terraform.",
+      "dateCreation": "2026-09-28T08:00:00.000+02:00",
+      "dateActualisation": "2026-09-30T10:00:00.000+02:00",
+      "lieuTravail": {
+        "libelle": "75 - Paris",
+        "commune": "75056",
+        "codePostal": "75001"
+      },
+      "entreprise": {
+        "nom": "Acme SAS"
+      },
+      "typeContrat": "CDI",
+      "typeContratLibelle": "Contrat à durée indéterminée",
+      "experienceExige": "E",
+      "experienceLibelle": "3 ans et plus",
+      "origineOffre": {
+        "urlOrigine": "https://candidat.francetravail.fr/offres/recherche/detail/167DFDB"
+      }
+    },
+    {
+      "id": "167DFDC",
+      "intitule": "SRE / Platform Engineer H/F",
+      "description": "Rejoignez notre équipe SRE pour maintenir et améliorer notre infrastructure cloud.",
+      "dateCreation": "2026-09-27T09:00:00.000+02:00",
+      "dateActualisation": "2026-09-29T09:00:00.000+02:00",
+      "lieuTravail": {
+        "libelle": "92 - Issy-les-Moulineaux",
+        "commune": "92040",
+        "codePostal": "92130"
+      },
+      "entreprise": {
+        "nom": "TechCorp SA"
+      },
+      "typeContrat": "CDI",
+      "typeContratLibelle": "Contrat à durée indéterminée",
+      "experienceExige": "E",
+      "experienceLibelle": "5 ans et plus",
+      "origineOffre": {
+        "urlOrigine": "https://candidat.francetravail.fr/offres/recherche/detail/167DFDC"
+      }
+    }
+  ],
+  "filtresPossibles": []
+}

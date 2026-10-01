@@ -3,11 +3,18 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-Milestone 1: Normalized Job domain model + project skeleton: **DONE**. Waiting for "start Milestone 2".
+Milestone 2: France Travail adapter: **DONE**. Waiting for "start Milestone 3".
 
 ## Done
 - Project brief written (`docs/PROJECT_BRIEF.md`, `CLAUDE.md`)
 - `docs/ARCHITECTURE.md` (brief §25, 14 sections).
+- **Milestone 2** (2026-10-01):
+  - `src/job_match/adapters/http.py` — `HttpClient` with retry/backoff (429+Retry-After, 5xx, timeout)
+  - `src/job_match/adapters/jobs/base.py` — `JobSource` Protocol, `RawItem` TypeAlias
+  - `src/job_match/adapters/jobs/france_travail.py` — `FranceTravailSource`: OAuth2, pagination, `to_job`
+  - 3 JSON fixtures, 20 new tests (46 total), ruff clean
+  - Contract-type map in adapter; `workplace_type=UNKNOWN` (FT v2 has no clean field)
+  - `experience=None` (parser is M3); `max_results` is constructor param for testability
 - **Milestone 1** (2026-10-01):
   - `.gitattributes` (`* text=auto eol=lf`)
   - `.gitignore`, `.env.example`
@@ -20,8 +27,7 @@ Milestone 1: Normalized Job domain model + project skeleton: **DONE**. Waiting f
   - 26 tests green, `ruff check .` clean
 
 ## Next step
-- **Milestone 2: France Travail adapter.** OAuth + search + pagination + retry, `to_job` mapping tested on
-  fixtures. Credentials (`FT_CLIENT_ID`/`FT_CLIENT_SECRET`) needed for live runs; tests use fixtures only.
+- **Milestone 3: Experience parser + eligibility engine.** Table-driven FR/EN tests, UNKNOWN handling.
 
 ## Decisions (resolved in M0, see ARCHITECTURE)
 - **The repo is PUBLIC.** Nothing personal is committed or logged. Logs contain aggregate counts only.
@@ -47,3 +53,4 @@ Milestone 1: Normalized Job domain model + project skeleton: **DONE**. Waiting f
 - 2026-09-30: brief created. M0 architecture written, with user-requested changes: M1/M2 swapped, private data
   repo, example profile, JMS experimental.
 - 2026-10-01: M1 complete. Project skeleton, domain model, config loader, 26 tests green.
+- 2026-10-01: M2 complete. France Travail adapter: OAuth2, pagination, retry/backoff, 20 new tests (46 total).

@@ -1,0 +1,27 @@
+{
+  "resultats": [
+    {
+      "id": "167DFDD",
+      "intitule": "DevOps / Cloud Engineer",
+      "description": "Poste de cloud engineer dans une startup en forte croissance.",
+      "dateCreation": "2026-09-26T10:00:00.000+02:00",
+      "dateActualisation": "2026-09-28T10:00:00.000+02:00",
+      "lieuTravail": {
+        "libelle": "75 - Paris",
+        "commune": "75056",
+        "codePostal": "75008"
+      },
+      "entreprise": {
+        "nom": "CloudStartup"
+      },
+      "typeContrat": "CDD",
+      "typeContratLibelle": "Contrat à durée déterminée",
+      "experienceExige": "S",
+      "experienceLibelle": "Expérience souhaitée",
+      "origineOffre": {
+        "urlOrigine": "https://candidat.francetravail.fr/offres/recherche/detail/167DFDD"
+      }
+    }
+  ],
+  "filtresPossibles": []
+}

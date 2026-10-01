@@ -1,0 +1,6 @@
+{
+  "access_token": "fake-token-abc",
+  "token_type": "Bearer",
+  "expires_in": 1499,
+  "scope": "api_offresdemploiv2 o2dsoffre"
+}
