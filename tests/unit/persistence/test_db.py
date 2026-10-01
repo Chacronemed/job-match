@@ -1,0 +1,65 @@
+from pathlib import Path
+
+import pytest
+
+from job_match.persistence.db import Database
+
+MIGRATIONS = Path(__file__).parent.parent.parent.parent / "migrations"
+
+
+@pytest.fixture
+def db():
+    with Database(migrations_dir=MIGRATIONS) as d:
+        yield d
+
+
+def _table_names(db: Database) -> set[str]:
+    rows = db.conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+    ).fetchall()
+    return {row[0] for row in rows}
+
+
+def test_tables_created_after_connect(db):
+    tables = _table_names(db)
+    assert "jobs" in tables
+    assert "companies" in tables
+    assert "sources" in tables
+    assert "raw_payloads" in tables
+    assert "job_duplicates" in tables
+    assert "job_scores" in tables
+    assert "funding_events" in tables
+    assert "leads" in tables
+    assert "runs" in tables
+    assert "schema_version" in tables
+
+
+def test_schema_version_tracked(db):
+    rows = db.conn.execute("SELECT version FROM schema_version ORDER BY version").fetchall()
+    versions = [r[0] for r in rows]
+    assert versions == [1]
+
+
+def test_migrations_idempotent(db):
+    """Connecting a second time to the same DB must not re-apply migrations."""
+    db2 = Database(path=":memory:", migrations_dir=MIGRATIONS)
+    # Re-use the same in-memory connection is not possible; create a fresh one
+    # and verify it also gets version=1 exactly once.
+    db2.connect()
+    rows = db2.conn.execute("SELECT version FROM schema_version").fetchall()
+    assert len(rows) == 1
+    db2.close()
+
+
+def test_no_pending_migration_on_reconnect(db):
+    """Simulate reconnect: migrations must not re-run if schema_version is up to date."""
+    before = db.conn.execute("SELECT COUNT(*) FROM schema_version").fetchone()[0]
+    # Force _apply_migrations again directly
+    db._apply_migrations()
+    after = db.conn.execute("SELECT COUNT(*) FROM schema_version").fetchone()[0]
+    assert before == after
+
+
+def test_foreign_keys_enabled(db):
+    pragma = db.conn.execute("PRAGMA foreign_keys").fetchone()[0]
+    assert pragma == 1

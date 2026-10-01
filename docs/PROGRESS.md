@@ -3,11 +3,16 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-Milestone 4: Native rule-based scoring engine: **DONE**. Waiting for "start Milestone 5".
+Milestone 5: SQLite persistence: **DONE**. Waiting for "start Milestone 6".
 
 ## Done
 - Project brief written (`docs/PROJECT_BRIEF.md`, `CLAUDE.md`)
 - `docs/ARCHITECTURE.md` (brief §25, 14 sections).
+- **Milestone 5** (2026-10-01):
+  - `migrations/0001_init.sql` — full schema: `sources`, `raw_payloads`, `companies`, `jobs`, `job_duplicates`, `job_scores`, `articles`, `funding_events`, `leads`, `runs`
+  - `src/job_match/persistence/db.py` — `Database`: WAL mode, foreign keys ON, numbered migration runner (`schema_version` bootstrap, idempotent)
+  - `src/job_match/persistence/repositories.py` — `CompanyRepository` (upsert by normalized_name), `RawPayloadRepository`, `JobRepository` (upsert by source+source_job_id, `get`, `list_eligible`, `list_rejected`), `JobScoreRepository`, `RunRepository`; full serialisation/deserialisation of `ScoringBreakdown` and `ExperienceRequirement`
+  - 24 new tests (151 total), ruff clean
 - **Milestone 4** (2026-10-01):
   - `src/job_match/scoring/base.py` — `Scorer` Protocol (`runtime_checkable`)
   - `src/job_match/scoring/native.py` — `NativeRuleScorer(aliases)`: whole-word/phrase matching via `(?<!\w)…(?!\w)`, alias expansion, title-keyword bonus, score clamped 0–100, full `ScoreResult` with `explanations`
@@ -38,7 +43,8 @@ Milestone 4: Native rule-based scoring engine: **DONE**. Waiting for "start Mile
   - 26 tests green, `ruff check .` clean
 
 ## Next step
-- **Milestone 5: SQLite persistence.** Migrations, repositories, rejected jobs stored.
+- **Milestone 6: Fingerprint + deduplication.** Exact and fuzzy links, never deleted.
+- **Milestone 6b: Job pipeline + CLI.** `pipelines/jobs.py` (fetch → normalize → experience gate → dedup → score → store) + `job-match run` CLI command that prints the RunSummary. No email yet. Thin orchestration only — no new domain logic.
 
 ## Decisions (resolved in M0, see ARCHITECTURE)
 - **The repo is PUBLIC.** Nothing personal is committed or logged. Logs contain aggregate counts only.
@@ -54,6 +60,8 @@ Milestone 4: Native rule-based scoring engine: **DONE**. Waiting for "start Mile
 ## Open decisions
 - Exact France Travail search parameters (ROME codes, departments), to settle in M2
 - Numeric thresholds (strong match, divergence, fuzzy T1/T2), to calibrate in M4 and M6 on real data
+- Score calibration (after first real run): scale is compressed (50–70 on samples). Options: normalize score = earned/max possible points, base_score 0, strong_threshold 60, more negative skills. Calibrate on ~50 real France Travail jobs.
+- **M9 — WAL flush before data-repo push:** run `PRAGMA wal_checkpoint(TRUNCATE)` and close the connection before committing the DB, so no data remains in the `-wal` file. Also ensure `*.sqlite-wal` and `*.sqlite-shm` are gitignored.
 
 ## Known issues
 - job-match-scorer: English-only tokenizer (strips accents), no JSON output, young repo (2 commits)
@@ -67,3 +75,4 @@ Milestone 4: Native rule-based scoring engine: **DONE**. Waiting for "start Mile
 - 2026-10-01: M2 complete. France Travail adapter: OAuth2, pagination, retry/backoff, 20 new tests (46 total).
 - 2026-10-01: M3 complete. Experience parser + eligibility gate, 55 new tests (101 total).
 - 2026-10-01: M4 complete. Native scoring engine: `NativeRuleScorer`, `ScoringEngine`, 26 new tests (127 total).
+- 2026-10-01: M5 complete. SQLite persistence: migration runner, 5 repositories, 24 new tests (151 total).
