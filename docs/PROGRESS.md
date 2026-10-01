@@ -3,11 +3,16 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-Milestone 2: France Travail adapter: **DONE**. Waiting for "start Milestone 3".
+Milestone 3: Experience parser + eligibility engine: **DONE**. Waiting for "start Milestone 4".
 
 ## Done
 - Project brief written (`docs/PROJECT_BRIEF.md`, `CLAUDE.md`)
 - `docs/ARCHITECTURE.md` (brief §25, 14 sections).
+- **Milestone 3** (2026-10-01):
+  - `src/job_match/experience/parser.py` — `parse(text) → ExperienceRequirement`; regex table (FR+EN), written-number map, smallest-minimum rule, false-positive guard (company founding year), ambiguous→UNKNOWN, nothing→NOT_MENTIONED
+  - `src/job_match/eligibility/gate.py` — `evaluate(job, requirement, profile) → EligibilityResult`; hard gate: experience, contract, location; UNKNOWN/NOT_MENTIONED stay eligible; "remote" in location always passes
+  - 55 new tests (101 total), ruff clean
+  - Position-tracking prevents `_PLAIN_RE` from double-capturing numbers inside max phrases ("up to 2 years")
 - **Milestone 2** (2026-10-01):
   - `src/job_match/adapters/http.py` — `HttpClient` with retry/backoff (429+Retry-After, 5xx, timeout)
   - `src/job_match/adapters/jobs/base.py` — `JobSource` Protocol, `RawItem` TypeAlias
@@ -27,7 +32,7 @@ Milestone 2: France Travail adapter: **DONE**. Waiting for "start Milestone 3".
   - 26 tests green, `ruff check .` clean
 
 ## Next step
-- **Milestone 3: Experience parser + eligibility engine.** Table-driven FR/EN tests, UNKNOWN handling.
+- **Milestone 4: Native rule-based scoring engine.** Explainable breakdown, aliases, weights from config.
 
 ## Decisions (resolved in M0, see ARCHITECTURE)
 - **The repo is PUBLIC.** Nothing personal is committed or logged. Logs contain aggregate counts only.
@@ -54,3 +59,4 @@ Milestone 2: France Travail adapter: **DONE**. Waiting for "start Milestone 3".
   repo, example profile, JMS experimental.
 - 2026-10-01: M1 complete. Project skeleton, domain model, config loader, 26 tests green.
 - 2026-10-01: M2 complete. France Travail adapter: OAuth2, pagination, retry/backoff, 20 new tests (46 total).
+- 2026-10-01: M3 complete. Experience parser + eligibility gate, 55 new tests (101 total).
