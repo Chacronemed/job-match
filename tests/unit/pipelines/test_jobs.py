@@ -17,7 +17,7 @@ from job_match.domain.models import ContractType, Job, WorkplaceType
 from job_match.persistence.db import Database
 from job_match.pipelines.jobs import run_jobs
 
-MIGRATIONS = Path(__file__).parent.parent.parent.parent / "migrations"
+MIGRATIONS = Path(__file__).parent.parent.parent.parent / "src" / "job_match" / "migrations"
 _NOW = datetime(2026, 10, 1, 12, 0, 0, tzinfo=UTC)
 
 

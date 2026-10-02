@@ -4,7 +4,7 @@ import pytest
 
 from job_match.persistence.db import Database
 
-MIGRATIONS = Path(__file__).parent.parent.parent.parent / "migrations"
+MIGRATIONS = Path(__file__).parent.parent.parent.parent / "src" / "job_match" / "migrations"
 
 
 @pytest.fixture

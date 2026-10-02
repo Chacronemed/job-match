@@ -25,7 +25,7 @@ from job_match.persistence.repositories import (
     RunRepository,
 )
 
-MIGRATIONS = Path(__file__).parent.parent.parent.parent / "migrations"
+MIGRATIONS = Path(__file__).parent.parent.parent.parent / "src" / "job_match" / "migrations"
 
 _NOW = datetime(2026, 10, 1, 12, 0, 0, tzinfo=UTC)
 

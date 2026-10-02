@@ -1,8 +1,17 @@
+import importlib.resources
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
-_DEFAULT_MIGRATIONS = Path(__file__).parent.parent.parent.parent / "migrations"
+
+def _default_migrations() -> Path:
+    """Return the bundled migrations directory via importlib.resources.
+
+    Works for both editable installs (src/ layout) and installed wheels because
+    the migrations are packaged under job_match.migrations.
+    """
+    ref = importlib.resources.files("job_match.migrations")
+    return Path(str(ref))
 
 
 class Database:
@@ -14,7 +23,9 @@ class Database:
         migrations_dir: Path | None = None,
     ) -> None:
         self._path = str(path)
-        self._migrations_dir = Path(migrations_dir) if migrations_dir else _DEFAULT_MIGRATIONS
+        self._migrations_dir = (
+            Path(migrations_dir) if migrations_dir is not None else _default_migrations()
+        )
         self._conn: sqlite3.Connection | None = None
 
     @property

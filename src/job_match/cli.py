@@ -8,11 +8,19 @@ from dotenv import load_dotenv
 
 from job_match.domain.models import RunSummary
 
-_ROOT = Path(__file__).parent.parent.parent
-_CONFIG = _ROOT / "config"
-_DATA = _ROOT / "data"
-
 _FT_VARS = ("FT_CLIENT_ID", "FT_CLIENT_SECRET")
+
+
+def _config_dir() -> Path:
+    """Config directory: $JOB_MATCH_CONFIG_DIR or ./config (relative to CWD)."""
+    env = os.environ.get("JOB_MATCH_CONFIG_DIR")
+    return Path(env) if env else Path("config")
+
+
+def _data_dir() -> Path:
+    """Data directory: $JOB_MATCH_DATA_DIR or ./data (relative to CWD)."""
+    env = os.environ.get("JOB_MATCH_DATA_DIR")
+    return Path(env) if env else Path("data")
 
 
 def main() -> None:
@@ -56,8 +64,10 @@ def _cmd_digest(args: argparse.Namespace) -> None:
     from job_match.persistence.db import Database
     from job_match.persistence.repositories import JobRepository
 
-    settings = load_settings(_CONFIG / "settings.yaml")
-    db_path = str(_DATA / "jobs.sqlite")
+    cfg = _config_dir()
+    data_dir = _data_dir()
+    settings = load_settings(cfg / "settings.yaml")
+    db_path = str(data_dir / "jobs.sqlite")
 
     with Database(path=db_path) as db:
         job_repo = JobRepository(db.conn)
@@ -76,8 +86,8 @@ def _cmd_digest(args: argparse.Namespace) -> None:
     print(f"Digest: {total} unnotified jobs ({len(strong)} strong, {len(eligible)} eligible)")
 
     if args.dry_run:
-        _DATA.mkdir(parents=True, exist_ok=True)
-        preview = _DATA / "digest_preview.html"
+        data_dir.mkdir(parents=True, exist_ok=True)
+        preview = data_dir / "digest_preview.html"
         preview.write_text(render_html(data), encoding="utf-8")
         print(f"  [DRY RUN] HTML written to {preview}")
         return
@@ -112,14 +122,16 @@ def _cmd_run(args: argparse.Namespace) -> None:
     from job_match.persistence.db import Database
     from job_match.pipelines.jobs import run_jobs
 
-    profile_path = _CONFIG / "profile.yaml"
+    cfg = _config_dir()
+    data_dir = _data_dir()
+    profile_path = cfg / "profile.yaml"
     profile = load_profile(profile_path)
-    settings = load_settings(_CONFIG / "settings.yaml")
-    aliases = load_aliases(_CONFIG / "aliases.yaml")
+    settings = load_settings(cfg / "settings.yaml")
+    aliases = load_aliases(cfg / "aliases.yaml")
     print(f"profile: {profile_path} (experience_years={profile.candidate.experience_years})")
 
     if not args.dry_run:
-        _DATA.mkdir(parents=True, exist_ok=True)
+        data_dir.mkdir(parents=True, exist_ok=True)
 
     missing = [v for v in _FT_VARS if not os.environ.get(v)]
     if missing:
@@ -127,7 +139,7 @@ def _cmd_run(args: argparse.Namespace) -> None:
             print(f"Missing {var}: set it in .env or as an env var", file=sys.stderr)
         sys.exit(1)
 
-    db_path = ":memory:" if args.dry_run else str(_DATA / "jobs.sqlite")
+    db_path = ":memory:" if args.dry_run else str(data_dir / "jobs.sqlite")
     source = FranceTravailSource(profile, requests_per_second=settings.ft_requests_per_second)
 
     with Database(path=db_path) as db:

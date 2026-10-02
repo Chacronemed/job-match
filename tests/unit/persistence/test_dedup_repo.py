@@ -9,7 +9,7 @@ from job_match.normalization.company import normalize_company
 from job_match.persistence.db import Database
 from job_match.persistence.repositories import JobDuplicateRepository, JobRepository
 
-MIGRATIONS = Path(__file__).parent.parent.parent.parent / "migrations"
+MIGRATIONS = Path(__file__).parent.parent.parent.parent / "src" / "job_match" / "migrations"
 
 _NOW = datetime(2026, 10, 1, 12, 0, 0, tzinfo=UTC)
 _LATER = datetime(2026, 10, 2, 12, 0, 0, tzinfo=UTC)
