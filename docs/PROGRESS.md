@@ -3,7 +3,7 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-Milestone 6b: Job pipeline + CLI: **DONE**. Waiting for next milestone.
+**Milestone 8: Email digest** — **DONE**. Waiting for M9.
 
 ## Done
 - Project brief written (`docs/PROJECT_BRIEF.md`, `CLAUDE.md`)
@@ -59,9 +59,13 @@ Milestone 6b: Job pipeline + CLI: **DONE**. Waiting for next milestone.
   - 26 tests green, `ruff check .` clean
 
 ## Next step
-- **Milestone 7 (optional/experimental):** job-match-scorer adapter, or skip to M8 (email digest).
-- Score calibration is the top open decision before M8: base_score 0, strong_threshold 60 would
-  compress less — revisit after ~100 real runs.
+- **Milestone 9:** GitHub Actions automation (`ci.yml` + `daily.yml`, profile/resume from secrets,
+  private data repo push, ADR 0001).
+
+## Deferred
+- **Milestone 7 (DEFERRED, experimental/optional):** job-match-scorer adapter. Off by default;
+  not required for MVP. Skip until M9+ is stable.
+- Score calibration: base_score 0, strong_threshold 60 may suit better — revisit after ~100 live runs.
 
 ## Decisions (resolved in M0, see ARCHITECTURE)
 - **The repo is PUBLIC.** Nothing personal is committed or logged. Logs contain aggregate counts only.
@@ -95,6 +99,13 @@ Milestone 6b: Job pipeline + CLI: **DONE**. Waiting for next milestone.
 - 2026-10-01: M5 complete. SQLite persistence: migration runner, 5 repositories, 24 new tests (151 total).
 - 2026-10-01: M6 complete. Normalization module, fingerprint, DedupEngine, migration 0002, 60 new tests (211 total).
 - 2026-10-01: M6b complete. `pipelines/jobs.py`, CLI `job-match run`, `load_aliases`, 13 new tests (229 total).
+- 2026-10-02: Post-M6b fixes. FT adapter: per-keyword queries, throttle (3 req/s), api_calls counter.
+  Seniority keyword gate (`infer_seniority_min`). `rejected_jobs` unique-count invariant. 261 tests.
+  Live run (--limit 50 --dry-run): 3 strong (ALENTA 87, EKIMETRICS 77, Nextep HR 72).
+- 2026-10-02: M8 complete. Email digest: `notification/digest.py` (HTML + plain-text, HTML-escaped),
+  `notification/email_notifier.py` (SMTP_SSL/STARTTLS, Gmail app password), `notification/service.py`
+  (NotificationService Protocol). `job-match digest [--dry-run]` CLI. `list_unnotified`/`mark_notified`
+  added to `JobRepository`. 285 tests passing.
 - 2026-10-02: Post-M6b fixes. FT adapter: one request per (keyword × dept), throttle (3 req/s),
   api_calls in RunSummary. Seniority keyword rule (`infer_seniority_min`, configurable in settings.yaml).
   Gate: explicit year always wins over seniority keyword. RunSummary: `rejected_jobs` = unique jobs count.

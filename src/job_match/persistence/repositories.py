@@ -326,6 +326,31 @@ class JobRepository:
         ).fetchall()
         return [_row_to_job(r) for r in rows]
 
+    def list_unnotified(self, strong_threshold: int | None = None) -> list[Job]:
+        """Return canonical eligible jobs not yet notified, strong first then by score."""
+        rows = self._conn.execute(
+            """
+            SELECT j.*
+            FROM jobs j
+            LEFT JOIN job_duplicates d ON d.duplicate_job_id = j.id
+            WHERE j.eligibility = 'ELIGIBLE'
+              AND j.notified_at IS NULL
+              AND d.duplicate_job_id IS NULL
+            ORDER BY j.score DESC, j.collected_at DESC
+            """
+        ).fetchall()
+        return [_row_to_job(r) for r in rows]
+
+    def mark_notified(self, job_ids: list[int], notified_at: datetime) -> None:
+        if not job_ids:
+            return
+        placeholders = ",".join("?" * len(job_ids))
+        self._conn.execute(
+            f"UPDATE jobs SET notified_at = ? WHERE id IN ({placeholders})",
+            [notified_at.isoformat(), *job_ids],
+        )
+        self._conn.commit()
+
     def list_by_block(
         self,
         company_normalized: str,

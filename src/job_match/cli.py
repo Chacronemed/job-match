@@ -28,12 +28,79 @@ def main() -> None:
     run_p.add_argument("--dry-run", action="store_true",
                        help="Run the full pipeline but write nothing to the database")
 
+    digest_p = sub.add_parser("digest", help="Send email digest of unnotified jobs")
+    digest_p.add_argument(
+        "--dry-run", action="store_true",
+        help="Render HTML to data/digest_preview.html instead of sending",
+    )
+
     args = parser.parse_args()
 
     if args.command == "run":
         _cmd_run(args)
+    elif args.command == "digest":
+        _cmd_digest(args)
     else:
         parser.print_help()
+        sys.exit(1)
+
+
+def _cmd_digest(args: argparse.Namespace) -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+
+    from datetime import UTC, datetime
+
+    from job_match.config.loader import load_settings
+    from job_match.notification.digest import DigestData, render_html
+    from job_match.notification.email_notifier import EmailNotifier, SmtpConfigError
+    from job_match.persistence.db import Database
+    from job_match.persistence.repositories import JobRepository
+
+    settings = load_settings(_CONFIG / "settings.yaml")
+    db_path = str(_DATA / "jobs.sqlite")
+
+    with Database(path=db_path) as db:
+        job_repo = JobRepository(db.conn)
+        jobs = job_repo.list_unnotified()
+
+    strong = tuple(j for j in jobs if j.score is not None and j.score >= settings.strong_threshold)
+    eligible = tuple(j for j in jobs if j not in strong)
+
+    data = DigestData(
+        strong=strong,
+        eligible=eligible,
+        generated_at=datetime.now(UTC),
+    )
+
+    total = len(strong) + len(eligible)
+    print(f"Digest: {total} unnotified jobs ({len(strong)} strong, {len(eligible)} eligible)")
+
+    if args.dry_run:
+        _DATA.mkdir(parents=True, exist_ok=True)
+        preview = _DATA / "digest_preview.html"
+        preview.write_text(render_html(data), encoding="utf-8")
+        print(f"  [DRY RUN] HTML written to {preview}")
+        return
+
+    if total == 0:
+        print("  Nothing to send.")
+        return
+
+    try:
+        notifier = EmailNotifier.from_env()
+    except SmtpConfigError as exc:
+        print(f"SMTP not configured: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    ok = notifier.send(data)
+    if ok:
+        with Database(path=db_path) as db:
+            job_repo = JobRepository(db.conn)
+            job_ids = [j.id for j in jobs if j.id is not None]
+            job_repo.mark_notified(job_ids, datetime.now(UTC))
+        print(f"  Sent. {total} jobs marked as notified.")
+    else:
+        print("  Send failed — see logs. Jobs not marked as notified.", file=sys.stderr)
         sys.exit(1)
 
 
