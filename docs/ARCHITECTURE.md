@@ -312,10 +312,15 @@ Two separate modules:
    - Ambiguous wording (`première expérience`, `expérience significative`, `solid experience`,
      `some experience`…) gives `UNKNOWN`. **The parser never infers a number.** When nothing is mentioned the
      result is `NOT_MENTIONED`.
-2. **`eligibility.gate`**: `evaluate(job, requirement, profile) -> EligibilityResult`.
+2. **`eligibility.gate`**: `evaluate(job, requirement, profile, settings=None) -> EligibilityResult`.
    - `min_years > candidate.experience_years` means `REJECTED` with reason `EXPERIENCE` and the evidence in
      `rejection_reason`.
-   - `UNKNOWN` and `NOT_MENTIONED` remain **eligible**, and the status is shown in the digest.
+   - **Seniority keyword rule** (configured in `settings.yaml → seniority_min_years`): when no explicit numeric
+     requirement is found, seniority keywords in the title or description (`senior`, `expert`, `confirmé`, `lead`,
+     etc.) set an inferred minimum. `infer_seniority_min(title, description, map)` in `experience.parser` searches
+     for each keyword with a word boundary and returns the highest matching minimum. An explicit number in the text
+     always wins. `UNKNOWN` and `NOT_MENTIONED` statuses are therefore eligible only when no seniority keyword is
+     found (or the candidate meets its minimum).
    - Other hard filters come from the profile: contract type, location. A title filter is optional.
    - Runs **before** scoring. Rejected jobs are persisted but never scored. Experience is never a score penalty.
 
@@ -478,6 +483,7 @@ English-only, French postings are penalized, and the upstream repo is new with 2
 | 4 | Native rule-based scoring engine | Explainable breakdown, aliases, weights from config |
 | 5 | SQLite persistence | Migrations, repositories, rejected jobs stored |
 | 6 | Fingerprint + deduplication | Exact and fuzzy links, never deleted |
+| 6b | **Job pipeline + CLI** | `pipelines/jobs.py` wires all stages; `job-match run [--limit N] [--dry-run]` prints RunSummary; integration-tested with fake source and in-memory DB |
 | 7 | job-match-scorer adapter (**EXPERIMENTAL, optional**) | Disabled by default, contract test, divergence flag. Not required for the MVP |
 | 8 | Email digest | SMTP via env, digest of strong/relevant matches, rejection stats, leads |
 | 9 | GitHub Actions automation | `ci.yml` + `daily.yml`, profile/resume from secrets, private data repo push, ADR 0001 |
@@ -486,7 +492,7 @@ English-only, French postings are penalized, and the upstream repo is new with 2
 | 12 | Lead ↔ Company ↔ Job relationships | Company matching across pipelines |
 | 13 | Optional web application | Only if needed |
 
-**MVP = M1–M6 + M8–M9.** M7 can be skipped or postponed without blocking anything.
+**MVP = M1–M6b + M8–M9.** M7 can be skipped or postponed without blocking anything.
 
 **Configuration and secrets** (applies from M1):
 - `config/profile.example.yaml` is committed with fake values.

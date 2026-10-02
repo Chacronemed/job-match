@@ -7,6 +7,19 @@ fuzzy_title_threshold: 0.85
 fuzzy_desc_threshold: 0.80
 base_score: 50
 title_bonus: 10
+ft_requests_per_second: 3
+
+# Seniority keywords → minimum required years.  Explicit number in the text wins.
+seniority_min_years:
+  junior:      0
+  débutant:    0
+  confirmé:    3
+  confirmée:   3
+  expérimenté: 3
+  senior:      5
+  expert:      7
+  lead:        5
+  principal:   7
 
 scoring:
   jms:

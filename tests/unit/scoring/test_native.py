@@ -188,3 +188,21 @@ def test_other_ci_cd_aliases(alias: str) -> None:
     profile = _make_profile(preferred=[("ci/cd", 2)])
     result = SCORER.score(job, profile, SETTINGS)
     assert "ci/cd" in result.positive_matches
+
+
+def test_positive_and_missing_never_overlap() -> None:
+    """A skill must appear in exactly one of positive_matches or missing_preferences."""
+    skills = [("kubernetes", 3), ("terraform", 2), ("gitlab", 3), ("ci/cd", 2), ("python", 1)]
+    # Job description mentions some skills (matched) and omits others (missing)
+    job = _make_job(description="kubernetes cluster with gitlab ci and python scripts")
+    profile = _make_profile(preferred=skills)
+    aliases = {"ci/cd": ["ci cd", "cicd"], "kubernetes": ["k8s"]}
+    scorer = NativeRuleScorer(aliases)
+    result = scorer.score(job, profile, SETTINGS)
+
+    overlap = set(result.positive_matches) & set(result.missing_preferences)
+    assert not overlap, f"Skills in both positive and missing: {overlap}"
+    # Every preferred skill is accounted for exactly once
+    all_accounted = set(result.positive_matches) | set(result.missing_preferences)
+    assert all_accounted == {s[0] for s in skills}
+    assert len(result.positive_matches) + len(result.missing_preferences) == len(skills)

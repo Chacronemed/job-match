@@ -166,3 +166,5 @@ class RunSummary:
     articles: int = 0
     leads: int = 0
     errors: int = 0
+    api_calls: int = 0
+    rejected_jobs: int = 0

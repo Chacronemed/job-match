@@ -35,6 +35,7 @@ class FTSearch:
     rome_codes: list[str] = field(default_factory=list)
     keywords: list[str] = field(default_factory=list)
     departments: list[str] = field(default_factory=list)
+    use_rome_search: bool = False
 
 
 @dataclass
@@ -66,4 +67,6 @@ class Settings:
     fuzzy_desc_threshold: float = 0.80
     base_score: int = 50
     title_bonus: int = 10
+    ft_requests_per_second: float = 3.0
+    seniority_min_years: dict[str, int] = field(default_factory=dict)
     scoring: ScoringConfig = field(default_factory=ScoringConfig)

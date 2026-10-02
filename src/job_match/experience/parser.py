@@ -132,6 +132,23 @@ def parse(text: str) -> ExperienceRequirement:
     )
 
 
+def infer_seniority_min(title: str, description: str, seniority_map: dict[str, int]) -> int | None:
+    """Return highest min_years implied by seniority keywords in title or description.
+
+    Returns None when no keyword matches or the map is empty.
+    An explicit numeric requirement from the parser always wins over this value.
+    """
+    if not seniority_map:
+        return None
+    text = f"{title} {description}"
+    best: int | None = None
+    for keyword, min_years in seniority_map.items():
+        if re.search(r"\b" + re.escape(keyword) + r"\b", text, re.IGNORECASE):
+            if best is None or min_years > best:
+                best = min_years
+    return best
+
+
 def _to_num(s: str) -> float | None:
     try:
         return float(s)

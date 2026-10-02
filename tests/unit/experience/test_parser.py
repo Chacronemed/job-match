@@ -1,7 +1,7 @@
 import pytest
 
 from job_match.domain.models import ExperienceStatus
-from job_match.experience.parser import parse
+from job_match.experience.parser import infer_seniority_min, parse
 
 # ---------------------------------------------------------------------------
 # Table-driven cases
@@ -114,3 +114,54 @@ def test_parse_range_evidence_contains_both_bounds():
     assert result.max_years == 5.0
     assert "2" in (result.evidence or "")
     assert "5" in (result.evidence or "")
+
+
+# ---------------------------------------------------------------------------
+# infer_seniority_min
+# ---------------------------------------------------------------------------
+
+_SMAP = {"junior": 0, "débutant": 0, "confirmé": 3, "confirmée": 3, "senior": 5, "expert": 7, "lead": 5}
+
+
+def test_seniority_senior_title():
+    assert infer_seniority_min("Senior DevOps Engineer", "", _SMAP) == 5
+
+
+def test_seniority_expert_in_description():
+    assert infer_seniority_min("DevOps", "We need an expert engineer with strong IaC skills", _SMAP) == 7
+
+
+def test_seniority_confirme_title():
+    assert infer_seniority_min("Ingénieur DevOps Confirmé", "", _SMAP) == 3
+
+
+def test_seniority_junior_returns_zero():
+    assert infer_seniority_min("Junior Developer", "", _SMAP) == 0
+
+
+def test_seniority_no_keyword_returns_none():
+    assert infer_seniority_min("DevOps Engineer", "Looking for someone with cloud skills", _SMAP) is None
+
+
+def test_seniority_multiple_keywords_takes_highest():
+    # "senior" (5) and "expert" (7) → 7
+    assert infer_seniority_min("Senior Expert DevOps", "", _SMAP) == 7
+
+
+def test_seniority_case_insensitive():
+    assert infer_seniority_min("SENIOR DEVOPS", "", _SMAP) == 5
+
+
+def test_seniority_no_partial_word_match():
+    # "seniority" must not match "senior"; "expertise" must not match "expert"
+    assert infer_seniority_min("", "requires seniority and deep expertise", _SMAP) is None
+
+
+def test_seniority_empty_map_returns_none():
+    assert infer_seniority_min("Senior DevOps", "expert needed", {}) is None
+
+
+def test_seniority_lead_word_boundary():
+    assert infer_seniority_min("Tech Lead", "", _SMAP) == 5
+    # "leading" must NOT match "lead"
+    assert infer_seniority_min("", "leading a team of engineers", _SMAP) is None

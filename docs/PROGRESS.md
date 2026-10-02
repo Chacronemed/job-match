@@ -3,11 +3,17 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-Milestone 6: Fingerprint + deduplication: **DONE**. Waiting for "start Milestone 6b".
+Milestone 6b: Job pipeline + CLI: **DONE**. Waiting for next milestone.
 
 ## Done
 - Project brief written (`docs/PROJECT_BRIEF.md`, `CLAUDE.md`)
 - `docs/ARCHITECTURE.md` (brief §25, 14 sections).
+- **Milestone 6b** (2026-10-01):
+  - `src/job_match/pipelines/jobs.py` — `run_jobs()`: fetch → exp parse → fingerprint → gate → dedup → score → store; `--dry-run` skips writes; `--limit` caps iteration
+  - `src/job_match/cli.py` — `job-match run [--limit N] [--dry-run]` with argparse, loads config, opens DB, prints RunSummary
+  - `src/job_match/config/loader.py` — added `load_aliases(path)`
+  - 13 new tests (229 total), ruff clean
+  - `docs/ARCHITECTURE.md §13` — added M6b row, updated MVP line
 - **Milestone 6** (2026-10-01):
   - `src/job_match/normalization/` — `text.py`, `company.py`, `title.py`, `location.py`, `url.py`
     (NFKD folding, dotted-acronym collapse, legal-suffix strip, H/F noise, tracking-param strip)
@@ -53,7 +59,9 @@ Milestone 6: Fingerprint + deduplication: **DONE**. Waiting for "start Milestone
   - 26 tests green, `ruff check .` clean
 
 ## Next step
-- **Milestone 6b: Job pipeline + CLI.** `pipelines/jobs.py` (fetch → normalize → experience gate → dedup → score → store) + `job-match run` CLI command that prints the RunSummary. No email yet. Thin orchestration only — no new domain logic.
+- **Milestone 7 (optional/experimental):** job-match-scorer adapter, or skip to M8 (email digest).
+- Score calibration is the top open decision before M8: base_score 0, strong_threshold 60 would
+  compress less — revisit after ~100 real runs.
 
 ## Decisions (resolved in M0, see ARCHITECTURE)
 - **The repo is PUBLIC.** Nothing personal is committed or logged. Logs contain aggregate counts only.
@@ -86,3 +94,12 @@ Milestone 6: Fingerprint + deduplication: **DONE**. Waiting for "start Milestone
 - 2026-10-01: M4 complete. Native scoring engine: `NativeRuleScorer`, `ScoringEngine`, 26 new tests (127 total).
 - 2026-10-01: M5 complete. SQLite persistence: migration runner, 5 repositories, 24 new tests (151 total).
 - 2026-10-01: M6 complete. Normalization module, fingerprint, DedupEngine, migration 0002, 60 new tests (211 total).
+- 2026-10-01: M6b complete. `pipelines/jobs.py`, CLI `job-match run`, `load_aliases`, 13 new tests (229 total).
+- 2026-10-02: Post-M6b fixes. FT adapter: one request per (keyword × dept), throttle (3 req/s),
+  api_calls in RunSummary. Seniority keyword rule (`infer_seniority_min`, configurable in settings.yaml).
+  Gate: explicit year always wins over seniority keyword. RunSummary: `rejected_jobs` = unique jobs count.
+  CLI: prints loaded profile + experience_years, reason breakdown labeled "may sum > jobs".
+  `scripts/diagnose.py` added. 261 tests passing.
+  Live run (--limit 50 --dry-run): 50 fetched, 44 rejected, 3 eligible, 3 strong.
+  Strong matches: ALENTA 87 (eligible because description says "au moins 2 ans", overrides seniority keywords),
+  EKIMETRICS 77, Nextep HR 72.

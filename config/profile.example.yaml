@@ -38,6 +38,7 @@ ft_search:
     - "92"
     - "93"
     - "94"
+  use_rome_search: false  # if true, also runs codeROME-only searches (one per rome_code × dept)
 
 scoring:
   jms:

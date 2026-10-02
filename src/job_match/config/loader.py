@@ -45,6 +45,20 @@ def load_profile_from_env() -> Profile:
     return _parse_profile(raw, "PROFILE_YAML env var")
 
 
+def load_aliases(path: Path) -> dict[str, list[str]]:
+    if not path.exists():
+        return {}
+    with path.open(encoding="utf-8") as fh:
+        raw = yaml.safe_load(fh) or {}
+    if not isinstance(raw, dict):
+        raise ConfigError(f"Aliases file must be a YAML mapping: {path}")
+    return {
+        str(k): [str(v) for v in vs]
+        for k, vs in raw.items()
+        if isinstance(vs, list)
+    }
+
+
 def load_settings(path: Path) -> Settings:
     if not path.exists():
         raise ConfigError(f"Settings file not found: {path}")
@@ -60,6 +74,10 @@ def load_settings(path: Path) -> Settings:
         fuzzy_desc_threshold=float(raw.get("fuzzy_desc_threshold", 0.80)),
         base_score=int(raw.get("base_score", 50)),
         title_bonus=int(raw.get("title_bonus", 10)),
+        ft_requests_per_second=float(raw.get("ft_requests_per_second", 3.0)),
+        seniority_min_years={
+            str(k): int(v) for k, v in (raw.get("seniority_min_years") or {}).items()
+        },
         scoring=ScoringConfig(
             jms=JMSConfig(
                 enabled=bool(jms_raw.get("enabled", False)),
@@ -124,6 +142,7 @@ def _parse_profile(raw: object, source: str) -> Profile:
         rome_codes=[str(c) for c in (ft_search_raw.get("rome_codes") or [])],
         keywords=[str(k) for k in (ft_search_raw.get("keywords") or [])],
         departments=[str(d) for d in (ft_search_raw.get("departments") or [])],
+        use_rome_search=bool(ft_search_raw.get("use_rome_search", False)),
     )
 
     scoring_raw = raw.get("scoring") or {}

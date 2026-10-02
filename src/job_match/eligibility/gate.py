@@ -1,4 +1,4 @@
-from job_match.config.schema import Profile
+from job_match.config.schema import Profile, Settings
 from job_match.domain.models import (
     EligibilityResult,
     ExperienceRequirement,
@@ -6,17 +6,32 @@ from job_match.domain.models import (
     Job,
     RejectionReason,
 )
+from job_match.experience.parser import infer_seniority_min
 
 
-def evaluate(job: Job, requirement: ExperienceRequirement, profile: Profile) -> EligibilityResult:
+def evaluate(
+    job: Job,
+    requirement: ExperienceRequirement,
+    profile: Profile,
+    settings: Settings | None = None,
+) -> EligibilityResult:
     reasons: list[RejectionReason] = []
 
-    # 1. Experience hard gate — UNKNOWN and NOT_MENTIONED stay eligible
-    if (
-        requirement.status == ExperienceStatus.ELIGIBLE
-        and requirement.min_years is not None
-        and requirement.min_years > profile.candidate.experience_years
-    ):
+    # 1. Experience hard gate
+    # Seniority keywords (title or description) set a minimum when no explicit number exists.
+    # An explicit number in the text always wins over the keyword minimum.
+    seniority_min: float | None = None
+    if settings and settings.seniority_min_years:
+        s = infer_seniority_min(job.title, job.description, settings.seniority_min_years)
+        if s is not None:
+            seniority_min = float(s)
+
+    if requirement.min_years is not None:
+        effective_min: float | None = requirement.min_years  # explicit wins
+    else:
+        effective_min = seniority_min  # keyword fallback (may be 0 = no restriction)
+
+    if effective_min is not None and effective_min > profile.candidate.experience_years:
         reasons.append(RejectionReason.EXPERIENCE)
 
     # 2. Contract type
