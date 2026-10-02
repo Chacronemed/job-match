@@ -120,7 +120,10 @@ def test_parse_range_evidence_contains_both_bounds():
 # infer_seniority_min
 # ---------------------------------------------------------------------------
 
-_SMAP = {"junior": 0, "débutant": 0, "confirmé": 3, "confirmée": 3, "senior": 5, "expert": 7, "lead": 5}
+_SMAP = {
+    "junior": 0, "débutant": 0, "confirmé": 3, "confirmée": 3,
+    "senior": 5, "expert": 7, "lead": 5,
+}
 
 
 def test_seniority_senior_title():
@@ -128,7 +131,8 @@ def test_seniority_senior_title():
 
 
 def test_seniority_expert_in_description():
-    assert infer_seniority_min("DevOps", "We need an expert engineer with strong IaC skills", _SMAP) == 7
+    desc = "We need an expert engineer with strong IaC skills"
+    assert infer_seniority_min("DevOps", desc, _SMAP) == 7
 
 
 def test_seniority_confirme_title():
@@ -140,7 +144,8 @@ def test_seniority_junior_returns_zero():
 
 
 def test_seniority_no_keyword_returns_none():
-    assert infer_seniority_min("DevOps Engineer", "Looking for someone with cloud skills", _SMAP) is None
+    desc = "Looking for someone with cloud skills"
+    assert infer_seniority_min("DevOps Engineer", desc, _SMAP) is None
 
 
 def test_seniority_multiple_keywords_takes_highest():

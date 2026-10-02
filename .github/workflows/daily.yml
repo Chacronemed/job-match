@@ -1,0 +1,109 @@
+name: Daily run
+
+on:
+  schedule:
+    - cron: "0 7 * * *"   # 07:00 UTC every day
+  workflow_dispatch:       # manual trigger
+
+# One writer at a time; never cancel a run in progress.
+concurrency:
+  group: daily
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    # Expose API and SMTP secrets as env vars; never printed by the pipeline.
+    env:
+      FT_CLIENT_ID:     ${{ secrets.FT_CLIENT_ID }}
+      FT_CLIENT_SECRET: ${{ secrets.FT_CLIENT_SECRET }}
+      SMTP_HOST:        ${{ secrets.SMTP_HOST }}
+      SMTP_PORT:        ${{ secrets.SMTP_PORT }}
+      SMTP_USER:        ${{ secrets.SMTP_USER }}
+      SMTP_PASSWORD:    ${{ secrets.SMTP_PASSWORD }}
+      DIGEST_TO:        ${{ secrets.DIGEST_TO }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install .
+
+      # Decode the base64 profile secret into config/profile.yaml (gitignored).
+      - name: Restore profile
+        env:
+          PROFILE_YAML: ${{ secrets.PROFILE_YAML }}
+        run: |
+          printf '%s' "$PROFILE_YAML" | base64 -d > config/profile.yaml
+
+      # Write the deploy key for job-match-data and add github.com to known_hosts.
+      - name: Set up data-repo SSH
+        env:
+          DATA_REPO_DEPLOY_KEY: ${{ secrets.DATA_REPO_DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DATA_REPO_DEPLOY_KEY" > ~/.ssh/data_deploy_key
+          chmod 600 ~/.ssh/data_deploy_key
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+          git config --global core.sshCommand "ssh -i ~/.ssh/data_deploy_key -F /dev/null"
+
+      - name: Clone data repo
+        run: |
+          git clone --depth=1 git@github.com:Chacronemed/job-match-data.git data-repo
+
+      # Copy the DB if it exists; on first run the file won't be there — that is normal.
+      - name: Restore DB
+        run: |
+          mkdir -p data
+          if [ -f data-repo/jobs.sqlite ]; then
+            cp data-repo/jobs.sqlite data/jobs.sqlite
+            echo "Restored existing DB"
+          else
+            echo "No existing DB — starting fresh"
+          fi
+
+      - name: Run pipeline
+        id: pipeline
+        run: job-match run
+
+      # Checkpoint and VACUUM before committing the DB file.
+      # Must run after the pipeline closes its connection.
+      - name: WAL checkpoint and VACUUM
+        id: wal
+        run: |
+          python - <<'EOF'
+          import sqlite3, pathlib
+          p = pathlib.Path("data/jobs.sqlite")
+          if p.exists():
+              c = sqlite3.connect(str(p))
+              c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+              c.execute("VACUUM")
+              c.close()
+          EOF
+
+      # Digest is best-effort: a failed send does not lose the collected jobs.
+      - name: Send digest
+        continue-on-error: true
+        run: job-match digest
+
+      # Push the DB back only when the pipeline and WAL checkpoint both succeeded.
+      - name: Push DB to data repo
+        if: steps.wal.outcome == 'success'
+        run: |
+          cp data/jobs.sqlite data-repo/jobs.sqlite
+          cd data-repo
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add jobs.sqlite
+          if git diff --cached --quiet; then
+            echo "DB unchanged — nothing to push"
+          else
+            git commit -m "chore: daily sync $(date -u +%Y-%m-%d)"
+            git push
+          fi

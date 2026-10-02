@@ -7,7 +7,6 @@ import pytest
 from job_match.notification.digest import DigestData
 from job_match.notification.email_notifier import EmailNotifier, SmtpConfigError
 
-
 _TS = datetime(2026, 10, 2, 9, 0, 0)
 _EMPTY = DigestData(strong=(), eligible=(), generated_at=_TS)
 
@@ -64,7 +63,8 @@ def test_send_ssl_port_uses_smtp_ssl():
     mock_smtp = MagicMock()
     mock_smtp.__enter__ = MagicMock(return_value=mock_smtp)
     mock_smtp.__exit__ = MagicMock(return_value=False)
-    with patch("job_match.notification.email_notifier.smtplib.SMTP_SSL", return_value=mock_smtp) as ssl_cls:
+    ssl_patch = "job_match.notification.email_notifier.smtplib.SMTP_SSL"
+    with patch(ssl_patch, return_value=mock_smtp) as ssl_cls:
         result = n.send(_EMPTY)
     ssl_cls.assert_called_once_with("smtp.example.com", 465)
     mock_smtp.login.assert_called_once_with("sender@example.com", "secret")
@@ -92,7 +92,8 @@ def test_send_starttls_port_uses_smtp():
     mock_smtp = MagicMock()
     mock_smtp.__enter__ = MagicMock(return_value=mock_smtp)
     mock_smtp.__exit__ = MagicMock(return_value=False)
-    with patch("job_match.notification.email_notifier.smtplib.SMTP", return_value=mock_smtp) as smtp_cls:
+    smtp_patch = "job_match.notification.email_notifier.smtplib.SMTP"
+    with patch(smtp_patch, return_value=mock_smtp) as smtp_cls:
         result = n.send(_EMPTY)
     smtp_cls.assert_called_once_with("smtp.example.com", 587)
     mock_smtp.starttls.assert_called_once()

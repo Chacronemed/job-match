@@ -520,7 +520,10 @@ def test_throttle_calls_sleep_between_requests():
         )
         # Use a slow rate to guarantee sleep is needed
         source = FranceTravailSource(profile, requests_per_second=0.01)
-        with patch("job_match.adapters.jobs.france_travail.time.sleep", side_effect=lambda s: sleep_calls.append(s)):
+        with patch(
+            "job_match.adapters.jobs.france_travail.time.sleep",
+            side_effect=lambda s: sleep_calls.append(s),
+        ):
             # Force last_request_time to "just now" so second request sleeps
             source._last_request_time = time.monotonic()
             list(source.fetch())

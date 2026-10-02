@@ -2,7 +2,6 @@ from job_match.config.schema import Profile, Settings
 from job_match.domain.models import (
     EligibilityResult,
     ExperienceRequirement,
-    ExperienceStatus,
     Job,
     RejectionReason,
 )

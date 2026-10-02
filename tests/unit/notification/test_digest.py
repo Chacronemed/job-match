@@ -1,17 +1,14 @@
 """Tests for DigestData rendering (HTML and plain-text)."""
 from datetime import datetime
 
-import pytest
-
 from job_match.domain.models import (
     ContractType,
+    ExperienceStatus,
     Job,
     ScoringBreakdown,
-    ExperienceStatus,
     WorkplaceType,
 )
 from job_match.notification.digest import DigestData, render_html, render_text
-
 
 _TS = datetime(2026, 10, 2, 9, 0, 0)
 

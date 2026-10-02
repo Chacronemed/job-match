@@ -147,7 +147,7 @@ def _print_summary(summary: RunSummary, *, dry_run: bool = False) -> None:
     print(f"  normalized: {summary.normalized}")
     print(f"  rejected:   {summary.rejected_jobs} jobs")  # unique jobs, not reason count
     if summary.rejected_by_reason:
-        print(f"  reason breakdown (may sum > jobs; a job can fail multiple gates):")
+        print("  reason breakdown (may sum > jobs; a job can fail multiple gates):")
         for reason, count in sorted(summary.rejected_by_reason.items()):
             print(f"    {reason}: {count}")
     print(f"  duplicates: {summary.duplicates}")

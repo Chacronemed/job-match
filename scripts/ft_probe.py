@@ -17,6 +17,7 @@ from dotenv import load_dotenv  # noqa: E402
 load_dotenv(ROOT / ".env", override=False)
 
 import httpx  # noqa: E402
+
 from job_match.config.loader import load_profile  # noqa: E402
 
 TOKEN_URL = "https://entreprise.francetravail.fr/connexion/oauth2/access_token"
@@ -79,8 +80,10 @@ def main() -> None:
         print("OK\n")
 
         _probe(client, token, "1 — dept 75 only", {"departement": "75"})
-        _probe(client, token, "2 — dept 75 + motsCles=devops", {"departement": "75", "motsCles": "devops"})
-        _probe(client, token, "3 — dept 75 + codeROME=M1801", {"departement": "75", "codeROME": "M1801"})
+        _probe(client, token, "2 — dept 75 + motsCles=devops",
+               {"departement": "75", "motsCles": "devops"})
+        _probe(client, token, "3 — dept 75 + codeROME=M1801",
+               {"departement": "75", "codeROME": "M1801"})
         _probe(client, token, "4 — dept 75 + motsCles=devops + codeROME=M1801",
                {"departement": "75", "motsCles": "devops", "codeROME": "M1801"})
         _probe(client, token, "5 — dept 75 + motsCles=devops,kubernetes (comma)",

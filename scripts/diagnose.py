@@ -6,7 +6,6 @@ Diagnostic run — equivalent to job-match run --limit 50 --dry-run but prints:
 Run: .venv\Scripts\python scripts/diagnose.py
 """
 
-import os
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -77,7 +76,12 @@ def main() -> None:
             continue
 
         breakdown = scoring_engine.score(job, profile, settings, elig, exp)
-        job = replace(job, eligibility=Eligibility.ELIGIBLE, score=breakdown.score, scoring_breakdown=breakdown)
+        job = replace(
+            job,
+            eligibility=Eligibility.ELIGIBLE,
+            score=breakdown.score,
+            scoring_breakdown=breakdown,
+        )
         eligible_jobs.append({
             "title": job.title,
             "company": job.company,

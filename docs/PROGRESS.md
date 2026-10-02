@@ -3,7 +3,7 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**Milestone 8: Email digest** — **DONE**. Waiting for M9.
+**Milestone 9: GitHub Actions** — **DONE**. Waiting for manual GitHub setup (see below).
 
 ## Done
 - Project brief written (`docs/PROJECT_BRIEF.md`, `CLAUDE.md`)
@@ -59,8 +59,8 @@
   - 26 tests green, `ruff check .` clean
 
 ## Next step
-- **Milestone 9:** GitHub Actions automation (`ci.yml` + `daily.yml`, profile/resume from secrets,
-  private data repo push, ADR 0001).
+- **Milestone 10:** RSS article ingestion (Maddyness adapter, URL dedup, no stored bodies).
+- Manual setup still required (see session log 2026-10-02 M9 entry).
 
 ## Deferred
 - **Milestone 7 (DEFERRED, experimental/optional):** job-match-scorer adapter. Off by default;
@@ -78,11 +78,62 @@
 - job-match-scorer (M7) is **EXPERIMENTAL / optional** and disabled by default.
 - career-ops is manual only. The optional exporter writes to `jds/` and the `data/pipeline.md` Pending section.
 
+## M9 — Manual GitHub setup (one-time)
+
+### 1. Create the private data repo
+
+On github.com, create a new **private** repository named `job-match-data` under your account
+(`Chacronemed/job-match-data`). Initialize it with a README so it has a `main` branch.
+
+### 2. Generate a deploy key
+
+Run on your local machine (not in the project directory):
+```
+ssh-keygen -t ed25519 -f ~/.ssh/job_match_data_deploy -N "" -C "job-match-data deploy key"
+```
+This creates:
+- `~/.ssh/job_match_data_deploy` — private key (keep secret)
+- `~/.ssh/job_match_data_deploy.pub` — public key (safe to share)
+
+### 3. Add the deploy key to `job-match-data`
+
+Go to: `github.com/Chacronemed/job-match-data` → Settings → Deploy keys → Add deploy key.
+- Title: `job-match daily workflow`
+- Key: paste the contents of `~/.ssh/job_match_data_deploy.pub`
+- **Check "Allow write access"**
+
+### 4. Add secrets to `job-match` (the public repo)
+
+Go to: `github.com/Chacronemed/job-match` → Settings → Secrets and variables → Actions → New repository secret.
+
+Add each of the following:
+
+| Secret name | Value |
+|-------------|-------|
+| `FT_CLIENT_ID` | Your France Travail API client ID |
+| `FT_CLIENT_SECRET` | Your France Travail API client secret |
+| `SMTP_HOST` | e.g. `smtp.gmail.com` |
+| `SMTP_PORT` | `465` (SSL) or `587` (STARTTLS) |
+| `SMTP_USER` | Your Gmail address |
+| `SMTP_PASSWORD` | Gmail App Password (not your Google password) |
+| `DIGEST_TO` | Email address to send the digest to |
+| `PROFILE_YAML` | `base64 -w0 config/profile.yaml` — run this locally and paste the output |
+| `DATA_REPO_DEPLOY_KEY` | Contents of `~/.ssh/job_match_data_deploy` (the private key, full including header/footer lines) |
+
+**Gmail App Password:** Google Account → Security → 2-Step Verification → App passwords → create one named "job-match".
+
+### 5. First run
+
+Trigger manually: `github.com/Chacronemed/job-match` → Actions → "Daily run" → Run workflow.
+Watch the logs — they show only aggregate counts (fetched/eligible/strong), never personal data.
+
+---
+
 ## Open decisions
 - Exact France Travail search parameters (ROME codes, departments), to settle in M2
 - Numeric thresholds (strong match, divergence, fuzzy T1/T2), to calibrate in M4 and M6 on real data
 - Score calibration (after first real run): scale is compressed (50–70 on samples). Options: normalize score = earned/max possible points, base_score 0, strong_threshold 60, more negative skills. Calibrate on ~50 real France Travail jobs.
-- **M9 — WAL flush before data-repo push:** run `PRAGMA wal_checkpoint(TRUNCATE)` and close the connection before committing the DB, so no data remains in the `-wal` file. Also ensure `*.sqlite-wal` and `*.sqlite-shm` are gitignored.
+- ~~**M9 — WAL flush before data-repo push:**~~ **Resolved in M9.** `PRAGMA wal_checkpoint(TRUNCATE)` + `VACUUM` run in daily.yml before DB push. `*.sqlite-wal` and `*.sqlite-shm` added to `.gitignore`.
 
 ## Known issues
 - job-match-scorer: English-only tokenizer (strips accents), no JSON output, young repo (2 commits)
@@ -106,6 +157,12 @@
   `notification/email_notifier.py` (SMTP_SSL/STARTTLS, Gmail app password), `notification/service.py`
   (NotificationService Protocol). `job-match digest [--dry-run]` CLI. `list_unnotified`/`mark_notified`
   added to `JobRepository`. 285 tests passing.
+- 2026-10-02: M9 complete. `.github/workflows/ci.yml` (push/PR: lint + test).
+  `.github/workflows/daily.yml` (cron 07:00 UTC + workflow_dispatch; restore profile + DB from secrets,
+  run pipeline, WAL checkpoint + VACUUM, send digest, push DB to private repo; digest is continue-on-error;
+  push gated on wal.outcome == success). `docs/adr/0001-sqlite-persistence-private-data-repo.md`.
+  `.gitignore` updated with `*.sqlite-wal`, `*.sqlite-shm`. Ruff clean, 285 tests.
+  Manual GitHub setup required — see instructions below.
 - 2026-10-02: Post-M6b fixes. FT adapter: one request per (keyword × dept), throttle (3 req/s),
   api_calls in RunSummary. Seniority keyword rule (`infer_seniority_min`, configurable in settings.yaml).
   Gate: explicit year always wins over seniority keyword. RunSummary: `rejected_jobs` = unique jobs count.

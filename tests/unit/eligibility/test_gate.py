@@ -1,6 +1,14 @@
 from datetime import UTC, datetime
 
-from job_match.config.schema import Candidate, Filters, FTSearch, Profile, ScoringConfig, Settings, Skills
+from job_match.config.schema import (
+    Candidate,
+    Filters,
+    FTSearch,
+    Profile,
+    ScoringConfig,
+    Settings,
+    Skills,
+)
 from job_match.domain.models import (
     ContractType,
     EligibilityResult,
@@ -239,7 +247,9 @@ def _make_settings(**kwargs) -> Settings:
 def test_seniority_rejects_when_no_explicit_number():
     job = _make_job(title="Ingénieur DevOps Senior")
     req = _req(status=ExperienceStatus.NOT_MENTIONED)
-    result = evaluate(job, req, _make_profile(experience_years=2.0), _make_settings(seniority_min_years=_SMAP))
+    result = evaluate(
+        job, req, _make_profile(experience_years=2.0), _make_settings(seniority_min_years=_SMAP)
+    )
     assert not result.eligible
     assert RejectionReason.EXPERIENCE in result.reasons
 
@@ -247,7 +257,9 @@ def test_seniority_rejects_when_no_explicit_number():
 def test_seniority_eligible_when_candidate_meets_minimum():
     job = _make_job(title="Senior DevOps Engineer")
     req = _req(status=ExperienceStatus.NOT_MENTIONED)
-    result = evaluate(job, req, _make_profile(experience_years=5.0), _make_settings(seniority_min_years=_SMAP))
+    result = evaluate(
+        job, req, _make_profile(experience_years=5.0), _make_settings(seniority_min_years=_SMAP)
+    )
     assert result.eligible
 
 
@@ -255,7 +267,9 @@ def test_explicit_number_wins_over_seniority_keyword():
     # Title says "Senior" (→ 5 yrs) but description says "2 ans minimum" → effective_min=2
     job = _make_job(title="Senior DevOps", description="Minimum 2 ans d'expérience")
     req = _req(status=ExperienceStatus.ELIGIBLE, min_years=2.0)
-    result = evaluate(job, req, _make_profile(experience_years=3.0), _make_settings(seniority_min_years=_SMAP))
+    result = evaluate(
+        job, req, _make_profile(experience_years=3.0), _make_settings(seniority_min_years=_SMAP)
+    )
     assert result.eligible  # explicit 2 wins over seniority 5; candidate has 3
 
 
@@ -270,7 +284,10 @@ def test_seniority_not_applied_without_settings():
 def test_seniority_junior_never_rejects():
     job = _make_job(title="Junior DevOps Engineer")
     req = _req(status=ExperienceStatus.NOT_MENTIONED)
-    result = evaluate(job, req, _make_profile(experience_years=0.0), _make_settings(seniority_min_years={"junior": 0}))
+    smap = {"junior": 0}
+    result = evaluate(
+        job, req, _make_profile(experience_years=0.0), _make_settings(seniority_min_years=smap)
+    )
     assert result.eligible
 
 
@@ -278,12 +295,16 @@ def test_seniority_unknown_status_with_keyword():
     # exp is UNKNOWN (ambiguous text) but title says "Senior" → seniority applies
     job = _make_job(title="Senior DevOps")
     req = _req(status=ExperienceStatus.UNKNOWN)
-    result = evaluate(job, req, _make_profile(experience_years=2.0), _make_settings(seniority_min_years=_SMAP))
+    result = evaluate(
+        job, req, _make_profile(experience_years=2.0), _make_settings(seniority_min_years=_SMAP)
+    )
     assert not result.eligible
 
 
 def test_seniority_confirme_in_title():
     job = _make_job(title="Ingénieur DevOps Confirmé")
     req = _req(status=ExperienceStatus.NOT_MENTIONED)
-    result = evaluate(job, req, _make_profile(experience_years=2.0), _make_settings(seniority_min_years=_SMAP))
+    result = evaluate(
+        job, req, _make_profile(experience_years=2.0), _make_settings(seniority_min_years=_SMAP)
+    )
     assert not result.eligible  # confirmé → 3 yrs; candidate has 2

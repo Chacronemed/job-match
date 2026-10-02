@@ -6,6 +6,8 @@ config/resume.md
 # Data (stored in private repo)
 data/
 *.sqlite
+*.sqlite-wal
+*.sqlite-shm
 
 # Python
 __pycache__/

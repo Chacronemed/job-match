@@ -34,7 +34,7 @@ class EmailNotifier:
         self._recipient = recipient
 
     @classmethod
-    def from_env(cls) -> "EmailNotifier":
+    def from_env(cls) -> EmailNotifier:
         missing = [k for k in _REQUIRED if not os.environ.get(k)]
         if missing:
             raise SmtpConfigError(f"Missing env vars: {', '.join(missing)}")
