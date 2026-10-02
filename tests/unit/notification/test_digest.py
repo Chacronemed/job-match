@@ -163,3 +163,25 @@ def test_render_text_run_stats():
     out = render_text(data)
     assert "fetched" in out
     assert "strong" in out
+
+
+# ---------------------------------------------------------------------------
+# Empty digest behaviour (0 jobs)
+# ---------------------------------------------------------------------------
+
+def test_digest_data_empty_total_is_zero():
+    data = _data()
+    assert len(data.strong) + len(data.eligible) == 0
+
+
+def test_render_html_empty_digest_valid_html():
+    """An all-empty digest must still produce valid HTML without crashing."""
+    out = render_html(_data())
+    assert out.startswith("<!doctype html>")
+    assert "0 unnotified jobs" in out
+
+
+def test_render_text_empty_digest_no_crash():
+    out = render_text(_data())
+    assert "0 unnotified jobs" in out
+    assert "(none)" in out

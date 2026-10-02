@@ -327,3 +327,46 @@ def test_run_save_stores_summary_json(db):
     data = json.loads(row["summary_json"])
     assert data["fetched"] == 5
     assert data["strong"] == 1
+
+
+# ---------------------------------------------------------------------------
+# list_unnotified / mark_notified
+# ---------------------------------------------------------------------------
+
+def test_list_unnotified_empty_db(db):
+    repo = JobRepository(db.conn)
+    assert repo.list_unnotified() == []
+
+
+def test_list_unnotified_returns_eligible_only(db):
+    repo = JobRepository(db.conn)
+    repo.save(_make_job(source_job_id="FT-001", eligibility=Eligibility.ELIGIBLE, score=80))
+    repo.save(_make_job(source_job_id="FT-002", eligibility=Eligibility.REJECTED))
+    jobs = repo.list_unnotified()
+    assert len(jobs) == 1
+    assert jobs[0].source_job_id == "FT-001"
+
+
+def test_list_unnotified_excludes_already_notified(db):
+    repo = JobRepository(db.conn)
+    repo.save(_make_job(source_job_id="FT-001", eligibility=Eligibility.ELIGIBLE, score=80))
+    repo.save(_make_job(source_job_id="FT-002", eligibility=Eligibility.ELIGIBLE, score=70))
+    # Mark FT-001 as notified
+    j1 = repo.list_unnotified()[0]  # score 80 comes first
+    repo.mark_notified([j1.id], _NOW)
+    remaining = repo.list_unnotified()
+    assert len(remaining) == 1
+    assert remaining[0].source_job_id == "FT-002"
+
+
+def test_mark_notified_empty_list_is_noop(db):
+    repo = JobRepository(db.conn)
+    repo.mark_notified([], _NOW)  # must not raise
+
+
+def test_list_unnotified_ordered_by_score_desc(db):
+    repo = JobRepository(db.conn)
+    for sid, score in [("FT-001", 55), ("FT-002", 90), ("FT-003", 72)]:
+        repo.save(_make_job(source_job_id=sid, eligibility=Eligibility.ELIGIBLE, score=score))
+    scores = [j.score for j in repo.list_unnotified()]
+    assert scores == [90, 72, 55]

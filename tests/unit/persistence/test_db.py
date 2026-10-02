@@ -63,3 +63,29 @@ def test_no_pending_migration_on_reconnect(db):
 def test_foreign_keys_enabled(db):
     pragma = db.conn.execute("PRAGMA foreign_keys").fetchone()[0]
     assert pragma == 1
+
+
+def test_connect_creates_parent_directory(tmp_path):
+    """Database must mkdir the parent directory if it does not exist."""
+    db_path = tmp_path / "nested" / "subdir" / "jobs.sqlite"
+    assert not db_path.parent.exists()
+    with Database(path=str(db_path), migrations_dir=MIGRATIONS) as d:
+        tables = _table_names(d)
+    assert db_path.exists()
+    assert "jobs" in tables
+
+
+def test_connect_memory_does_not_mkdir(tmp_path, monkeypatch):
+    """:memory: path must not attempt to create a parent directory."""
+    # Patch mkdir to detect any unexpected call
+    mkdir_calls: list = []
+    original_mkdir = Path.mkdir
+
+    def _spy_mkdir(self, *args, **kwargs):
+        mkdir_calls.append(str(self))
+        return original_mkdir(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", _spy_mkdir)
+    with Database(path=":memory:", migrations_dir=MIGRATIONS):
+        pass
+    assert not mkdir_calls

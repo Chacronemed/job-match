@@ -83,7 +83,7 @@ def _cmd_digest(args: argparse.Namespace) -> None:
         return
 
     if total == 0:
-        print("  Nothing to send.")
+        print("  No new jobs to send.")
         return
 
     try:
