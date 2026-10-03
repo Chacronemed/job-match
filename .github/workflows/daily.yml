@@ -14,16 +14,6 @@ jobs:
   run:
     runs-on: ubuntu-latest
 
-    # Expose API and SMTP secrets as env vars; never printed by the pipeline.
-    env:
-      FT_CLIENT_ID:     ${{ secrets.FT_CLIENT_ID }}
-      FT_CLIENT_SECRET: ${{ secrets.FT_CLIENT_SECRET }}
-      SMTP_HOST:        ${{ secrets.SMTP_HOST }}
-      SMTP_PORT:        ${{ secrets.SMTP_PORT }}
-      SMTP_USER:        ${{ secrets.SMTP_USER }}
-      SMTP_PASSWORD:    ${{ secrets.SMTP_PASSWORD }}
-      DIGEST_TO:        ${{ secrets.DIGEST_TO }}
-
     steps:
       - uses: actions/checkout@v4
 
@@ -71,6 +61,9 @@ jobs:
       - name: Run pipeline
         id: pipeline
         run: job-match run
+        env:
+          FT_CLIENT_ID:     ${{ secrets.FT_CLIENT_ID }}
+          FT_CLIENT_SECRET: ${{ secrets.FT_CLIENT_SECRET }}
 
       # Checkpoint and VACUUM before committing the DB file.
       # Must run after the pipeline closes its connection.
@@ -91,6 +84,12 @@ jobs:
       - name: Send digest
         continue-on-error: true
         run: job-match digest
+        env:
+          SMTP_HOST:     ${{ secrets.SMTP_HOST }}
+          SMTP_PORT:     ${{ secrets.SMTP_PORT }}
+          SMTP_USER:     ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          DIGEST_TO:     ${{ secrets.DIGEST_TO }}
 
       # Push the DB back only when the pipeline and WAL checkpoint both succeeded.
       - name: Push DB to data repo
