@@ -41,6 +41,10 @@ def main() -> None:
         "--dry-run", action="store_true",
         help="Render HTML to data/digest_preview.html instead of sending",
     )
+    digest_p.add_argument(
+        "--resend-since", metavar="YYYY-MM-DD",
+        help="Reset notified flag for jobs notified on or after this date, then send normally",
+    )
 
     args = parser.parse_args()
 
@@ -56,7 +60,7 @@ def main() -> None:
 def _cmd_digest(args: argparse.Namespace) -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
 
-    from datetime import UTC, datetime
+    from datetime import UTC, date, datetime
 
     from job_match.config.loader import load_settings
     from job_match.notification.digest import DigestData, render_html
@@ -68,6 +72,19 @@ def _cmd_digest(args: argparse.Namespace) -> None:
     data_dir = _data_dir()
     settings = load_settings(cfg / "settings.yaml")
     db_path = str(data_dir / "jobs.sqlite")
+
+    if args.resend_since:
+        try:
+            since = date.fromisoformat(args.resend_since)
+        except ValueError:
+            print(
+                f"Invalid date {args.resend_since!r} — expected YYYY-MM-DD",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        with Database(path=db_path) as db:
+            n = JobRepository(db.conn).reset_notified_since(since)
+        print(f"  Reset notified_at for {n} job(s) notified since {since}")
 
     with Database(path=db_path) as db:
         job_repo = JobRepository(db.conn)

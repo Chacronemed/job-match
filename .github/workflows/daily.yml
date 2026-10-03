@@ -80,9 +80,9 @@ jobs:
               c.close()
           EOF
 
-      # Digest is best-effort: a failed send does not lose the collected jobs.
+      # Digest failure (bad config or SMTP error) turns the step red but does not
+      # prevent the DB push below — see the always() guard on that step.
       - name: Send digest
-        continue-on-error: true
         run: job-match digest
         env:
           SMTP_HOST:     ${{ secrets.SMTP_HOST }}
@@ -91,9 +91,9 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           DIGEST_TO:     ${{ secrets.DIGEST_TO }}
 
-      # Push the DB back only when the pipeline and WAL checkpoint both succeeded.
+      # Push the DB back when the WAL checkpoint succeeded, even if the digest failed.
       - name: Push DB to data repo
-        if: steps.wal.outcome == 'success'
+        if: always() && steps.wal.outcome == 'success'
         run: |
           cp data/jobs.sqlite data-repo/jobs.sqlite
           cd data-repo

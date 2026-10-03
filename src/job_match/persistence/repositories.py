@@ -1,6 +1,6 @@
 import json
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from job_match.domain.models import (
     Company,
@@ -350,6 +350,25 @@ class JobRepository:
             [notified_at.isoformat(), *job_ids],
         )
         self._conn.commit()
+
+    def reset_notified_since(self, since: date) -> int:
+        """Reset notified_at to NULL for eligible canonical jobs notified on or after `since`.
+
+        Returns the number of rows updated.
+        """
+        since_iso = since.isoformat()  # "YYYY-MM-DD" — ISO sort order makes >= work on TEXT
+        cursor = self._conn.execute(
+            """
+            UPDATE jobs
+            SET notified_at = NULL
+            WHERE eligibility = 'ELIGIBLE'
+              AND notified_at >= ?
+              AND id NOT IN (SELECT duplicate_job_id FROM job_duplicates)
+            """,
+            (since_iso,),
+        )
+        self._conn.commit()
+        return cursor.rowcount
 
     def list_by_block(
         self,

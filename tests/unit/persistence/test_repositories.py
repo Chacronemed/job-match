@@ -370,3 +370,57 @@ def test_list_unnotified_ordered_by_score_desc(db):
         repo.save(_make_job(source_job_id=sid, eligibility=Eligibility.ELIGIBLE, score=score))
     scores = [j.score for j in repo.list_unnotified()]
     assert scores == [90, 72, 55]
+
+
+# ---------------------------------------------------------------------------
+# reset_notified_since
+# ---------------------------------------------------------------------------
+
+def test_reset_notified_since_resets_matching_jobs(db):
+    from datetime import date
+    repo = JobRepository(db.conn)
+    # Notified on Oct 2 — within reset window (since Oct 1)
+    j = repo.save(_make_job(
+        source_job_id="FT-001", eligibility=Eligibility.ELIGIBLE, score=80,
+    ))
+    notified_oct2 = datetime(2026, 10, 2, 9, 0, 0, tzinfo=UTC)
+    repo.mark_notified([j.id], notified_oct2)
+
+    count = repo.reset_notified_since(date(2026, 10, 1))
+    assert count == 1
+    assert repo.list_unnotified() != []  # job is unnotified again
+
+
+def test_reset_notified_since_leaves_earlier_jobs_alone(db):
+    from datetime import date
+    repo = JobRepository(db.conn)
+    # Notified on Sep 30 — before the reset window (since Oct 1)
+    j = repo.save(_make_job(
+        source_job_id="FT-001", eligibility=Eligibility.ELIGIBLE, score=80,
+    ))
+    notified_sep30 = datetime(2026, 9, 30, 9, 0, 0, tzinfo=UTC)
+    repo.mark_notified([j.id], notified_sep30)
+
+    count = repo.reset_notified_since(date(2026, 10, 1))
+    assert count == 0
+    assert repo.list_unnotified() == []  # still excluded
+
+
+def test_reset_notified_since_ignores_rejected_jobs(db):
+    from datetime import date
+    repo = JobRepository(db.conn)
+    j = repo.save(_make_job(source_job_id="FT-001", eligibility=Eligibility.REJECTED))
+    # Directly stamp notified_at (unlikely in practice but tests the WHERE clause)
+    db.conn.execute(
+        "UPDATE jobs SET notified_at = ? WHERE id = ?",
+        (datetime(2026, 10, 2, tzinfo=UTC).isoformat(), j.id),
+    )
+    db.conn.commit()
+    count = repo.reset_notified_since(date(2026, 10, 1))
+    assert count == 0  # rejected job not touched
+
+
+def test_reset_notified_since_returns_zero_when_nothing_matches(db):
+    from datetime import date
+    repo = JobRepository(db.conn)
+    assert repo.reset_notified_since(date(2026, 10, 1)) == 0
