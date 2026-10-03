@@ -6,7 +6,7 @@ Tests that the digest command:
 - Marks jobs only after a successful send.
 - --resend-since resets notified_at and allows a re-send.
 """
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -92,8 +92,9 @@ def test_send_failure_does_not_mark_jobs(tmp_project, monkeypatch):
         pytest.raises(SystemExit) as exc_info,
     ):
         mock_cls.from_env.return_value = fake_notifier
-        from job_match.cli import _cmd_digest
         import argparse
+
+        from job_match.cli import _cmd_digest
         args = argparse.Namespace(dry_run=False, resend_since=None)
         _cmd_digest(args)
 
@@ -113,8 +114,9 @@ def test_missing_smtp_config_exits_1(tmp_project, monkeypatch):
     for k in ("SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD", "DIGEST_TO"):
         monkeypatch.delenv(k, raising=False)
 
-    from job_match.cli import _cmd_digest
     import argparse
+
+    from job_match.cli import _cmd_digest
     args = argparse.Namespace(dry_run=False, resend_since=None)
 
     with pytest.raises(SystemExit) as exc_info:
@@ -139,8 +141,9 @@ def test_successful_send_marks_jobs(tmp_project, monkeypatch):
     _NOTIFIER = "job_match.notification.email_notifier.EmailNotifier"
     with patch(_NOTIFIER) as mock_cls:
         mock_cls.from_env.return_value = fake_notifier
-        from job_match.cli import _cmd_digest
         import argparse
+
+        from job_match.cli import _cmd_digest
         args = argparse.Namespace(dry_run=False, resend_since=None)
         _cmd_digest(args)
 
@@ -168,8 +171,9 @@ def test_resend_since_resets_notified_at(tmp_project, monkeypatch):
     _NOTIFIER = "job_match.notification.email_notifier.EmailNotifier"
     with patch(_NOTIFIER) as mock_cls:
         mock_cls.from_env.return_value = fake_notifier
-        from job_match.cli import _cmd_digest
         import argparse
+
+        from job_match.cli import _cmd_digest
         args = argparse.Namespace(dry_run=False, resend_since="2026-10-02")
         _cmd_digest(args)
 
@@ -181,8 +185,9 @@ def test_resend_since_resets_notified_at(tmp_project, monkeypatch):
 def test_resend_since_invalid_date_exits_1(tmp_project, monkeypatch):
     monkeypatch.chdir(tmp_project)
 
-    from job_match.cli import _cmd_digest
     import argparse
+
+    from job_match.cli import _cmd_digest
     args = argparse.Namespace(dry_run=False, resend_since="not-a-date")
 
     with pytest.raises(SystemExit) as exc_info:
