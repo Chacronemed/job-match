@@ -3,11 +3,29 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**Milestone 9: GitHub Actions** — **DONE**. Waiting for manual GitHub setup (see below).
+**Milestone 10: RSS article ingestion** — **DONE** (2026-10-04). Not wired into `daily.yml` yet.
+M9 manual GitHub setup still pending (see below).
 
 ## Done
 - Project brief written (`docs/PROJECT_BRIEF.md`, `CLAUDE.md`)
 - `docs/ARCHITECTURE.md` (brief §25, 14 sections).
+- **Milestone 10** (2026-10-04):
+  - Live probe: `https://www.maddyness.com/feed/` (10 entries, served as text/html, parses fine) and
+    `https://www.frenchweb.fr/feed` (100 entries). Trafilatura extracts both cleanly.
+  - `adapters/funding/base.py` — `FundingSource` Protocol, `ArticleRef`, `FeedError`
+  - `adapters/funding/rss.py` — `RssFundingSource` (feedparser; missing date → None; entry without link skipped;
+    bozo + 0 entries → `FeedError`); `maddyness.py`, `frenchweb.py` set `name` + `FEED_URL`
+  - `adapters/http.py` — `User-Agent` header (`DEFAULT_USER_AGENT`), `follow_redirects` param
+  - `funding/article.py` — `ArticleFetcher` (throttle, trafilatura, None on any failure), `make_extract`
+  - `normalization/url.py` — `normalize_article_url` (dedup key)
+  - `migrations/0003_add_article_extract.sql`; `Article.extract/.id`; `RunSummary.feeds`
+  - `persistence/repositories.py` — `ArticleRepository` (exists / save INSERT OR IGNORE / get_by_url / list_recent / count)
+  - `config`: `FundingConfig(requests_per_second, extract_max_chars, sources)` under `settings.funding`
+  - `pipelines/funding.py` — `run_funding`: feeds → normalize URL → skip seen (no refetch) → fetch+extract →
+    store extract; per-feed and per-article error isolation; `--limit`, `--dry-run`
+  - CLI: `job-match funding run [--limit N] [--dry-run]` (dry run = in-memory DB, prints feeds/found/new/skipped/errors)
+  - `docs/adr/0002-article-ingestion-extract-only.md`
+  - Fixtures: `rss_maddyness.xml`, `rss_invalid.xml`, `article_sample.html`. 46 new tests (361 total), ruff clean
 - **Milestone 6b** (2026-10-01):
   - `src/job_match/pipelines/jobs.py` — `run_jobs()`: fetch → exp parse → fingerprint → gate → dedup → score → store; `--dry-run` skips writes; `--limit` caps iteration
   - `src/job_match/cli.py` — `job-match run [--limit N] [--dry-run]` with argparse, loads config, opens DB, prints RunSummary
@@ -59,7 +77,9 @@
   - 26 tests green, `ruff check .` clean
 
 ## Next step
-- **Milestone 10:** RSS article ingestion (Maddyness adapter, URL dedup, no stored bodies).
+- **Milestone 11:** funding extraction (FundingEvent + Lead, null when unknown) — plug into `pipelines/funding.py`
+  where the full text is in memory; decide the keyword pre-filter there; set `articles.is_funding`.
+- Wire `job-match funding run` into `daily.yml` once M11 produces leads for the digest.
 - Manual setup still required (see session log 2026-10-02 M9 entry).
 
 ## Deferred
@@ -136,6 +156,9 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
 - ~~**M9 — WAL flush before data-repo push:**~~ **Resolved in M9.** `PRAGMA wal_checkpoint(TRUNCATE)` + `VACUUM` run in daily.yml before DB push. `*.sqlite-wal` and `*.sqlite-shm` added to `.gitignore`.
 
 ## Known issues
+- Maddyness RSS has full `content:encoded` in the feed; we ignore it and fetch the page for a single code path.
+  Revisit if article fetches become a cost.
+- Funding dry run uses an in-memory DB (same convention as `job-match run --dry-run`), so every article counts as new.
 - job-match-scorer: English-only tokenizer (strips accents), no JSON output, young repo (2 commits)
 - France Travail API credentials (`FT_CLIENT_ID`/`FT_CLIENT_SECRET`) are needed before M2 can run live. The tests
   use fixtures.
@@ -171,3 +194,5 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
   Live run (--limit 50 --dry-run): 50 fetched, 44 rejected, 3 eligible, 3 strong.
   Strong matches: ALENTA 87 (eligible because description says "au moins 2 ans", overrides seniority keywords),
   EKIMETRICS 77, Nextep HR 72.
+- 2026-10-04: M10 complete. RSS ingestion: Maddyness + FrenchWeb adapters, `ArticleFetcher`, URL dedup,
+  migration 0003, `job-match funding run`, ADR 0002. 361 tests passing.

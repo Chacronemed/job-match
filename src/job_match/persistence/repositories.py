@@ -3,6 +3,7 @@ import sqlite3
 from datetime import UTC, date, datetime
 
 from job_match.domain.models import (
+    Article,
     Company,
     ContractType,
     Eligibility,
@@ -473,9 +474,72 @@ class RunRepository:
                         "articles": summary.articles,
                         "leads": summary.leads,
                         "errors": summary.errors,
+                        "api_calls": summary.api_calls,
+                        "feeds": summary.feeds,
                     }
                 ),
             ),
         )
         self._conn.commit()
         return cur.lastrowid  # type: ignore[return-value]
+
+
+# ---------------------------------------------------------------------------
+# Articles (funding pipeline)
+# ---------------------------------------------------------------------------
+
+def _row_to_article(row: sqlite3.Row) -> Article:
+    return Article(
+        id=row["id"],
+        source=row["source_id"],
+        url=row["url"],
+        title=row["title"],
+        collected_at=_dt(row["collected_at"]),  # type: ignore[arg-type]
+        published_at=_dt(row["published_at"]),
+        extract=row["extract"],
+    )
+
+
+class ArticleRepository:
+    """Articles are keyed by normalized URL. Only a short extract is stored."""
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def exists(self, url: str) -> bool:
+        row = self._conn.execute("SELECT 1 FROM articles WHERE url = ?", (url,)).fetchone()
+        return row is not None
+
+    def get_by_url(self, url: str) -> Article | None:
+        row = self._conn.execute("SELECT * FROM articles WHERE url = ?", (url,)).fetchone()
+        return _row_to_article(row) if row else None
+
+    def save(self, article: Article) -> Article:
+        """Insert a new article. An existing URL is left untouched (first seen wins)."""
+        _ensure_source(self._conn, article.source, "funding")
+        self._conn.execute(
+            """
+            INSERT OR IGNORE INTO articles
+                (source_id, url, title, published_at, collected_at, extract)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                article.source,
+                article.url,
+                article.title,
+                article.published_at.isoformat() if article.published_at else None,
+                article.collected_at.isoformat(),
+                article.extract,
+            ),
+        )
+        self._conn.commit()
+        return self.get_by_url(article.url)  # type: ignore[return-value]
+
+    def list_recent(self, limit: int = 50) -> list[Article]:
+        rows = self._conn.execute(
+            "SELECT * FROM articles ORDER BY collected_at DESC, id DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [_row_to_article(r) for r in rows]
+
+    def count(self) -> int:
+        return self._conn.execute("SELECT COUNT(*) FROM articles").fetchone()[0]

@@ -126,6 +126,8 @@ class Article:
     title: str
     collected_at: datetime
     published_at: datetime | None = None
+    extract: str | None = None  # short head of the body only; full text is never stored
+    id: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,3 +170,4 @@ class RunSummary:
     errors: int = 0
     api_calls: int = 0
     rejected_jobs: int = 0
+    feeds: int = 0

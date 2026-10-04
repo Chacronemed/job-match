@@ -18,3 +18,16 @@ def normalize_url(url: str) -> str:
         return p._replace(query=urlencode(clean, doseq=True)).geturl()
     except Exception:
         return url
+
+
+def normalize_article_url(url: str) -> str:
+    """Stable dedup key for an article: tracking params stripped, lowercase scheme and
+    host, no fragment, no trailing slash on the path."""
+    try:
+        p = urlparse(normalize_url(url.strip()))
+        path = p.path.rstrip("/") or "/"
+        return p._replace(
+            scheme=p.scheme.lower(), netloc=p.netloc.lower(), path=path, fragment=""
+        ).geturl()
+    except Exception:
+        return url.strip()

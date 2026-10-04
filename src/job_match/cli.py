@@ -46,12 +46,26 @@ def main() -> None:
         help="Reset notified flag for jobs notified on or after this date, then send normally",
     )
 
+    funding_p = sub.add_parser("funding", help="Funding / news pipeline")
+    funding_sub = funding_p.add_subparsers(dest="funding_command", metavar="SUBCOMMAND")
+    frun_p = funding_sub.add_parser("run", help="Ingest articles from RSS feeds")
+    frun_p.add_argument("--limit", type=int, default=None, metavar="N",
+                        help="Maximum number of feed entries to process")
+    frun_p.add_argument("--dry-run", action="store_true",
+                        help="Fetch and extract but write nothing to the database")
+
     args = parser.parse_args()
 
     if args.command == "run":
         _cmd_run(args)
     elif args.command == "digest":
         _cmd_digest(args)
+    elif args.command == "funding":
+        if args.funding_command == "run":
+            _cmd_funding_run(args)
+        else:
+            funding_p.print_help()
+            sys.exit(1)
     else:
         parser.print_help()
         sys.exit(1)
@@ -167,6 +181,63 @@ def _cmd_run(args: argparse.Namespace) -> None:
         )
 
     _print_summary(summary, dry_run=args.dry_run)
+
+
+def _build_funding_sources(names: list[str]) -> list:
+    from job_match.adapters.funding.frenchweb import FrenchWebSource
+    from job_match.adapters.funding.maddyness import MaddynessSource
+
+    registry = {"maddyness": MaddynessSource, "frenchweb": FrenchWebSource}
+    sources = []
+    for name in names:
+        cls = registry.get(name)
+        if cls is None:
+            print(f"Unknown funding source {name!r} in settings.yaml "
+                  f"(known: {', '.join(sorted(registry))})", file=sys.stderr)
+            sys.exit(1)
+        sources.append(cls())
+    return sources
+
+
+def _cmd_funding_run(args: argparse.Namespace) -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+
+    from job_match.config.loader import load_settings
+    from job_match.funding.article import ArticleFetcher
+    from job_match.persistence.db import Database
+    from job_match.pipelines.funding import run_funding
+
+    cfg = _config_dir()
+    data_dir = _data_dir()
+    settings = load_settings(cfg / "settings.yaml")
+    sources = _build_funding_sources(settings.funding.sources)
+    fetcher = ArticleFetcher(requests_per_second=settings.funding.requests_per_second)
+
+    if args.dry_run:
+        db_path = ":memory:"
+        print("[DRY RUN] in-memory DB: every article counts as new, nothing is written")
+    else:
+        data_dir.mkdir(parents=True, exist_ok=True)
+        db_path = str(data_dir / "jobs.sqlite")
+
+    with Database(path=db_path) as db:
+        summary = run_funding(
+            sources, settings, db, fetcher, limit=args.limit, dry_run=args.dry_run,
+        )
+
+    _print_funding_summary(summary, dry_run=args.dry_run)
+
+
+def _print_funding_summary(summary: RunSummary, *, dry_run: bool = False) -> None:
+    tag = " [DRY RUN]" if dry_run else ""
+    print(f"\nFunding run complete{tag}")
+    print(f"  feeds:      {summary.feeds}")
+    print(f"  found:      {summary.fetched}")
+    print(f"  new:        {summary.articles}")
+    print(f"  skipped:    {summary.duplicates}  (already seen)")
+    print(f"  errors:     {summary.errors}")
+    if summary.api_calls:
+        print(f"  api_calls:  {summary.api_calls}")
 
 
 def _print_summary(summary: RunSummary, *, dry_run: bool = False) -> None:

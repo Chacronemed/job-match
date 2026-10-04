@@ -50,6 +50,13 @@ class ScoringConfig:
 
 
 @dataclass
+class FundingConfig:
+    requests_per_second: float = 1.0
+    extract_max_chars: int = 600
+    sources: list[str] = field(default_factory=lambda: ["maddyness", "frenchweb"])
+
+
+@dataclass
 class Profile:
     candidate: Candidate
     skills: Skills
@@ -70,3 +77,4 @@ class Settings:
     ft_requests_per_second: float = 3.0
     seniority_min_years: dict[str, int] = field(default_factory=dict)
     scoring: ScoringConfig = field(default_factory=ScoringConfig)
+    funding: FundingConfig = field(default_factory=FundingConfig)

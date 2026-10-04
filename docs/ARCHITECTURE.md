@@ -152,10 +152,10 @@ are readable in SQLite and JSON.
 | `ScoreResult` | `engine, available, score: int\|None, positive_matches, negative_matches, missing_preferences, explanations, raw: dict` |
 | `ScoringBreakdown` | `eligible, score, experience, positive_matches, negative_matches, missing_preferences, explanations, engines: dict[str, ScoreResult], divergence: int\|None, needs_review: bool` |
 | `Company` | `id, name, normalized_name, website, location` |
-| `Article` | `source, url, title, published_at, collected_at` (**no body stored**) |
+| `Article` | `source, url, title, published_at, collected_at, extract` (short head only, **no body stored** — ADR 0002) |
 | `FundingEvent` | `company_id, amount, currency, round, date, investors, sector, location, recruiting_signal, source, article_url, collected_at`, where every unknown value is `None` |
 | `Lead` | `company_id, funding_event_id, reason, status, created_at` |
-| `RunSummary` | `pipeline, fetched, normalized, rejected_by_reason: dict, duplicates, eligible, strong, articles, leads, errors` |
+| `RunSummary` | `pipeline, fetched, normalized, rejected_by_reason: dict, duplicates, eligible, strong, articles, leads, errors, api_calls, rejected_jobs, feeds` |
 
 Enums:
 - `ExperienceStatus {ELIGIBLE, REJECTED, UNKNOWN, NOT_MENTIONED}`
@@ -281,9 +281,9 @@ Rules:
 - **France Travail:** OAuth2 client-credentials (`FT_CLIENT_ID`, `FT_CLIENT_SECRET` from env). The token is
   cached in memory for the run. Pagination uses the `range=` header and Content-Range. Search parameters (ROME
   codes, keywords, department) come from `profile.yaml`.
-- **Maddyness:** use `feedparser` on the RSS feed. The article body is fetched only for items that look like
-  funding (keyword pre-filter on title and summary), then extracted with Trafilatura and **discarded after
-  extraction**.
+- **Maddyness / FrenchWeb:** `RssFundingSource` uses `feedparser` on the feed; subclasses only set `name` and
+  `FEED_URL`. In M10 every *new* (unseen URL) article is fetched and extracted with Trafilatura; only a short
+  extract is kept and the body is **discarded after extraction**. A keyword pre-filter is deferred to M11 (ADR 0002).
 
 **Why Protocols:** they give structural typing and keep fakes trivial in tests. **Alternatives:** ABCs (also fine,
 but more boilerplate) or a plugin registry (unneeded with 2 sources).
@@ -487,7 +487,7 @@ English-only, French postings are penalized, and the upstream repo is new with 2
 | 7 | job-match-scorer adapter (**EXPERIMENTAL, optional**) | Disabled by default, contract test, divergence flag. Not required for the MVP |
 | 8 | Email digest | SMTP via env, digest of strong/relevant matches, rejection stats, leads |
 | 9 | GitHub Actions automation | `ci.yml` + `daily.yml`, profile/resume from secrets, private data repo push, ADR 0001 |
-| 10 | RSS article ingestion | Maddyness adapter, URL dedup, no stored bodies |
+| 10 | **RSS article ingestion** | `FundingSource` + `MaddynessSource`/`FrenchWebSource` (feedparser), `ArticleFetcher` (trafilatura), URL dedup before fetch, short extract only (migration 0003), `job-match funding run [--limit N] [--dry-run]`, ADR 0002. Not in `daily.yml` yet |
 | 11 | Funding extraction | FundingEvent + Lead, null when unknown |
 | 12 | Lead ↔ Company ↔ Job relationships | Company matching across pipelines |
 | 13 | Optional web application | Only if needed |

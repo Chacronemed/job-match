@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+<channel>
+  <title>Maddyness - fixture</title>
+  <link>https://www.maddyness.com</link>
+  <description>Small fixture feed: 4 entries (one without date, one duplicate URL with tracking params, one without link)</description>
+  <item>
+    <title>Acme lève 10 millions d&#8217;euros pour sa plateforme DevOps</title>
+    <link>https://www.maddyness.com/2026/10/02/acme-leve-10-millions/</link>
+    <guid isPermaLink="false">https://www.maddyness.com/?p=1</guid>
+    <pubDate>Fri, 02 Oct 2026 07:00:25 +0000</pubDate>
+    <description><![CDATA[<p>La startup Acme annonce une série A.</p>]]></description>
+  </item>
+  <item>
+    <title>Article sans date de publication</title>
+    <link>https://www.maddyness.com/2026/10/01/sans-date/</link>
+    <guid isPermaLink="false">https://www.maddyness.com/?p=2</guid>
+  </item>
+  <item>
+    <title>Acme lève 10 millions d&#8217;euros (lien dupliqué avec tracking)</title>
+    <link>https://www.maddyness.com/2026/10/02/acme-leve-10-millions?utm_source=rss&amp;utm_medium=feed</link>
+    <guid isPermaLink="false">https://www.maddyness.com/?p=3</guid>
+    <pubDate>Fri, 02 Oct 2026 07:30:00 +0000</pubDate>
+  </item>
+  <item>
+    <title>Entrée sans lien</title>
+    <guid isPermaLink="false">https://www.maddyness.com/?p=4</guid>
+    <pubDate>Fri, 02 Oct 2026 08:00:00 +0000</pubDate>
+  </item>
+</channel>
+</rss>

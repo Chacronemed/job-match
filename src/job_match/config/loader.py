@@ -9,6 +9,7 @@ from job_match.config.schema import (
     ConfigError,
     Filters,
     FTSearch,
+    FundingConfig,
     JMSConfig,
     Profile,
     ScoringConfig,
@@ -66,6 +67,13 @@ def load_settings(path: Path) -> Settings:
         raw = yaml.safe_load(fh) or {}
     scoring_raw = raw.get("scoring") or {}
     jms_raw = scoring_raw.get("jms") or {} if isinstance(scoring_raw, dict) else {}
+    funding_raw = raw.get("funding") or {}
+    if not isinstance(funding_raw, dict):
+        raise ConfigError(f"funding must be a mapping (in {path})")
+    funding_defaults = FundingConfig()
+    sources_raw = funding_raw.get("sources", funding_defaults.sources)
+    if not isinstance(sources_raw, list) or not all(isinstance(s, str) for s in sources_raw):
+        raise ConfigError(f"funding.sources must be a list of strings (in {path})")
     return Settings(
         strong_threshold=int(raw.get("strong_threshold", 70)),
         divergence_threshold=int(raw.get("divergence_threshold", 30)),
@@ -83,6 +91,15 @@ def load_settings(path: Path) -> Settings:
                 enabled=bool(jms_raw.get("enabled", False)),
                 commit_sha=jms_raw.get("commit_sha"),
             )
+        ),
+        funding=FundingConfig(
+            requests_per_second=float(
+                funding_raw.get("requests_per_second", funding_defaults.requests_per_second)
+            ),
+            extract_max_chars=int(
+                funding_raw.get("extract_max_chars", funding_defaults.extract_max_chars)
+            ),
+            sources=list(sources_raw),
         ),
     )
 

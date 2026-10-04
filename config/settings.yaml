@@ -25,3 +25,9 @@ scoring:
   jms:
     enabled: false
     commit_sha: null
+
+# Funding pipeline (M10): RSS ingestion. Full article text is never stored.
+funding:
+  requests_per_second: 1      # article page fetches (polite crawl)
+  extract_max_chars: 600      # short extract kept in `articles.extract`
+  sources: [maddyness, frenchweb]

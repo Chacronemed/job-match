@@ -28,3 +28,36 @@ def test_mixed_params():
 def test_malformed_url_returned_as_is():
     bad = "not a url %%"
     assert normalize_url(bad) == bad
+
+
+# ---------------------------------------------------------------------------
+# normalize_article_url (dedup key for articles)
+# ---------------------------------------------------------------------------
+
+def test_article_url_strips_tracking_slash_fragment_and_lowercases_host():
+    from job_match.normalization.url import normalize_article_url
+
+    raw = "https://WWW.Maddyness.com/2026/10/02/acme-leve/?utm_source=rss&utm_medium=feed#top"
+    assert normalize_article_url(raw) == "https://www.maddyness.com/2026/10/02/acme-leve"
+
+
+def test_article_url_variants_share_one_key():
+    from job_match.normalization.url import normalize_article_url
+
+    a = normalize_article_url("https://www.frenchweb.fr/elevenlabs-valorisee/463756")
+    b = normalize_article_url("  https://www.frenchweb.fr/elevenlabs-valorisee/463756/ ")
+    c = normalize_article_url("https://www.frenchweb.fr/elevenlabs-valorisee/463756?ref=twitter")
+    assert a == b == c
+
+
+def test_article_url_keeps_path_case_and_functional_params():
+    from job_match.normalization.url import normalize_article_url
+
+    out = normalize_article_url("https://x.test/Article/ID-42?page=2")
+    assert out == "https://x.test/Article/ID-42?page=2"
+
+
+def test_article_url_root_path_is_kept():
+    from job_match.normalization.url import normalize_article_url
+
+    assert normalize_article_url("https://x.test/") == "https://x.test/"

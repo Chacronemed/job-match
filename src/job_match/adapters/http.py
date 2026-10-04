@@ -5,6 +5,8 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_USER_AGENT = "job-match/0.1 (+https://github.com/Chacronemed/job-match)"
+
 
 def _retry_after(resp: httpx.Response, attempt: int) -> float:
     header = resp.headers.get("Retry-After")
@@ -22,12 +24,16 @@ class HttpClient:
         timeout_connect: float = 5.0,
         timeout_read: float = 30.0,
         max_retries: int = 3,
+        user_agent: str = DEFAULT_USER_AGENT,
+        follow_redirects: bool = False,
     ) -> None:
         self._max_retries = max_retries
         self._client = httpx.Client(
             timeout=httpx.Timeout(
                 connect=timeout_connect, read=timeout_read, write=10.0, pool=5.0
-            )
+            ),
+            headers={"User-Agent": user_agent},
+            follow_redirects=follow_redirects,
         )
 
     def __enter__(self) -> "HttpClient":

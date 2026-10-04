@@ -73,3 +73,37 @@ class TestLoadSettings:
     def test_missing_file_raises(self, tmp_path):
         with pytest.raises(ConfigError, match="Settings file not found"):
             load_settings(tmp_path / "nonexistent.yaml")
+
+
+# ---------------------------------------------------------------------------
+# funding section
+# ---------------------------------------------------------------------------
+
+def test_settings_funding_defaults_when_section_missing(tmp_path):
+    path = tmp_path / "settings.yaml"
+    path.write_text("strong_threshold: 70\n", encoding="utf-8")
+    settings = load_settings(path)
+    assert settings.funding.requests_per_second == 1.0
+    assert settings.funding.extract_max_chars == 600
+    assert settings.funding.sources == ["maddyness", "frenchweb"]
+
+
+def test_settings_funding_section_is_parsed(tmp_path):
+    path = tmp_path / "settings.yaml"
+    path.write_text(
+        "funding:\n  requests_per_second: 0.5\n  extract_max_chars: 300\n  sources: [maddyness]\n",
+        encoding="utf-8",
+    )
+    settings = load_settings(path)
+    assert settings.funding.requests_per_second == 0.5
+    assert settings.funding.extract_max_chars == 300
+    assert settings.funding.sources == ["maddyness"]
+
+
+def test_settings_funding_sources_must_be_list_of_strings(tmp_path):
+    from job_match.config.schema import ConfigError
+
+    path = tmp_path / "settings.yaml"
+    path.write_text("funding:\n  sources: maddyness\n", encoding="utf-8")
+    with pytest.raises(ConfigError):
+        load_settings(path)
