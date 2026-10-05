@@ -135,6 +135,7 @@ def render_html(data: DigestData) -> str:
         matches = _top_matches(job)
         loc = job.location or ""
         contract = str(job.contract_type).upper()
+        via = f" · via &quot;{_e(job.search_query)}&quot;" if job.search_query else ""
         funded = _funding_of(job, data)
         funded_html = ""
         if funded is not None:
@@ -151,7 +152,7 @@ def render_html(data: DigestData) -> str:
             f"<span class='{score_cls}'>{score_str}</span>"
             f"{_e(job.company)} · {_e(loc)} · {contract}"
             f"</div>"
-            f"<div class='matches'>+ {_e(matches)}</div>"
+            f"<div class='matches'>+ {_e(matches)}{via}</div>"
             f"{funded_html}"
             f"</div>"
         )
@@ -163,6 +164,8 @@ def render_html(data: DigestData) -> str:
             else "<span class='prio'>normal</span>"
         )
         meta: list[str] = [_e(_lead_headline(lead))]
+        if lead.country:
+            meta.append(_e(lead.country))
         if lead.investors:
             meta.append("investors: " + _e(", ".join(lead.investors)))
         if lead.hiring:
@@ -229,7 +232,8 @@ def render_text(data: DigestData) -> str:
         score = str(job.score) if job.score is not None else "?"
         lines.append(f"  [{score:>3}] {job.title}")
         lines.append(f"         {job.company} · {job.location}")
-        lines.append(f"         + {_top_matches(job)}")
+        via = f'  (via "{job.search_query}")' if job.search_query else ""
+        lines.append(f"         + {_top_matches(job)}{via}")
         funded = _funding_of(job, data)
         if funded is not None:
             lines.append(f"         $ Company funding: {_funding_label(funded)}")
@@ -255,7 +259,8 @@ def render_text(data: DigestData) -> str:
     if data.leads:
         for lead in data.leads:
             tag = "HIGH" if lead.priority == "high" else "norm"
-            lines.append(f"  [{tag}] {lead.company} — {_lead_headline(lead)}")
+            country = f" ({lead.country})" if lead.country else ""
+            lines.append(f"  [{tag}] {lead.company}{country} — {_lead_headline(lead)}")
             if lead.investors:
                 lines.append(f"         investors: {', '.join(lead.investors)}")
             if lead.hiring:

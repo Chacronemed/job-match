@@ -73,7 +73,13 @@ def run_jobs(
         job = replace(job, fingerprint=fp)
 
         # Eligibility gate
-        elig = gate.evaluate(job, exp, profile, settings)
+        elig = gate.evaluate(job, exp, profile, settings, aliases)
+        # DEBUG only: query keywords come from the private profile; CI logs stay aggregate.
+        logger.debug(
+            "job %s query=%r eligible=%s reasons=%s",
+            job.source_job_id, job.search_query, elig.eligible,
+            ",".join(str(r) for r in elig.reasons) or "-",
+        )
         if not elig.eligible:
             rejection = ", ".join(str(r) for r in elig.reasons)
             job = replace(job, eligibility=Eligibility.REJECTED, rejection_reason=rejection)

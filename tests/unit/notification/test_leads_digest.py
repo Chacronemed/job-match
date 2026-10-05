@@ -118,7 +118,7 @@ def test_lead_mark_notified_and_reset(db):
 def test_build_digest_flags_job_whose_company_recently_raised(db):
     funding(db.conn, "inbolt", "Inbolt", date="2026-10-02")
     funded_job = job(db.conn, "J1", "INBOLT")  # FT spelling, same normalized company
-    other_job = job(db.conn, "J2", "Acme", score=50)
+    other_job = job(db.conn, "J2", "Acme", score=65)  # >= digest.min_score (60)
 
     batch = build_digest(db, _settings(), NOW)
 

@@ -546,3 +546,24 @@ def test_api_calls_count_tracks_requests():
         list(source.fetch())
 
     assert source.api_calls_count == 2
+
+
+def test_items_are_tagged_with_the_query_that_returned_them():
+    p1 = _load("ft_search_p1.json")
+    profile = _profile()
+    profile.ft_search.keywords.append("sre")
+    with respx.mock:
+        respx.post(TOKEN_URL).mock(return_value=httpx.Response(200, json=_load("ft_token.json")))
+        respx.get(SEARCH_URL).mock(
+            return_value=httpx.Response(200, json=p1, headers={"Content-Range": "offres 0-1/2"})
+        )
+        source = _source(profile)
+        jobs = [source.to_job(raw) for raw in source.fetch()]
+
+    assert [j.search_query for j in jobs] == ["devops", "devops", "sre", "sre"]
+
+
+def test_to_job_without_query_tag_has_no_search_query():
+    raw = _load("ft_search_p1.json")["resultats"][0]
+    raw.pop("_jm_query", None)
+    assert _source().to_job(raw).search_query is None

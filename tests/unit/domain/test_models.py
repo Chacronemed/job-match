@@ -43,6 +43,7 @@ class TestEnums:
             RejectionReason.CONTRACT,
             RejectionReason.LOCATION,
             RejectionReason.TITLE,
+            RejectionReason.NOT_RELEVANT,
         }
 
     def test_workplace_type_members(self):

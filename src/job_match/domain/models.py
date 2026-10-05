@@ -20,6 +20,7 @@ class RejectionReason(StrEnum):
     CONTRACT = "CONTRACT"
     LOCATION = "LOCATION"
     TITLE = "TITLE"
+    NOT_RELEVANT = "NOT_RELEVANT"  # no preferred skill and no target-role title keyword
 
 
 class WorkplaceType(StrEnum):
@@ -100,6 +101,7 @@ class Job:
     experience: ExperienceRequirement | None = None
     score: int | None = None
     scoring_breakdown: ScoringBreakdown | None = None
+    search_query: str | None = None  # source query (keyword) that returned the job
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,6 +151,7 @@ class FundingEvent:
     id: int | None = None
     article_id: int | None = None
     evidence: dict[str, str] = field(default_factory=dict)  # field -> sentence it came from
+    country: str | None = None  # explicit only ("startup suisse", "based in London")
 
 
 @dataclass(frozen=True, slots=True)
@@ -201,6 +204,7 @@ class LeadDetail:
     hiring: str | None = None
     evidence: dict[str, str] = field(default_factory=dict)
     open_jobs: int = 0  # eligible, canonical, recent jobs at the same company
+    country: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

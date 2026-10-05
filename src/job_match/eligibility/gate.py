@@ -6,6 +6,23 @@ from job_match.domain.models import (
     RejectionReason,
 )
 from job_match.experience.parser import infer_seniority_min
+from job_match.normalization.skills import matches_skill, title_keyword
+
+
+def is_relevant(
+    job: Job,
+    profile: Profile,
+    target_title_keywords: list[str],
+    aliases: dict[str, list[str]] | None = None,
+) -> bool:
+    """A job is a target role if it matches >=1 preferred skill (title or description,
+    aliases included) OR its title contains a target-role keyword. Empty keywords = gate off."""
+    if not target_title_keywords:
+        return True
+    if title_keyword(job.title, target_title_keywords):
+        return True
+    text = f"{job.title} {job.description}"
+    return any(matches_skill(text, s.name, aliases or {}) for s in profile.skills.preferred)
 
 
 def evaluate(
@@ -13,8 +30,15 @@ def evaluate(
     requirement: ExperienceRequirement,
     profile: Profile,
     settings: Settings | None = None,
+    aliases: dict[str, list[str]] | None = None,
 ) -> EligibilityResult:
     reasons: list[RejectionReason] = []
+
+    # 0. Relevance: not a target role at all (e.g. "Réceptionniste en hôtellerie")
+    if settings and not is_relevant(
+        job, profile, settings.relevance.target_title_keywords, aliases
+    ):
+        reasons.append(RejectionReason.NOT_RELEVANT)
 
     # 1. Experience hard gate
     # Seniority keywords (title or description) set a minimum when no explicit number exists.

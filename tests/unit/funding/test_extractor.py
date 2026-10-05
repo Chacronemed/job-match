@@ -78,9 +78,14 @@ CASES = [
           investors=("Bpifrance",))),
     ("fr_written_number", "Acme a bouclé un tour de table de dix millions d'euros.", "",
      dict(is_funding=True, company="Acme", amount=1e7, currency="EUR")),
+    # The hiring plan is in the NEXT paragraph (P2), outside the window, but it refers back
+    # ("Avec cette levée, Acme prévoit…") in a single-topic article: accepted.
+    # "profils SRE basés à Paris" describes people, not the company: no location.
     ("fr_full_article", "Acme lève 10 millions d'euros pour sa plateforme DevOps", P1 + "\n" + P2,
      dict(is_funding=True, company="Acme", amount=1e7, currency="EUR", round="series a",
-          hiring="doubler ses effectifs", location="Paris")),
+          hiring="recruter une trentaine de personnes", location=None, country="France")),
+    ("fr_hiring_same_paragraph", "Acme lève 10 millions d'euros", P1 + " " + P2,
+     dict(is_funding=True, company="Acme", hiring="recruter une trentaine de personnes")),
     ("fr_hiring_count", "Zeta vient de lever 3 millions d'euros.",
      "L'entreprise compte réaliser 25 recrutements d'ici 2027.",
      dict(is_funding=True, company="Zeta", amount=3e6, currency="EUR",

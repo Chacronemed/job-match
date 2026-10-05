@@ -1,7 +1,6 @@
-import re
-
 from job_match.config.schema import Profile, Settings
 from job_match.domain.models import Job, ScoreResult
+from job_match.normalization.skills import contains_term, matches_skill
 
 
 class NativeRuleScorer:
@@ -11,14 +10,6 @@ class NativeRuleScorer:
     @property
     def name(self) -> str:
         return "native"
-
-    def _forms(self, skill_name: str) -> list[str]:
-        canonical = skill_name.lower()
-        return [canonical] + [a.lower() for a in self._aliases.get(canonical, [])]
-
-    def _matches(self, form: str, text: str) -> bool:
-        pattern = r"(?<!\w)" + re.escape(form) + r"(?!\w)"
-        return bool(re.search(pattern, text, re.IGNORECASE))
 
     def score(self, job: Job, profile: Profile, settings: Settings) -> ScoreResult:
         text = f"{job.title} {job.description}".lower()
@@ -31,7 +22,7 @@ class NativeRuleScorer:
         explanations: list[str] = []
 
         for skill in profile.skills.preferred:
-            if any(self._matches(form, text) for form in self._forms(skill.name)):
+            if matches_skill(text, skill.name, self._aliases):
                 positive_matches.append(skill.name)
                 delta += skill.weight
                 explanations.append(f"Matched preferred: {skill.name} (+{skill.weight})")
@@ -40,14 +31,14 @@ class NativeRuleScorer:
                 explanations.append(f"Missed preferred: {skill.name}")
 
         for skill in profile.skills.negative:
-            if any(self._matches(form, text) for form in self._forms(skill.name)):
+            if matches_skill(text, skill.name, self._aliases):
                 negative_matches.append(skill.name)
                 delta += skill.weight
                 explanations.append(f"Matched negative: {skill.name} ({skill.weight})")
 
         matched_kws = [
             kw for kw in profile.ft_search.keywords
-            if self._matches(kw.lower(), title_text)
+            if contains_term(title_text, kw.lower())
         ]
         if matched_kws:
             delta += settings.title_bonus

@@ -50,12 +50,33 @@ class ScoringConfig:
 
 
 @dataclass
+class LeadFilterConfig:
+    countries: list[str] = field(default_factory=lambda: ["France"])  # empty = no filter
+    min_amount_eur: float | None = None  # unknown amounts always pass
+    exclude_sectors: list[str] = field(default_factory=list)  # keywords in title/evidence
+    fx_to_eur: dict[str, float] = field(default_factory=lambda: {"USD": 0.92, "GBP": 1.17})
+
+
+@dataclass
+class RelevanceConfig:
+    # A job must match >=1 preferred skill or have one of these in its title. Empty = off.
+    target_title_keywords: list[str] = field(default_factory=list)
+
+
+@dataclass
+class DigestConfig:
+    min_score: int = 60  # eligible jobs below this stay in the DB but are not emailed
+    max_leads: int = 10  # leads beyond this roll over to the next digest
+
+
+@dataclass
 class FundingConfig:
     requests_per_second: float = 1.0
     extract_max_chars: int = 600
     sources: list[str] = field(default_factory=lambda: ["maddyness", "frenchweb"])
     lead_dedup_days: int = 30  # no second Lead for the same company within this window
     job_link_days: int = 180  # a job is flagged when its company raised within this window
+    lead_filters: LeadFilterConfig = field(default_factory=LeadFilterConfig)
 
 
 @dataclass
@@ -80,3 +101,5 @@ class Settings:
     seniority_min_years: dict[str, int] = field(default_factory=dict)
     scoring: ScoringConfig = field(default_factory=ScoringConfig)
     funding: FundingConfig = field(default_factory=FundingConfig)
+    relevance: RelevanceConfig = field(default_factory=RelevanceConfig)
+    digest: DigestConfig = field(default_factory=DigestConfig)

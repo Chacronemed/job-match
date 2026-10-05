@@ -46,6 +46,22 @@ unattended, so every stored fact must be auditable.
 - Event per deal line for roundups: more leads, higher false-positive risk. Deferred to M11b
   until precision is measured on live data.
 
+## Amendment (2026-10-05) — precision fixes from the first real digest
+
+- **Hiring needs a verb or a plan.** Bare nouns (`recrutement`, `hiring`, `headcount`) never match; a noun
+  only counts as the object of a plan verb ("soutenir les recrutements", "financeront des recrutements") or
+  with a quantity ("25 recrutements"). Patterns are tried in order, most specific first.
+- **Hiring window.** Only the anchor sentence and the next 3 sentences of its paragraph (title anchor: the
+  first body paragraph about the deal). Exception for single-topic (non-brief) articles: a hiring
+  sentence anywhere in the body is accepted when it refers back to the raise ("Le financement…",
+  "Les fonds…", "Les 35 millions d'euros…") or to the company (its name, a leading "Elle"/
+  "L'entreprise"). Briefs never get this exception.
+- **Briefs** (title contains " / "): every field comes only from the anchor sentence and its paragraph; a
+  one-line heading paragraph is merged with the next paragraph.
+- **Country**: explicit only ("la startup suisse", "London-based", "basée à Lyon"), stored in
+  `funding_events.country` (migration 0005). Used by the digest's `lead_filters`; unknown is kept.
+- **Location**: singular "basée à" only; "des profils basés à Paris" describes people, not the company.
+
 ## Consequences
 
 - Migration `0004_funding_extraction.sql`; `Article.is_funding/processed_at`,

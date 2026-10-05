@@ -7,11 +7,14 @@ import yaml
 from job_match.config.schema import (
     Candidate,
     ConfigError,
+    DigestConfig,
     Filters,
     FTSearch,
     FundingConfig,
     JMSConfig,
+    LeadFilterConfig,
     Profile,
+    RelevanceConfig,
     ScoringConfig,
     Settings,
     Skills,
@@ -106,7 +109,61 @@ def load_settings(path: Path) -> Settings:
             job_link_days=int(
                 funding_raw.get("job_link_days", funding_defaults.job_link_days)
             ),
+            lead_filters=_parse_lead_filters(funding_raw.get("lead_filters"), path),
         ),
+        relevance=_parse_relevance(raw.get("relevance"), path),
+        digest=_parse_digest(raw.get("digest"), path),
+    )
+
+
+def _str_list(value: object, key: str, path: Path) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+        raise ConfigError(f"{key} must be a list of strings (in {path})")
+    return list(value)
+
+
+def _mapping(value: object, key: str, path: Path) -> dict:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ConfigError(f"{key} must be a mapping (in {path})")
+    return value
+
+
+def _parse_lead_filters(value: object, path: Path) -> LeadFilterConfig:
+    raw = _mapping(value, "funding.lead_filters", path)
+    d = LeadFilterConfig()
+    min_amount = raw.get("min_amount_eur", d.min_amount_eur)
+    fx = _mapping(raw.get("fx_to_eur"), "funding.lead_filters.fx_to_eur", path) or d.fx_to_eur
+    return LeadFilterConfig(
+        countries=_str_list(
+            raw.get("countries", d.countries), "funding.lead_filters.countries", path
+        ),
+        min_amount_eur=float(min_amount) if min_amount is not None else None,
+        exclude_sectors=_str_list(
+            raw.get("exclude_sectors"), "funding.lead_filters.exclude_sectors", path
+        ),
+        fx_to_eur={str(k).upper(): float(v) for k, v in fx.items()},
+    )
+
+
+def _parse_relevance(value: object, path: Path) -> RelevanceConfig:
+    raw = _mapping(value, "relevance", path)
+    return RelevanceConfig(
+        target_title_keywords=_str_list(
+            raw.get("target_title_keywords"), "relevance.target_title_keywords", path
+        )
+    )
+
+
+def _parse_digest(value: object, path: Path) -> DigestConfig:
+    raw = _mapping(value, "digest", path)
+    d = DigestConfig()
+    return DigestConfig(
+        min_score=int(raw.get("min_score", d.min_score)),
+        max_leads=int(raw.get("max_leads", d.max_leads)),
     )
 
 

@@ -17,6 +17,7 @@ SEARCH_URL = "https://api.francetravail.io/partenaire/offresdemploi/v2/offres/se
 PAGE_SIZE = 150
 MAX_RESULTS = 3000
 SCOPE = "api_offresdemploiv2 o2dsoffre"
+QUERY_KEY = "_jm_query"  # set on raw items by _fetch_query, mapped to Job.search_query
 
 _CONTRACT_MAP: dict[str, ContractType] = {
     "CDI": ContractType.CDI,
@@ -141,6 +142,7 @@ class FranceTravailSource:
                 total_logged = True
 
             for item in results:
+                item[QUERY_KEY] = label  # adapter-private: which query returned the item
                 yield item
                 fetched += 1
                 if fetched >= self._max_results:
@@ -165,6 +167,7 @@ class FranceTravailSource:
             url=(raw.get("origineOffre") or {}).get("urlOrigine", ""),
             published_at=_parse_dt(raw.get("dateCreation")),
             collected_at=datetime.now(UTC),
+            search_query=raw.get(QUERY_KEY),
         )
 
 

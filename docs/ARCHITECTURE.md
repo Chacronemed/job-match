@@ -292,6 +292,12 @@ but more boilerplate) or a plugin registry (unneeded with 2 sources).
 
 ## 7. Experience eligibility design
 
+> **Relevance gate (2026-10-05).** Before experience/contract/location, `gate.evaluate` rejects a job as
+> `NOT_RELEVANT` unless it matches ≥1 preferred skill (title + description, aliases) or its title contains a
+> `relevance.target_title_keywords` entry (accent-insensitive word prefix). Keywords live in the committed
+> `settings.yaml`, not the private profile. Matching helpers are shared with the scorer
+> (`normalization/skills.py`). The digest only emails eligible jobs with `score >= digest.min_score`.
+
 Two separate modules:
 
 1. **`experience.parser`**: `parse(text) -> ExperienceRequirement`. Pure, and heavily tested.

@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: "0 7 * * *"   # 07:00 UTC every day
   workflow_dispatch:       # manual trigger
+    inputs:
+      reprocess_since:
+        description: "Optional YYYY-MM-DD: re-extract funding articles collected since this date"
+        required: false
+        default: ""
+        type: string
 
 # One writer at a time; never cancel a run in progress.
 concurrency:
@@ -72,6 +78,17 @@ jobs:
         id: funding
         continue-on-error: true
         run: job-match funding run
+
+      # Manual runs only: re-extract stored articles (e.g. after extractor changes). The DB
+      # lives in the data repo, so this must run here. The input goes through an env var,
+      # never interpolated into the script; the CLI rejects anything that is not a date.
+      - name: Reprocess funding articles
+        id: reprocess
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.reprocess_since != '' }}
+        continue-on-error: true
+        env:
+          REPROCESS_SINCE: ${{ inputs.reprocess_since }}
+        run: job-match funding reprocess --since "$REPROCESS_SINCE"
 
       # Checkpoint and VACUUM before committing the DB file.
       # Must run after the pipeline closes its connection.

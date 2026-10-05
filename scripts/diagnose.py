@@ -63,7 +63,7 @@ def main() -> None:
         job = replace(job, experience=exp)
         fp = compute_fingerprint(job)
         job = replace(job, fingerprint=fp)
-        elig = gate.evaluate(job, exp, profile, settings)
+        elig = gate.evaluate(job, exp, profile, settings, aliases)
 
         if not elig.eligible:
             if RejectionReason.EXPERIENCE in elig.reasons:

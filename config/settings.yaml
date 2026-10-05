@@ -33,3 +33,35 @@ funding:
   sources: [maddyness, frenchweb]
   lead_dedup_days: 30         # no second Lead for the same company within N days
   job_link_days: 180          # digest flags a job when its company raised within N days
+  # Digest-time lead filters. Filtered leads stay in the DB, unnotified (never emailed).
+  lead_filters:
+    countries: [France]       # explicit foreign country -> filtered; unknown country is kept
+    min_amount_eur: null      # e.g. 1000000; unknown amounts always pass
+    exclude_sectors: []       # keywords matched in the article title / evidence sentences
+    fx_to_eur: {USD: 0.92, GBP: 1.17}  # approximate, only for min_amount_eur
+
+# Relevance gate (before scoring): a job must match >=1 preferred skill OR have one of these
+# in its title (accent-insensitive word prefix: "infra" matches "infrastructure").
+# Rejected jobs get rejection_reason NOT_RELEVANT. Empty list = gate off.
+relevance:
+  target_title_keywords:
+    - devops
+    - devsecops
+    - sre
+    - site reliability
+    - cloud
+    - platform
+    - plateforme
+    - infra
+    - système
+    - ingénieur de production informatique
+    - exploitation
+    - kubernetes
+    - ops
+    - réseau
+    - administrateur
+    - linux
+
+digest:
+  min_score: 60   # eligible jobs below this stay in the DB, not emailed
+  max_leads: 10   # hiring first, then pre-seed..series B, then most recent; the rest roll over

@@ -122,6 +122,12 @@ def _cmd_digest(args: argparse.Namespace) -> None:
         f"Digest: {len(batch.job_ids)} unnotified jobs ({len(data.strong)} strong, "
         f"{len(data.eligible)} eligible), {len(batch.lead_ids)} funding leads"
     )
+    print(
+        f"  held back (stay unnotified): {batch.jobs_below_min_score} jobs below "
+        f"min_score {settings.digest.min_score}; leads filtered "
+        f"{dict(sorted(batch.leads_filtered.items())) or '{}'}, "
+        f"{batch.leads_overflow} over max_leads {settings.digest.max_leads}"
+    )
 
     if args.dry_run:
         data_dir.mkdir(parents=True, exist_ok=True)

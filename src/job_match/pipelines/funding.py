@@ -90,6 +90,7 @@ def _process_article(
             investors=ex.investors,
             location=ex.location,
             recruiting_signal=ex.hiring,
+            country=ex.country,
             evidence=ex.evidence,
         )
     )

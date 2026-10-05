@@ -184,6 +184,10 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
 ---
 
 ## Open decisions
+- ~~Hiring window~~ **Resolved 2026-10-05:** strict window + narrow exception for single-topic
+  articles (sentence must refer back to the raise or the company). Measured 1 → 10 high-priority leads.
+- ~~Lead ranking~~ **Resolved 2026-10-05:** hiring first, then pre-seed/seed/series A/B, then most recent
+  (publication date). Amount is not a ranking criterion.
 - **M11b: roundup articles:** one event per strict deal line (`^- <Company> lève|boucle|raises <explicit amount>`),
   only after M11 precision is validated on real data.
 - Exact France Travail search parameters (ROME codes, departments), to settle in M2
@@ -192,6 +196,9 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
 - ~~**M9 — WAL flush before data-repo push:**~~ **Resolved in M9.** `PRAGMA wal_checkpoint(TRUNCATE)` + `VACUUM` run in daily.yml before DB push. `*.sqlite-wal` and `*.sqlite-shm` added to `.gitignore`.
 
 ## Known issues
+- Existing funding events also lack the stricter hiring/country extraction until reprocessed: trigger
+  "Daily run" manually with `reprocess_since` (the DB lives in the private data repo).
+- Existing funding events have no `country` until `job-match funding reprocess --since <date>` is run.
 - Job ↔ funding matching is exact on the normalized company name. FT employer names that differ beyond case,
   accents and legal suffixes (e.g. a holding name) will not match. Fuzzy company matching is not done.
 - Cross-source funding dedup is per company via the 30-day lead window only: the same raise covered by Maddyness
@@ -245,3 +252,14 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
 - 2026-10-05: Test added: "InBolt"/"Inbolt" share one company and one lead.
 - 2026-10-05: M12 complete. Lead ↔ Company ↔ Job link at digest time, Funding Leads digest section, leads
   marked after send, funding run in `daily.yml`. 482 tests passing.
+- 2026-10-05: Quality fixes from the first real digest. Jobs: relevance gate (`NOT_RELEVANT`, keywords in
+  settings.yaml), `digest.min_score: 60`, `jobs.search_query` stored + shown in the digest (DEBUG log only).
+  Funding: hiring needs a verb/plan and sits in the anchor window; briefs scoped to the company paragraph;
+  explicit `country`. Digest: `funding.lead_filters` (countries, min_amount_eur, exclude_sectors),
+  `digest.max_leads: 10`, priority then amount, overflow rolls over. Migration 0005. 537 tests passing.
+  Replay on today's frozen live data: jobs emailed 102 → 25, leads emailed 26 → 10 (3 country-filtered,
+  13 roll over), high-priority leads 14 → 1 (see open decision on the hiring window).
+- 2026-10-05: Follow-ups. Single-topic hiring exception (tie-back to raise/company), lead ranking
+  hiring → early round → recency, keyword `production` replaced by `ingénieur de production informatique`
+  (`exploitation` kept), `daily.yml` workflow_dispatch input `reprocess_since` (runs before the digest,
+  input passed via env). 549 tests passing.

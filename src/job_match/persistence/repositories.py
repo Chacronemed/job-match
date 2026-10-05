@@ -1,5 +1,6 @@
 import json
 import sqlite3
+from dataclasses import replace
 from datetime import UTC, date, datetime
 
 from job_match.domain.models import (
@@ -134,6 +135,7 @@ def _row_to_job(row: sqlite3.Row) -> Job:
         rejection_reason=row["rejection_reason"],
         score=row["score"],
         scoring_breakdown=bd,
+        search_query=row["search_query"],
     )
 
 
@@ -220,8 +222,9 @@ class JobRepository:
                 location, workplace_type, contract_type, description, url,
                 published_at, collected_at, fingerprint,
                 experience_min, experience_max, experience_status, experience_evidence,
-                eligibility, rejection_reason, score, scoring_breakdown, needs_review
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                eligibility, rejection_reason, score, scoring_breakdown, needs_review,
+                search_query
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(source_id, source_job_id) DO UPDATE SET
                 title              = excluded.title,
                 company            = excluded.company,
@@ -243,7 +246,8 @@ class JobRepository:
                 rejection_reason   = excluded.rejection_reason,
                 score              = excluded.score,
                 scoring_breakdown  = excluded.scoring_breakdown,
-                needs_review       = excluded.needs_review
+                needs_review       = excluded.needs_review,
+                search_query       = COALESCE(excluded.search_query, jobs.search_query)
             """,
             (
                 job.source,
@@ -269,6 +273,7 @@ class JobRepository:
                 job.score,
                 bd_json,
                 needs_review,
+                job.search_query,
             ),
         )
         self._conn.commit()
@@ -277,28 +282,7 @@ class JobRepository:
             "SELECT id FROM jobs WHERE source_id = ? AND source_job_id = ?",
             (job.source, job.source_job_id),
         ).fetchone()
-        # Return a new frozen Job with id set
-        return Job(
-            id=row["id"],
-            source=job.source,
-            source_job_id=job.source_job_id,
-            title=job.title,
-            company=job.company,
-            company_id=job.company_id,
-            location=job.location,
-            workplace_type=job.workplace_type,
-            contract_type=job.contract_type,
-            description=job.description,
-            url=job.url,
-            published_at=job.published_at,
-            collected_at=job.collected_at,
-            fingerprint=job.fingerprint,
-            experience=job.experience,
-            eligibility=job.eligibility,
-            rejection_reason=job.rejection_reason,
-            score=job.score,
-            scoring_breakdown=job.scoring_breakdown,
-        )
+        return replace(job, id=row["id"])
 
     def get(self, job_id: int) -> Job | None:
         row = self._conn.execute(
@@ -616,6 +600,7 @@ def _row_to_event(row: sqlite3.Row) -> FundingEvent:
         location=row["location"],
         recruiting_signal=row["recruiting_signal"],
         evidence=evidence,
+        country=row["country"],
     )
 
 
@@ -630,8 +615,8 @@ class FundingEventRepository:
             """
             INSERT INTO funding_events
                 (company_id, article_id, amount, currency, round, event_date, investors_json,
-                 sector, location, recruiting_signal, evidence_json, collected_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 sector, location, recruiting_signal, evidence_json, collected_at, country)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(article_id, company_id) DO UPDATE SET
                 amount = excluded.amount,
                 currency = excluded.currency,
@@ -642,7 +627,8 @@ class FundingEventRepository:
                 location = excluded.location,
                 recruiting_signal = excluded.recruiting_signal,
                 evidence_json = excluded.evidence_json,
-                collected_at = excluded.collected_at
+                collected_at = excluded.collected_at,
+                country = excluded.country
             """,
             (
                 event.company_id,
@@ -657,6 +643,7 @@ class FundingEventRepository:
                 event.recruiting_signal,
                 json.dumps(event.evidence, ensure_ascii=False) if event.evidence else None,
                 event.collected_at.isoformat(),
+                event.country,
             ),
         )
         self._conn.commit()
@@ -817,7 +804,7 @@ class LeadRepository:
             SELECT l.id AS lead_id, l.company_id, c.name AS company, l.priority, l.reason,
                    l.created_at, a.source_id AS source, a.url AS a_url, a.title AS a_title,
                    a.published_at, fe.amount, fe.currency, fe.round, fe.investors_json,
-                   fe.recruiting_signal, fe.evidence_json,
+                   fe.recruiting_signal, fe.evidence_json, fe.country,
                    (SELECT COUNT(*) FROM jobs j
                       LEFT JOIN job_duplicates d ON d.duplicate_job_id = j.id
                      WHERE j.company_id = l.company_id
@@ -856,6 +843,7 @@ class LeadRepository:
                     hiring=r["recruiting_signal"],
                     evidence=json.loads(r["evidence_json"]) if r["evidence_json"] else {},
                     open_jobs=r["open_jobs"],
+                    country=r["country"],
                 )
             )
         return out
