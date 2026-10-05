@@ -89,10 +89,11 @@ def _cmd_digest(args: argparse.Namespace) -> None:
     from datetime import UTC, date, datetime
 
     from job_match.config.loader import load_settings
-    from job_match.notification.digest import DigestData, render_html
+    from job_match.notification.assemble import build_digest
+    from job_match.notification.digest import render_html
     from job_match.notification.email_notifier import EmailNotifier, SmtpConfigError
     from job_match.persistence.db import Database
-    from job_match.persistence.repositories import JobRepository
+    from job_match.persistence.repositories import JobRepository, LeadRepository
 
     cfg = _config_dir()
     data_dir = _data_dir()
@@ -109,24 +110,18 @@ def _cmd_digest(args: argparse.Namespace) -> None:
             )
             sys.exit(1)
         with Database(path=db_path) as db:
-            n = JobRepository(db.conn).reset_notified_since(since)
-        print(f"  Reset notified_at for {n} job(s) notified since {since}")
+            n_jobs = JobRepository(db.conn).reset_notified_since(since)
+            n_leads = LeadRepository(db.conn).reset_notified_since(since)
+        print(f"  Reset notified_at for {n_jobs} job(s) and {n_leads} lead(s) since {since}")
 
     with Database(path=db_path) as db:
-        job_repo = JobRepository(db.conn)
-        jobs = job_repo.list_unnotified()
+        batch = build_digest(db, settings, datetime.now(UTC))
+    data = batch.data
 
-    strong = tuple(j for j in jobs if j.score is not None and j.score >= settings.strong_threshold)
-    eligible = tuple(j for j in jobs if j not in strong)
-
-    data = DigestData(
-        strong=strong,
-        eligible=eligible,
-        generated_at=datetime.now(UTC),
+    print(
+        f"Digest: {len(batch.job_ids)} unnotified jobs ({len(data.strong)} strong, "
+        f"{len(data.eligible)} eligible), {len(batch.lead_ids)} funding leads"
     )
-
-    total = len(strong) + len(eligible)
-    print(f"Digest: {total} unnotified jobs ({len(strong)} strong, {len(eligible)} eligible)")
 
     if args.dry_run:
         data_dir.mkdir(parents=True, exist_ok=True)
@@ -135,8 +130,8 @@ def _cmd_digest(args: argparse.Namespace) -> None:
         print(f"  [DRY RUN] HTML written to {preview}")
         return
 
-    if total == 0:
-        print("  No new jobs to send.")
+    if batch.is_empty:
+        print("  No new jobs or leads to send.")
         return
 
     try:
@@ -145,16 +140,16 @@ def _cmd_digest(args: argparse.Namespace) -> None:
         print(f"SMTP not configured: {exc}", file=sys.stderr)
         sys.exit(1)
 
-    ok = notifier.send(data)
-    if ok:
-        with Database(path=db_path) as db:
-            job_repo = JobRepository(db.conn)
-            job_ids = [j.id for j in jobs if j.id is not None]
-            job_repo.mark_notified(job_ids, datetime.now(UTC))
-        print(f"  Sent. {total} jobs marked as notified.")
-    else:
-        print("  Send failed — see logs. Jobs not marked as notified.", file=sys.stderr)
+    if not notifier.send(data):
+        print("  Send failed — see logs. Nothing marked as notified.", file=sys.stderr)
         sys.exit(1)
+
+    # Mark only after a successful send, so a failed send is retried next run.
+    sent_at = datetime.now(UTC)
+    with Database(path=db_path) as db:
+        JobRepository(db.conn).mark_notified(list(batch.job_ids), sent_at)
+        LeadRepository(db.conn).mark_notified(list(batch.lead_ids), sent_at)
+    print(f"  Sent. {len(batch.job_ids)} jobs and {len(batch.lead_ids)} leads marked as notified.")
 
 
 def _cmd_run(args: argparse.Namespace) -> None:

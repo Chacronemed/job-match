@@ -3,12 +3,29 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**Milestone 11: Funding extraction** — **DONE** (2026-10-04). Funding pipeline not wired into `daily.yml` yet.
+**Milestone 12: Lead ↔ Company ↔ Job + leads digest + daily wiring** — **DONE** (2026-10-05).
 M9 manual GitHub setup still pending (see below).
 
 ## Done
 - Project brief written (`docs/PROJECT_BRIEF.md`, `CLAUDE.md`)
 - `docs/ARCHITECTURE.md` (brief §25, 14 sections).
+- **Milestone 12** (2026-10-05):
+  - Link Lead ↔ Company ↔ Job via the shared `companies.id` (both pipelines upsert through `normalize_company`).
+    Computed at digest time, no stored flag (it would go stale as new events arrive).
+  - `domain/models.py` — read models `CompanyFunding`, `LeadDetail`
+  - `FundingEventRepository.latest_by_company(ids, since)` (publication date, else collection date);
+    `LeadRepository.list_unnotified_details(jobs_since)` (high first, newest first, `open_jobs` = eligible canonical
+    jobs of the company within `dedup_window_days`), `mark_notified`, `reset_notified_since`
+  - `notification/assemble.py` — `build_digest(db, settings, now) -> DigestBatch` (data + job/lead ids to mark)
+  - `notification/digest.py` — job cards show "Company funding: Raised 11 M€ series a (date)" linked to the article;
+    new "Funding Leads" section (HIGH · hiring badge, amount/round, investors, hiring, open jobs, up to 3
+    evidence sentences, article link), HTML-escaped; text version too. Subject adds ", N funding leads"
+  - `job-match digest`: leads-only digests are sent; jobs and leads marked only after a successful send;
+    `--resend-since` resets leads too. Notifier log no longer prints the recipient address
+  - `config`: `funding.job_link_days: 180`
+  - `daily.yml`: "Run funding pipeline" (`job-match funding run`, no secrets, `continue-on-error`) after the jobs
+    run and before the WAL checkpoint and digest
+  - 25 new tests (482 total) incl. a workflow step-order guard, ruff clean
 - **Milestone 11** (2026-10-04):
   - `funding/extractor.py` — `extract_funding(title, text) -> FundingExtraction`: sentence split, funding sentence
     (strong noun phrase, or verb + accepted amount), guards (past perfect, VC fund close, revenue/valuation/total/debt
@@ -94,10 +111,9 @@ M9 manual GitHub setup still pending (see below).
   - 26 tests green, `ruff check .` clean
 
 ## Next step
-- Run `job-match funding reprocess --dry-run` on real data and read the `funding_no_company` rate and a sample of
-  evidence sentences before trusting leads.
-- Leads in the email digest (brief §16), then wire `job-match funding run` into `daily.yml`.
-- **Milestone 12:** Lead ↔ Company ↔ Job relationships; cross-source event dedup.
+- Complete the M9 manual GitHub setup and trigger the first daily run; review the first digest's leads and
+  evidence sentences (precision check before M11b).
+- **Milestone 13:** optional web application (only if needed).
 - Manual setup still required (see session log 2026-10-02 M9 entry).
 
 ## Deferred
@@ -176,6 +192,10 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
 - ~~**M9 — WAL flush before data-repo push:**~~ **Resolved in M9.** `PRAGMA wal_checkpoint(TRUNCATE)` + `VACUUM` run in daily.yml before DB push. `*.sqlite-wal` and `*.sqlite-shm` added to `.gitignore`.
 
 ## Known issues
+- Job ↔ funding matching is exact on the normalized company name. FT employer names that differ beyond case,
+  accents and legal suffixes (e.g. a holding name) will not match. Fuzzy company matching is not done.
+- Cross-source funding dedup is per company via the 30-day lead window only: the same raise covered by Maddyness
+  and FrenchWeb yields two events and one lead.
 - Funding extractor: company heuristic precision is unmeasured until live data (`funding_no_company` counter).
   Lowercase brand names and "X et Y lèvent" are not recognised by design.
 - `funding reprocess` retries articles whose fetch fails on every run (`processed_at` stays NULL) while the
@@ -222,3 +242,6 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
   migration 0003, `job-match funding run`, ADR 0002. 361 tests passing.
 - 2026-10-04: M11 complete. Rule-based funding extractor with evidence, FundingEvent/Company/Lead, lead dedup,
   migration 0004, `job-match funding reprocess`, ADR 0003. 456 tests passing. One event per article (M11b deferred).
+- 2026-10-05: Test added: "InBolt"/"Inbolt" share one company and one lead.
+- 2026-10-05: M12 complete. Lead ↔ Company ↔ Job link at digest time, Funding Leads digest section, leads
+  marked after send, funding run in `daily.yml`. 482 tests passing.

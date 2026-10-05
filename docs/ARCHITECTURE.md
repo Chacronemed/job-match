@@ -489,7 +489,7 @@ English-only, French postings are penalized, and the upstream repo is new with 2
 | 9 | GitHub Actions automation | `ci.yml` + `daily.yml`, profile/resume from secrets, private data repo push, ADR 0001 |
 | 10 | **RSS article ingestion** | `FundingSource` + `MaddynessSource`/`FrenchWebSource` (feedparser), `ArticleFetcher` (trafilatura), URL dedup before fetch, short extract only (migration 0003), `job-match funding run [--limit N] [--dry-run]`, ADR 0002. Not in `daily.yml` yet |
 | 11 | **Funding extraction** | `funding/extractor.py` (rule-based FR/EN, evidence per field, null when unknown), `funding/leads.py`, `FundingEventRepository`/`LeadRepository`, migration 0004, extraction in the same pass as the fetch, `job-match funding reprocess [--since DATE]`, ADR 0003 |
-| 12 | Lead ↔ Company ↔ Job relationships | Company matching across pipelines |
+| 12 | **Lead ↔ Company ↔ Job relationships** | Link through the shared `companies.id` (same `normalize_company` key), computed at digest time, not stored: jobs flagged when their company raised within `funding.job_link_days`; leads show their eligible open jobs. Digest "Funding Leads" section (high priority first, evidence, article link), leads marked only after a successful send. `job-match funding run` in `daily.yml` before the digest |
 | 13 | Optional web application | Only if needed |
 
 **MVP = M1–M6b + M8–M9.** M7 can be skipped or postponed without blocking anything.

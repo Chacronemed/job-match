@@ -52,6 +52,9 @@ class EmailNotifier:
             f"[job-match] {total} new job{'s' if total != 1 else ''} "
             f"({len(data.strong)} strong)"
         )
+        if data.leads:
+            n_leads = len(data.leads)
+            subject += f", {n_leads} funding lead{'s' if n_leads != 1 else ''}"
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
         msg["From"] = self._user
@@ -69,7 +72,7 @@ class EmailNotifier:
                     smtp.starttls()
                     smtp.login(self._user, self._password)
                     smtp.sendmail(self._user, [self._recipient], msg.as_bytes())
-            logger.info("digest sent to %s (%d jobs)", self._recipient, total)
+            logger.info("digest sent (%d jobs, %d leads)", total, len(data.leads))
             return True
         except Exception as exc:
             logger.error("digest send failed: %s", exc)

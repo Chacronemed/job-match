@@ -32,3 +32,4 @@ funding:
   extract_max_chars: 600      # short extract kept in `articles.extract`
   sources: [maddyness, frenchweb]
   lead_dedup_days: 30         # no second Lead for the same company within N days
+  job_link_days: 180          # digest flags a job when its company raised within N days

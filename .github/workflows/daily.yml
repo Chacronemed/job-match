@@ -65,6 +65,14 @@ jobs:
           FT_CLIENT_ID:     ${{ secrets.FT_CLIENT_ID }}
           FT_CLIENT_SECRET: ${{ secrets.FT_CLIENT_SECRET }}
 
+      # Funding pipeline: RSS → articles → FundingEvent → Lead. Needs no secrets.
+      # Feed/article failures are counted, never fatal; continue-on-error only guards
+      # unexpected crashes so the jobs digest and the DB push still happen.
+      - name: Run funding pipeline
+        id: funding
+        continue-on-error: true
+        run: job-match funding run
+
       # Checkpoint and VACUUM before committing the DB file.
       # Must run after the pipeline closes its connection.
       - name: WAL checkpoint and VACUUM

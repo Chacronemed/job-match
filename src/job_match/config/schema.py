@@ -55,6 +55,7 @@ class FundingConfig:
     extract_max_chars: int = 600
     sources: list[str] = field(default_factory=lambda: ["maddyness", "frenchweb"])
     lead_dedup_days: int = 30  # no second Lead for the same company within this window
+    job_link_days: int = 180  # a job is flagged when its company raised within this window
 
 
 @dataclass

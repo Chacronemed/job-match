@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime
 from job_match.domain.models import (
     Article,
     Company,
+    CompanyFunding,
     ContractType,
     Eligibility,
     ExperienceRequirement,
@@ -12,6 +13,7 @@ from job_match.domain.models import (
     FundingEvent,
     Job,
     Lead,
+    LeadDetail,
     RawPayload,
     RunSummary,
     ScoreResult,
@@ -690,6 +692,47 @@ class FundingEventRepository:
         self._conn.commit()
         return cur.rowcount
 
+    def latest_by_company(
+        self, company_ids: list[int], since: date
+    ) -> dict[int, CompanyFunding]:
+        """Most recent funding event per company dated on/after `since`.
+
+        The date is the publication date when known, else the collection date.
+        """
+        ids = sorted({i for i in company_ids if i is not None})
+        if not ids:
+            return {}
+        placeholders = ",".join("?" * len(ids))
+        rows = self._conn.execute(
+            f"""
+            SELECT fe.id, fe.company_id, c.name AS company, fe.amount, fe.currency, fe.round,
+                   COALESCE(fe.event_date, substr(fe.collected_at, 1, 10)) AS d,
+                   a.url AS a_url, a.title AS a_title
+            FROM funding_events fe
+            JOIN companies c ON c.id = fe.company_id
+            LEFT JOIN articles a ON a.id = fe.article_id
+            WHERE fe.company_id IN ({placeholders})
+              AND COALESCE(fe.event_date, substr(fe.collected_at, 1, 10)) >= ?
+            ORDER BY d DESC, fe.id DESC
+            """,
+            (*ids, since.isoformat()),
+        ).fetchall()
+        out: dict[int, CompanyFunding] = {}
+        for r in rows:
+            if r["company_id"] in out:
+                continue
+            out[r["company_id"]] = CompanyFunding(
+                company_id=r["company_id"],
+                company=r["company"],
+                article_url=r["a_url"] or "",
+                article_title=r["a_title"] or "",
+                amount=r["amount"],
+                currency=r["currency"],
+                round=r["round"],
+                date=r["d"],
+            )
+        return out
+
     def count(self) -> int:
         return self._conn.execute("SELECT COUNT(*) FROM funding_events").fetchone()[0]
 
@@ -762,6 +805,77 @@ class LeadRepository:
     def list_all(self) -> list[Lead]:
         rows = self._conn.execute("SELECT * FROM leads ORDER BY created_at, id").fetchall()
         return [_row_to_lead(r) for r in rows]
+
+    def list_unnotified_details(self, jobs_since: datetime) -> list[LeadDetail]:
+        """Unnotified leads for the digest: high priority first, then newest first.
+
+        `open_jobs` counts eligible, canonical jobs of the same company collected since
+        `jobs_since`. The link is the shared `companies.id`; a Lead never becomes a Job.
+        """
+        rows = self._conn.execute(
+            """
+            SELECT l.id AS lead_id, l.company_id, c.name AS company, l.priority, l.reason,
+                   l.created_at, a.source_id AS source, a.url AS a_url, a.title AS a_title,
+                   a.published_at, fe.amount, fe.currency, fe.round, fe.investors_json,
+                   fe.recruiting_signal, fe.evidence_json,
+                   (SELECT COUNT(*) FROM jobs j
+                      LEFT JOIN job_duplicates d ON d.duplicate_job_id = j.id
+                     WHERE j.company_id = l.company_id
+                       AND j.eligibility = 'ELIGIBLE'
+                       AND d.duplicate_job_id IS NULL
+                       AND j.collected_at >= ?) AS open_jobs
+            FROM leads l
+            JOIN companies c ON c.id = l.company_id
+            LEFT JOIN funding_events fe ON fe.id = l.funding_event_id
+            LEFT JOIN articles a ON a.id = fe.article_id
+            WHERE l.notified_at IS NULL
+            ORDER BY CASE l.priority WHEN 'high' THEN 0 ELSE 1 END,
+                     l.created_at DESC, l.id DESC
+            """,
+            (jobs_since.isoformat(),),
+        ).fetchall()
+        out: list[LeadDetail] = []
+        for r in rows:
+            investors = json.loads(r["investors_json"]) if r["investors_json"] else None
+            out.append(
+                LeadDetail(
+                    lead_id=r["lead_id"],
+                    company_id=r["company_id"],
+                    company=r["company"],
+                    priority=r["priority"],
+                    reason=r["reason"],
+                    created_at=_dt(r["created_at"]),  # type: ignore[arg-type]
+                    source=r["source"] or "",
+                    article_url=r["a_url"] or "",
+                    article_title=r["a_title"] or "",
+                    published_at=_dt(r["published_at"]),
+                    amount=r["amount"],
+                    currency=r["currency"],
+                    round=r["round"],
+                    investors=tuple(investors) if investors is not None else None,
+                    hiring=r["recruiting_signal"],
+                    evidence=json.loads(r["evidence_json"]) if r["evidence_json"] else {},
+                    open_jobs=r["open_jobs"],
+                )
+            )
+        return out
+
+    def mark_notified(self, lead_ids: list[int], notified_at: datetime) -> None:
+        if not lead_ids:
+            return
+        placeholders = ",".join("?" * len(lead_ids))
+        self._conn.execute(
+            f"UPDATE leads SET notified_at = ? WHERE id IN ({placeholders})",
+            [notified_at.isoformat(), *lead_ids],
+        )
+        self._conn.commit()
+
+    def reset_notified_since(self, since: date) -> int:
+        cur = self._conn.execute(
+            "UPDATE leads SET notified_at = NULL WHERE notified_at >= ?", (since.isoformat(),)
+        )
+        self._conn.commit()
+        return cur.rowcount
 
     def count(self) -> int:
         return self._conn.execute("SELECT COUNT(*) FROM leads").fetchone()[0]

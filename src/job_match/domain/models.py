@@ -164,6 +164,46 @@ class Lead:
 
 
 @dataclass(frozen=True, slots=True)
+class CompanyFunding:
+    """Read model: the latest funding event of a company, used to flag its jobs.
+
+    It links Job and FundingEvent through `companies.id` only. A Job never becomes a Lead.
+    """
+
+    company_id: int
+    company: str
+    article_url: str
+    article_title: str
+    amount: float | None = None
+    currency: str | None = None
+    round: str | None = None
+    date: str | None = None  # publication date (ISO) or collection date when unknown
+
+
+@dataclass(frozen=True, slots=True)
+class LeadDetail:
+    """Read model: a Lead joined with its company, funding event and source article."""
+
+    lead_id: int
+    company_id: int
+    company: str
+    priority: str
+    reason: str
+    created_at: datetime
+    source: str
+    article_url: str
+    article_title: str
+    published_at: datetime | None = None
+    amount: float | None = None
+    currency: str | None = None
+    round: str | None = None
+    investors: tuple[str, ...] | None = None
+    hiring: str | None = None
+    evidence: dict[str, str] = field(default_factory=dict)
+    open_jobs: int = 0  # eligible, canonical, recent jobs at the same company
+
+
+@dataclass(frozen=True, slots=True)
 class RunSummary:
     pipeline: str
     fetched: int = 0

@@ -103,6 +103,9 @@ def load_settings(path: Path) -> Settings:
             lead_dedup_days=int(
                 funding_raw.get("lead_dedup_days", funding_defaults.lead_dedup_days)
             ),
+            job_link_days=int(
+                funding_raw.get("job_link_days", funding_defaults.job_link_days)
+            ),
         ),
     )
 
