@@ -9,7 +9,9 @@ from job_match.domain.models import (
     Eligibility,
     ExperienceRequirement,
     ExperienceStatus,
+    FundingEvent,
     Job,
+    Lead,
     RawPayload,
     RunSummary,
     ScoreResult,
@@ -476,6 +478,11 @@ class RunRepository:
                         "errors": summary.errors,
                         "api_calls": summary.api_calls,
                         "feeds": summary.feeds,
+                        "funding_articles": summary.funding_articles,
+                        "funding_events": summary.funding_events,
+                        "funding_no_company": summary.funding_no_company,
+                        "leads_deduped": summary.leads_deduped,
+                        "by_source": summary.by_source,
                     }
                 ),
             ),
@@ -497,6 +504,8 @@ def _row_to_article(row: sqlite3.Row) -> Article:
         collected_at=_dt(row["collected_at"]),  # type: ignore[arg-type]
         published_at=_dt(row["published_at"]),
         extract=row["extract"],
+        is_funding=bool(row["is_funding"]),
+        processed_at=_dt(row["processed_at"]),
     )
 
 
@@ -514,14 +523,19 @@ class ArticleRepository:
         row = self._conn.execute("SELECT * FROM articles WHERE url = ?", (url,)).fetchone()
         return _row_to_article(row) if row else None
 
+    def get(self, article_id: int) -> Article | None:
+        row = self._conn.execute("SELECT * FROM articles WHERE id = ?", (article_id,)).fetchone()
+        return _row_to_article(row) if row else None
+
     def save(self, article: Article) -> Article:
         """Insert a new article. An existing URL is left untouched (first seen wins)."""
         _ensure_source(self._conn, article.source, "funding")
         self._conn.execute(
             """
             INSERT OR IGNORE INTO articles
-                (source_id, url, title, published_at, collected_at, extract)
-            VALUES (?, ?, ?, ?, ?, ?)
+                (source_id, url, title, published_at, collected_at, extract,
+                 is_funding, processed_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 article.source,
@@ -530,10 +544,35 @@ class ArticleRepository:
                 article.published_at.isoformat() if article.published_at else None,
                 article.collected_at.isoformat(),
                 article.extract,
+                int(article.is_funding),
+                article.processed_at.isoformat() if article.processed_at else None,
             ),
         )
         self._conn.commit()
         return self.get_by_url(article.url)  # type: ignore[return-value]
+
+    def mark_processed(self, article_id: int, is_funding: bool, processed_at: datetime) -> None:
+        self._conn.execute(
+            "UPDATE articles SET is_funding = ?, processed_at = ? WHERE id = ?",
+            (int(is_funding), processed_at.isoformat(), article_id),
+        )
+        self._conn.commit()
+
+    def list_unprocessed(self, limit: int | None = None) -> list[Article]:
+        sql = "SELECT * FROM articles WHERE processed_at IS NULL ORDER BY collected_at, id"
+        params: tuple = ()
+        if limit is not None:
+            sql += " LIMIT ?"
+            params = (limit,)
+        return [_row_to_article(r) for r in self._conn.execute(sql, params).fetchall()]
+
+    def list_collected_since(self, since: date, limit: int | None = None) -> list[Article]:
+        sql = "SELECT * FROM articles WHERE collected_at >= ? ORDER BY collected_at, id"
+        params: tuple = (since.isoformat(),)
+        if limit is not None:
+            sql += " LIMIT ?"
+            params = (since.isoformat(), limit)
+        return [_row_to_article(r) for r in self._conn.execute(sql, params).fetchall()]
 
     def list_recent(self, limit: int = 50) -> list[Article]:
         rows = self._conn.execute(
@@ -543,3 +582,186 @@ class ArticleRepository:
 
     def count(self) -> int:
         return self._conn.execute("SELECT COUNT(*) FROM articles").fetchone()[0]
+
+
+# ---------------------------------------------------------------------------
+# Funding events / leads
+# ---------------------------------------------------------------------------
+
+_EVENT_SELECT = """
+    SELECT fe.*, a.source_id AS a_source, a.url AS a_url
+    FROM funding_events fe
+    LEFT JOIN articles a ON a.id = fe.article_id
+"""
+
+
+def _row_to_event(row: sqlite3.Row) -> FundingEvent:
+    investors = json.loads(row["investors_json"]) if row["investors_json"] else None
+    evidence = json.loads(row["evidence_json"]) if row["evidence_json"] else {}
+    return FundingEvent(
+        id=row["id"],
+        company_id=row["company_id"],
+        article_id=row["article_id"],
+        source=row["a_source"] or "",
+        article_url=row["a_url"] or "",
+        collected_at=_dt(row["collected_at"]),  # type: ignore[arg-type]
+        amount=row["amount"],
+        currency=row["currency"],
+        round=row["round"],
+        date=row["event_date"],
+        investors=tuple(investors) if investors is not None else None,
+        sector=row["sector"],
+        location=row["location"],
+        recruiting_signal=row["recruiting_signal"],
+        evidence=evidence,
+    )
+
+
+class FundingEventRepository:
+    """One event per (article, company). Re-extraction updates the row in place."""
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def upsert(self, event: FundingEvent) -> FundingEvent:
+        self._conn.execute(
+            """
+            INSERT INTO funding_events
+                (company_id, article_id, amount, currency, round, event_date, investors_json,
+                 sector, location, recruiting_signal, evidence_json, collected_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(article_id, company_id) DO UPDATE SET
+                amount = excluded.amount,
+                currency = excluded.currency,
+                round = excluded.round,
+                event_date = excluded.event_date,
+                investors_json = excluded.investors_json,
+                sector = excluded.sector,
+                location = excluded.location,
+                recruiting_signal = excluded.recruiting_signal,
+                evidence_json = excluded.evidence_json,
+                collected_at = excluded.collected_at
+            """,
+            (
+                event.company_id,
+                event.article_id,
+                event.amount,
+                event.currency,
+                event.round,
+                event.date,
+                json.dumps(list(event.investors)) if event.investors is not None else None,
+                event.sector,
+                event.location,
+                event.recruiting_signal,
+                json.dumps(event.evidence, ensure_ascii=False) if event.evidence else None,
+                event.collected_at.isoformat(),
+            ),
+        )
+        self._conn.commit()
+        row = self._conn.execute(
+            _EVENT_SELECT + " WHERE fe.article_id IS ? AND fe.company_id = ?",
+            (event.article_id, event.company_id),
+        ).fetchone()
+        return _row_to_event(row)
+
+    def get(self, event_id: int) -> FundingEvent | None:
+        row = self._conn.execute(_EVENT_SELECT + " WHERE fe.id = ?", (event_id,)).fetchone()
+        return _row_to_event(row) if row else None
+
+    def list_for_article(self, article_id: int) -> list[FundingEvent]:
+        rows = self._conn.execute(
+            _EVENT_SELECT + " WHERE fe.article_id = ? ORDER BY fe.id", (article_id,)
+        ).fetchall()
+        return [_row_to_event(r) for r in rows]
+
+    def delete_for_article_except(self, article_id: int, keep_ids: list[int]) -> int:
+        """Remove stale events (and their leads) for an article after re-extraction."""
+        placeholders = ",".join("?" for _ in keep_ids) or "NULL"
+        params: tuple = (article_id, *keep_ids)
+        self._conn.execute(
+            "DELETE FROM leads WHERE funding_event_id IN "
+            f"(SELECT id FROM funding_events WHERE article_id = ? AND id NOT IN ({placeholders}))",
+            params,
+        )
+        cur = self._conn.execute(
+            f"DELETE FROM funding_events WHERE article_id = ? AND id NOT IN ({placeholders})",
+            params,
+        )
+        self._conn.commit()
+        return cur.rowcount
+
+    def count(self) -> int:
+        return self._conn.execute("SELECT COUNT(*) FROM funding_events").fetchone()[0]
+
+
+def _row_to_lead(row: sqlite3.Row) -> Lead:
+    return Lead(
+        id=row["id"],
+        company_id=row["company_id"],
+        funding_event_id=row["funding_event_id"],
+        reason=row["reason"],
+        created_at=_dt(row["created_at"]),  # type: ignore[arg-type]
+        status=row["status"],
+        notified_at=_dt(row["notified_at"]),
+        priority=row["priority"],
+    )
+
+
+class LeadRepository:
+    """One lead per funding event. Re-extraction only refreshes reason/priority."""
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def upsert(self, lead: Lead) -> Lead:
+        self._conn.execute(
+            """
+            INSERT INTO leads (company_id, funding_event_id, reason, status, created_at,
+                               notified_at, priority)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(funding_event_id) DO UPDATE SET
+                reason = excluded.reason,
+                priority = excluded.priority
+            """,
+            (
+                lead.company_id,
+                lead.funding_event_id,
+                lead.reason,
+                lead.status,
+                lead.created_at.isoformat(),
+                lead.notified_at.isoformat() if lead.notified_at else None,
+                lead.priority,
+            ),
+        )
+        self._conn.commit()
+        row = self._conn.execute(
+            "SELECT * FROM leads WHERE funding_event_id = ?", (lead.funding_event_id,)
+        ).fetchone()
+        return _row_to_lead(row)
+
+    def get(self, lead_id: int) -> Lead | None:
+        row = self._conn.execute("SELECT * FROM leads WHERE id = ?", (lead_id,)).fetchone()
+        return _row_to_lead(row) if row else None
+
+    def get_for_event(self, funding_event_id: int) -> Lead | None:
+        row = self._conn.execute(
+            "SELECT * FROM leads WHERE funding_event_id = ?", (funding_event_id,)
+        ).fetchone()
+        return _row_to_lead(row) if row else None
+
+    def has_recent(
+        self, company_id: int, since: datetime, exclude_event_id: int | None = None
+    ) -> bool:
+        row = self._conn.execute(
+            "SELECT 1 FROM leads WHERE company_id = ? AND created_at >= ?"
+            " AND (funding_event_id IS NULL OR funding_event_id IS NOT ?) LIMIT 1",
+            (company_id, since.isoformat(), exclude_event_id),
+        ).fetchone()
+        return row is not None
+
+    def list_all(self) -> list[Lead]:
+        rows = self._conn.execute("SELECT * FROM leads ORDER BY created_at, id").fetchall()
+        return [_row_to_lead(r) for r in rows]
+
+    def count(self) -> int:
+        return self._conn.execute("SELECT COUNT(*) FROM leads").fetchone()[0]

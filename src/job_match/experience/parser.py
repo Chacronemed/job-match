@@ -1,19 +1,7 @@
 import re
 
 from job_match.domain.models import ExperienceRequirement, ExperienceStatus
-
-_WORD_NUMS: dict[str, float] = {
-    "un": 1, "une": 1, "one": 1,
-    "deux": 2, "two": 2,
-    "trois": 3, "three": 3,
-    "quatre": 4, "four": 4,
-    "cinq": 5, "five": 5,
-    "six": 6,
-    "sept": 7, "seven": 7,
-    "huit": 8, "eight": 8,
-    "neuf": 9, "nine": 9,
-    "dix": 10, "ten": 10,
-}
+from job_match.normalization.numbers import WORD_NUMBERS as _WORD_NUMS
 
 # Non-capturing alternation of written numbers
 _W = "(?:" + "|".join(_WORD_NUMS) + ")"

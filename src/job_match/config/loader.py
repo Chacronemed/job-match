@@ -100,6 +100,9 @@ def load_settings(path: Path) -> Settings:
                 funding_raw.get("extract_max_chars", funding_defaults.extract_max_chars)
             ),
             sources=list(sources_raw),
+            lead_dedup_days=int(
+                funding_raw.get("lead_dedup_days", funding_defaults.lead_dedup_days)
+            ),
         ),
     )
 

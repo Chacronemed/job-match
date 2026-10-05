@@ -3,12 +3,29 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**Milestone 10: RSS article ingestion** — **DONE** (2026-10-04). Not wired into `daily.yml` yet.
+**Milestone 11: Funding extraction** — **DONE** (2026-10-04). Funding pipeline not wired into `daily.yml` yet.
 M9 manual GitHub setup still pending (see below).
 
 ## Done
 - Project brief written (`docs/PROJECT_BRIEF.md`, `CLAUDE.md`)
 - `docs/ARCHITECTURE.md` (brief §25, 14 sections).
+- **Milestone 11** (2026-10-04):
+  - `funding/extractor.py` — `extract_funding(title, text) -> FundingExtraction`: sentence split, funding sentence
+    (strong noun phrase, or verb + accepted amount), guards (past perfect, VC fund close, revenue/valuation/total/debt
+    clauses), amount+currency (FR/EN forms, written numbers), round, investors (explicit cues only), hiring phrase,
+    explicit location, company heuristic (capitalised run before the verb). Evidence sentence per field.
+  - `funding/leads.py` — `build_lead`: priority `high` iff hiring signal; reason `funding 10 M€ series a; hiring: …`
+  - `migrations/0004_funding_extraction.sql` — `articles.processed_at`, `funding_events.evidence_json`, `leads.priority`,
+    unique indexes `(article_id, company_id)` and `leads(funding_event_id)`
+  - `FundingEventRepository` (upsert in place), `LeadRepository` (upsert keeps status/notified_at, `has_recent`),
+    `ArticleRepository.mark_processed/list_unprocessed/list_collected_since`
+  - `pipelines/funding.py` — `_process_article` shared by `run_funding` and new `reprocess_funding`; extraction
+    runs in the same pass as the fetch, full text never stored; lead dedup per company (`funding.lead_dedup_days`)
+  - CLI `job-match funding reprocess [--since YYYY-MM-DD] [--limit N] [--dry-run]`; summary adds funding / events /
+    leads / by-source lines
+  - `normalization/numbers.py` — `WORD_NUMBERS` shared with the experience parser
+  - `docs/adr/0003-rule-based-funding-extraction.md`
+  - 95 new tests (456 total, 50-case FR/EN extractor matrix incl. negatives), ruff clean
 - **Milestone 10** (2026-10-04):
   - Live probe: `https://www.maddyness.com/feed/` (10 entries, served as text/html, parses fine) and
     `https://www.frenchweb.fr/feed` (100 entries). Trafilatura extracts both cleanly.
@@ -77,9 +94,10 @@ M9 manual GitHub setup still pending (see below).
   - 26 tests green, `ruff check .` clean
 
 ## Next step
-- **Milestone 11:** funding extraction (FundingEvent + Lead, null when unknown) — plug into `pipelines/funding.py`
-  where the full text is in memory; decide the keyword pre-filter there; set `articles.is_funding`.
-- Wire `job-match funding run` into `daily.yml` once M11 produces leads for the digest.
+- Run `job-match funding reprocess --dry-run` on real data and read the `funding_no_company` rate and a sample of
+  evidence sentences before trusting leads.
+- Leads in the email digest (brief §16), then wire `job-match funding run` into `daily.yml`.
+- **Milestone 12:** Lead ↔ Company ↔ Job relationships; cross-source event dedup.
 - Manual setup still required (see session log 2026-10-02 M9 entry).
 
 ## Deferred
@@ -150,12 +168,18 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
 ---
 
 ## Open decisions
+- **M11b: roundup articles:** one event per strict deal line (`^- <Company> lève|boucle|raises <explicit amount>`),
+  only after M11 precision is validated on real data.
 - Exact France Travail search parameters (ROME codes, departments), to settle in M2
 - Numeric thresholds (strong match, divergence, fuzzy T1/T2), to calibrate in M4 and M6 on real data
 - Score calibration (after first real run): scale is compressed (50–70 on samples). Options: normalize score = earned/max possible points, base_score 0, strong_threshold 60, more negative skills. Calibrate on ~50 real France Travail jobs.
 - ~~**M9 — WAL flush before data-repo push:**~~ **Resolved in M9.** `PRAGMA wal_checkpoint(TRUNCATE)` + `VACUUM` run in daily.yml before DB push. `*.sqlite-wal` and `*.sqlite-shm` added to `.gitignore`.
 
 ## Known issues
+- Funding extractor: company heuristic precision is unmeasured until live data (`funding_no_company` counter).
+  Lowercase brand names and "X et Y lèvent" are not recognised by design.
+- `funding reprocess` retries articles whose fetch fails on every run (`processed_at` stays NULL) while the
+  URL is in the DB. Acceptable for a manual command.
 - Maddyness RSS has full `content:encoded` in the feed; we ignore it and fetch the page for a single code path.
   Revisit if article fetches become a cost.
 - Funding dry run uses an in-memory DB (same convention as `job-match run --dry-run`), so every article counts as new.
@@ -196,3 +220,5 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
   EKIMETRICS 77, Nextep HR 72.
 - 2026-10-04: M10 complete. RSS ingestion: Maddyness + FrenchWeb adapters, `ArticleFetcher`, URL dedup,
   migration 0003, `job-match funding run`, ADR 0002. 361 tests passing.
+- 2026-10-04: M11 complete. Rule-based funding extractor with evidence, FundingEvent/Company/Lead, lead dedup,
+  migration 0004, `job-match funding reprocess`, ADR 0003. 456 tests passing. One event per article (M11b deferred).

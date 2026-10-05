@@ -31,3 +31,4 @@ funding:
   requests_per_second: 1      # article page fetches (polite crawl)
   extract_max_chars: 600      # short extract kept in `articles.extract`
   sources: [maddyness, frenchweb]
+  lead_dedup_days: 30         # no second Lead for the same company within N days

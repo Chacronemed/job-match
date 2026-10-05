@@ -128,6 +128,8 @@ class Article:
     published_at: datetime | None = None
     extract: str | None = None  # short head of the body only; full text is never stored
     id: int | None = None
+    is_funding: bool = False
+    processed_at: datetime | None = None  # None = funding extraction never ran (M10 rows)
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,6 +146,9 @@ class FundingEvent:
     sector: str | None = None
     location: str | None = None
     recruiting_signal: str | None = None
+    id: int | None = None
+    article_id: int | None = None
+    evidence: dict[str, str] = field(default_factory=dict)  # field -> sentence it came from
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,6 +159,8 @@ class Lead:
     created_at: datetime
     status: str = "new"
     notified_at: datetime | None = None
+    id: int | None = None
+    priority: str = "normal"  # "high" when the article carries a hiring signal
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,3 +178,8 @@ class RunSummary:
     api_calls: int = 0
     rejected_jobs: int = 0
     feeds: int = 0
+    funding_articles: int = 0
+    funding_events: int = 0
+    funding_no_company: int = 0
+    leads_deduped: int = 0
+    by_source: dict[str, dict[str, int]] = field(default_factory=dict)

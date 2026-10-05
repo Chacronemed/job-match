@@ -53,6 +53,16 @@ def main() -> None:
                         help="Maximum number of feed entries to process")
     frun_p.add_argument("--dry-run", action="store_true",
                         help="Fetch and extract but write nothing to the database")
+    frep_p = funding_sub.add_parser(
+        "reprocess", help="Refetch stored articles and (re)run funding extraction",
+    )
+    frep_p.add_argument("--since", metavar="YYYY-MM-DD",
+                        help="Re-extract every article collected on/after this date "
+                             "(default: only articles never processed)")
+    frep_p.add_argument("--limit", type=int, default=None, metavar="N",
+                        help="Maximum number of articles to reprocess")
+    frep_p.add_argument("--dry-run", action="store_true",
+                        help="Fetch and extract but write nothing to the database")
 
     args = parser.parse_args()
 
@@ -63,6 +73,8 @@ def main() -> None:
     elif args.command == "funding":
         if args.funding_command == "run":
             _cmd_funding_run(args)
+        elif args.funding_command == "reprocess":
+            _cmd_funding_reprocess(args)
         else:
             funding_p.print_help()
             sys.exit(1)
@@ -228,16 +240,66 @@ def _cmd_funding_run(args: argparse.Namespace) -> None:
     _print_funding_summary(summary, dry_run=args.dry_run)
 
 
-def _print_funding_summary(summary: RunSummary, *, dry_run: bool = False) -> None:
+def _cmd_funding_reprocess(args: argparse.Namespace) -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+
+    from datetime import date
+
+    from job_match.config.loader import load_settings
+    from job_match.funding.article import ArticleFetcher
+    from job_match.persistence.db import Database
+    from job_match.pipelines.funding import reprocess_funding
+
+    since: date | None = None
+    if args.since:
+        try:
+            since = date.fromisoformat(args.since)
+        except ValueError:
+            print(f"Invalid date {args.since!r} — expected YYYY-MM-DD", file=sys.stderr)
+            sys.exit(1)
+
+    cfg = _config_dir()
+    settings = load_settings(cfg / "settings.yaml")
+    fetcher = ArticleFetcher(requests_per_second=settings.funding.requests_per_second)
+    db_path = str(_data_dir() / "jobs.sqlite")  # reprocess always reads the real DB
+
+    if args.dry_run:
+        print("[DRY RUN] extraction runs on stored articles, nothing is written")
+
+    with Database(path=db_path) as db:
+        summary = reprocess_funding(
+            settings, db, fetcher, since=since, limit=args.limit, dry_run=args.dry_run,
+        )
+
+    _print_funding_summary(summary, dry_run=args.dry_run, kind="reprocess")
+
+
+def _print_funding_summary(
+    summary: RunSummary, *, dry_run: bool = False, kind: str = "run"
+) -> None:
     tag = " [DRY RUN]" if dry_run else ""
-    print(f"\nFunding run complete{tag}")
-    print(f"  feeds:      {summary.feeds}")
-    print(f"  found:      {summary.fetched}")
-    print(f"  new:        {summary.articles}")
-    print(f"  skipped:    {summary.duplicates}  (already seen)")
+    print(f"\nFunding {kind} complete{tag}")
+    if kind == "run":
+        print(f"  feeds:      {summary.feeds}")
+        print(f"  found:      {summary.fetched}")
+        print(f"  new:        {summary.articles}")
+        print(f"  skipped:    {summary.duplicates}  (already seen)")
+    else:
+        print(f"  selected:   {summary.fetched}")
+        print(f"  processed:  {summary.articles}")
     print(f"  errors:     {summary.errors}")
     if summary.api_calls:
         print(f"  api_calls:  {summary.api_calls}")
+    print(f"  funding:    {summary.funding_articles}  "
+          f"(articles, no company: {summary.funding_no_company})")
+    print(f"  events:     {summary.funding_events}")
+    print(f"  leads:      {summary.leads}  (deduped: {summary.leads_deduped})")
+    if summary.by_source:
+        print("  by source:")
+        for name in sorted(summary.by_source):
+            b = summary.by_source[name]
+            print(f"    {name:<12} articles={b.get('articles', 0)} funding={b.get('funding', 0)} "
+                  f"events={b.get('events', 0)} leads={b.get('leads', 0)}")
 
 
 def _print_summary(summary: RunSummary, *, dry_run: bool = False) -> None:

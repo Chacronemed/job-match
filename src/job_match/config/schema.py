@@ -54,6 +54,7 @@ class FundingConfig:
     requests_per_second: float = 1.0
     extract_max_chars: int = 600
     sources: list[str] = field(default_factory=lambda: ["maddyness", "frenchweb"])
+    lead_dedup_days: int = 30  # no second Lead for the same company within this window
 
 
 @dataclass

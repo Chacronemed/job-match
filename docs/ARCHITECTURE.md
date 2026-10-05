@@ -152,10 +152,10 @@ are readable in SQLite and JSON.
 | `ScoreResult` | `engine, available, score: int\|None, positive_matches, negative_matches, missing_preferences, explanations, raw: dict` |
 | `ScoringBreakdown` | `eligible, score, experience, positive_matches, negative_matches, missing_preferences, explanations, engines: dict[str, ScoreResult], divergence: int\|None, needs_review: bool` |
 | `Company` | `id, name, normalized_name, website, location` |
-| `Article` | `source, url, title, published_at, collected_at, extract` (short head only, **no body stored** — ADR 0002) |
-| `FundingEvent` | `company_id, amount, currency, round, date, investors, sector, location, recruiting_signal, source, article_url, collected_at`, where every unknown value is `None` |
-| `Lead` | `company_id, funding_event_id, reason, status, created_at` |
-| `RunSummary` | `pipeline, fetched, normalized, rejected_by_reason: dict, duplicates, eligible, strong, articles, leads, errors, api_calls, rejected_jobs, feeds` |
+| `Article` | `source, url, title, published_at, collected_at, extract, is_funding, processed_at` (short head only, **no body stored** — ADR 0002) |
+| `FundingEvent` | `company_id, article_id, amount, currency, round, date, investors, sector, location, recruiting_signal, source, article_url, collected_at, evidence: dict[field → sentence]`, where every unknown value is `None` (ADR 0003) |
+| `Lead` | `company_id, funding_event_id, reason, priority (normal/high), status, created_at, notified_at` |
+| `RunSummary` | `pipeline, fetched, normalized, rejected_by_reason: dict, duplicates, eligible, strong, articles, leads, errors, api_calls, rejected_jobs, feeds, funding_articles, funding_events, funding_no_company, leads_deduped, by_source` |
 
 Enums:
 - `ExperienceStatus {ELIGIBLE, REJECTED, UNKNOWN, NOT_MENTIONED}`
@@ -488,7 +488,7 @@ English-only, French postings are penalized, and the upstream repo is new with 2
 | 8 | Email digest | SMTP via env, digest of strong/relevant matches, rejection stats, leads |
 | 9 | GitHub Actions automation | `ci.yml` + `daily.yml`, profile/resume from secrets, private data repo push, ADR 0001 |
 | 10 | **RSS article ingestion** | `FundingSource` + `MaddynessSource`/`FrenchWebSource` (feedparser), `ArticleFetcher` (trafilatura), URL dedup before fetch, short extract only (migration 0003), `job-match funding run [--limit N] [--dry-run]`, ADR 0002. Not in `daily.yml` yet |
-| 11 | Funding extraction | FundingEvent + Lead, null when unknown |
+| 11 | **Funding extraction** | `funding/extractor.py` (rule-based FR/EN, evidence per field, null when unknown), `funding/leads.py`, `FundingEventRepository`/`LeadRepository`, migration 0004, extraction in the same pass as the fetch, `job-match funding reprocess [--since DATE]`, ADR 0003 |
 | 12 | Lead ↔ Company ↔ Job relationships | Company matching across pipelines |
 | 13 | Optional web application | Only if needed |
 
