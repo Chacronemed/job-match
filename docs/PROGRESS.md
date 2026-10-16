@@ -36,7 +36,13 @@ M9 manual GitHub setup still pending (see below).
     digest-visible went 0 → 70 (40 at or above `digest.min_score` 60). The veto rejects 41
     of the 533 titles; 2 dev-worded titles survive on an explicit role_title
     ("Ingénieur Développeur DevOps Kubernetes").
-  - 55 new tests (765 total), ruff clean.
+  - `daily.yml` can now clean the production DB: the `reprocess_since` date drives
+    `job-match reprocess` (new step, before the digest and the WAL checkpoint) and/or the
+    funding reprocess, selected by a new `reprocess_scope` choice input (jobs / funding /
+    both, default jobs). The step runs `--limit 0`, so only aggregate counts reach the
+    public Actions log, and `continue-on-error` keeps a failed cleanup from costing the
+    digest or the DB push.
+  - 62 new tests (772 total), ruff clean.
 - **Milestone 13** (2026-10-16):
   - `adapters/jobs/jooble.py` (`JoobleSource`, POST per keyword × region) and
     `adapters/jobs/adzuna.py` (`AdzunaSource`, one `what_or` GET per region — all keywords OR'd).
@@ -176,8 +182,9 @@ M9 manual GitHub setup still pending (see below).
   - 26 tests green, `ruff check .` clean
 
 ## Next step
-- Re-check the next real digest: it should now carry ~40 jobs, not 1. If the CI DB (private
-  data repo) was also double-run, `job-match reprocess` there drops its self-links too.
+- Clean the production DB: trigger "Daily run" manually with `reprocess_since` = the first
+  collection date to re-check (e.g. 2026-10-11) and `reprocess_scope` = `jobs`. Then re-check
+  the digest: it should carry ~40 jobs, not 1.
 - **Pending from M13:** add `JOOBLE_API_KEY` to `.env`, then run the Jooble-only check
   (`sources.enabled: [jooble]`, `job-match run --limit 10 --dry-run`) and review what Jooble
   actually returns: location formats not in `fr_geo.py`, and how many jobs land with
@@ -347,6 +354,9 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
   `digest.max_leads: 10`, priority then amount, overflow rolls over. Migration 0005. 537 tests passing.
   Replay on today's frozen live data: jobs emailed 102 → 25, leads emailed 26 → 10 (3 country-filtered,
   13 roll over), high-priority leads 14 → 1 (see open decision on the hiring window).
+- 2026-10-16: Daily workflow can clean the production DB: `reprocess_since` + new
+  `reprocess_scope` inputs drive `job-match reprocess` before the digest, counts only in the
+  log (`--limit 0`). 772 tests passing.
 - 2026-10-16: Location gate fixed to accept the departments we query (`ft_search.departments` as
   the single source of truth, unparseable location kept); FT per-query keyword moved to DEBUG and
   the per-keyword summary block off stdout (public Actions log). 586 tests.

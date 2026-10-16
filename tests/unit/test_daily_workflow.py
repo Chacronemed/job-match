@@ -40,7 +40,50 @@ def test_reprocess_input_and_step_order():
     assert _index("Reprocess funding articles") < _index("WAL checkpoint and VACUUM")
     assert _index("Reprocess funding articles") < _index("Send digest")
     assert "workflow_dispatch" in step["if"] and "inputs.reprocess_since != ''" in step["if"]
+    # since M13 the date is shared with the jobs reprocess, so the scope must select it
+    assert "inputs.reprocess_scope == 'funding'" in step["if"]
+    assert "inputs.reprocess_scope == 'both'" in step["if"]
     # the input is passed via env, never interpolated into the shell script
     assert step["env"]["REPROCESS_SINCE"] == "${{ inputs.reprocess_since }}"
     assert step["run"].strip() == 'job-match funding reprocess --since "$REPROCESS_SINCE"'
     assert "${{" not in step["run"]
+
+
+def test_reprocess_scope_input_is_a_choice_defaulting_to_jobs():
+    wf = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    triggers = wf.get("on", wf.get(True))
+    inp = triggers["workflow_dispatch"]["inputs"]["reprocess_scope"]
+
+    assert inp["required"] is False and inp["type"] == "choice"
+    assert inp["default"] == "jobs"
+    assert inp["options"] == ["jobs", "funding", "both"]
+
+
+def test_jobs_reprocess_runs_before_the_checkpoint_and_the_digest():
+    """Re-admitted jobs must reach today's digest, and the cleaned DB must be the pushed one."""
+    jobs_rep = _index("Reprocess jobs")
+
+    assert _index("Run pipeline") < jobs_rep
+    assert jobs_rep < _index("Reprocess funding articles")
+    assert jobs_rep < _index("WAL checkpoint and VACUUM")
+    assert jobs_rep < _index("Send digest")
+
+
+def test_jobs_reprocess_is_manual_scoped_and_cannot_block_the_digest():
+    step = _steps()[_index("Reprocess jobs")]
+    cond = step["if"]
+
+    assert "workflow_dispatch" in cond
+    assert "inputs.reprocess_since != ''" in cond
+    assert "inputs.reprocess_scope == 'jobs'" in cond
+    assert "inputs.reprocess_scope == 'both'" in cond
+    assert step.get("continue-on-error") is True
+
+
+def test_jobs_reprocess_takes_the_date_by_env_and_logs_counts_only():
+    step = _steps()[_index("Reprocess jobs")]
+
+    assert step["env"]["REPROCESS_SINCE"] == "${{ inputs.reprocess_since }}"
+    assert step["run"].strip() == 'job-match reprocess --since "$REPROCESS_SINCE" --limit 0'
+    assert "${{" not in step["run"]  # never interpolated into the shell script
+    assert "--limit 0" in step["run"]  # public log: aggregate counts, no job titles

@@ -6,10 +6,16 @@ on:
   workflow_dispatch:       # manual trigger
     inputs:
       reprocess_since:
-        description: "Optional YYYY-MM-DD: re-extract funding articles collected since this date"
+        description: "Optional YYYY-MM-DD: reprocess data collected since this date (empty = normal run)"
         required: false
         default: ""
         type: string
+      reprocess_scope:
+        description: "What reprocess_since applies to"
+        required: false
+        default: jobs
+        type: choice
+        options: [jobs, funding, both]
 
 # One writer at a time; never cancel a run in progress.
 concurrency:
@@ -84,12 +90,24 @@ jobs:
         continue-on-error: true
         run: job-match funding run
 
+      # Manual runs only: clean the production DB. Drops self-referential duplicate links,
+      # re-applies the eligibility gate and re-scores stored jobs; makes no API calls. Runs
+      # before the digest so re-admitted jobs go out in this run, and before the checkpoint so
+      # the cleaned DB is the one pushed. --limit 0 keeps job titles out of this public log.
+      - name: Reprocess jobs
+        id: reprocess_jobs
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.reprocess_since != '' && (inputs.reprocess_scope == 'jobs' || inputs.reprocess_scope == 'both') }}
+        continue-on-error: true
+        env:
+          REPROCESS_SINCE: ${{ inputs.reprocess_since }}
+        run: job-match reprocess --since "$REPROCESS_SINCE" --limit 0
+
       # Manual runs only: re-extract stored articles (e.g. after extractor changes). The DB
       # lives in the data repo, so this must run here. The input goes through an env var,
       # never interpolated into the script; the CLI rejects anything that is not a date.
       - name: Reprocess funding articles
         id: reprocess
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.reprocess_since != '' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.reprocess_since != '' && (inputs.reprocess_scope == 'funding' || inputs.reprocess_scope == 'both') }}
         continue-on-error: true
         env:
           REPROCESS_SINCE: ${{ inputs.reprocess_since }}

@@ -63,7 +63,7 @@ flowchart TD
     C --> D["Restore jobs.sqlite"]
     D --> E["job-match run"]
     E --> F["job-match funding run<br/>continue-on-error"]
-    F --> G["Optional, manual runs only:<br/>funding reprocess --since"]
+    F --> G["Optional, manual runs only:<br/>reprocess --since (jobs)<br/>funding reprocess --since"]
     G --> H["WAL checkpoint + VACUUM"]
     H --> I["job-match digest<br/>fails the step if the send fails"]
     I --> J["Push jobs.sqlite to data repo<br/>always, if the checkpoint succeeded"]
@@ -122,7 +122,7 @@ job-match funding run --dry-run --limit 10   # RSS → extraction, nothing writt
 job-match funding run                # ingest articles, funding events and leads into data/jobs.sqlite
 ```
 
-`job-match funding reprocess --since YYYY-MM-DD` re-runs extraction on stored articles. Sending real email needs the `SMTP_*` and `DIGEST_TO` variables from `.env.example`.
+`job-match reprocess --since YYYY-MM-DD` re-applies the gate and the scorer to jobs already in the database (no API calls), and `job-match funding reprocess --since YYYY-MM-DD` re-runs extraction on stored articles. The daily workflow exposes both on a manual trigger, through the `reprocess_since` date and the `reprocess_scope` choice (`jobs` / `funding` / `both`). Sending real email needs the `SMTP_*` and `DIGEST_TO` variables from `.env.example`.
 
 ## Configuration
 

@@ -8,8 +8,15 @@ Verifies that:
 """
 import logging
 from pathlib import Path
+from types import SimpleNamespace
 
-from job_match.cli import _config_dir, _data_dir, _print_summary, _quiet_http_logs
+from job_match.cli import (
+    _config_dir,
+    _data_dir,
+    _print_reprocess_summary,
+    _print_summary,
+    _quiet_http_logs,
+)
 from job_match.domain.models import RunSummary
 from job_match.persistence.db import Database, _default_migrations
 
@@ -188,3 +195,57 @@ def test_print_summary_shows_counts_per_source(capsys):
     assert "per source" in out
     assert "france_travail" in out and "98" in out
     assert "jooble" in out and "7" in out
+
+
+# ---------------------------------------------------------------------------
+# _print_reprocess_summary: counts always, titles only when asked
+# ---------------------------------------------------------------------------
+
+def _reprocess_summary() -> RunSummary:
+    return RunSummary(
+        pipeline="jobs_reprocess",
+        fetched=533,
+        rejected_jobs=448,
+        rejected_by_reason={"EXPERIENCE": 286, "NOT_RELEVANT": 194},
+        eligible=85,
+        strong=28,
+        duplicates=85,
+    )
+
+
+def _top() -> list:
+    return [
+        SimpleNamespace(score=91, title="Ingenieur DevOps AWS", company="Collective.work"),
+        SimpleNamespace(score=90, title="Ingenieur DevOps cloud", company="Externatic"),
+    ]
+
+
+def test_reprocess_summary_with_limit_zero_prints_counts_without_titles(capsys):
+    """The daily workflow runs this in a public log: aggregates only."""
+    _print_reprocess_summary(_reprocess_summary(), _top(), limit=0, dry_run=False)
+
+    out = capsys.readouterr().out
+    assert "jobs read:  533" in out
+    assert "eligible:   85" in out
+    assert "strong:     28" in out
+    assert "self-links dropped: 85" in out
+    assert "EXPERIENCE: 286" in out
+    assert "strong titles" not in out
+    assert "Externatic" not in out and "Collective.work" not in out
+
+
+def test_reprocess_summary_without_a_limit_shows_the_top_titles(capsys):
+    _print_reprocess_summary(_reprocess_summary(), _top(), limit=None, dry_run=False)
+
+    out = capsys.readouterr().out
+    assert "top 2 strong titles:" in out
+    assert "Collective.work" in out and "Externatic" in out
+
+
+def test_reprocess_summary_limit_caps_the_titles_and_marks_a_dry_run(capsys):
+    _print_reprocess_summary(_reprocess_summary(), _top(), limit=1, dry_run=True)
+
+    out = capsys.readouterr().out
+    assert "Reprocess complete [DRY RUN]" in out
+    assert "top 1 strong titles:" in out
+    assert "Externatic" not in out

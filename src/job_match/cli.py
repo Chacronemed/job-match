@@ -56,7 +56,7 @@ def main() -> None:
     rep_p.add_argument("--since", metavar="YYYY-MM-DD",
                        help="Only jobs collected on or after this date")
     rep_p.add_argument("--limit", type=int, default=None, metavar="N",
-                       help="Show at most N top scores in the output (default 10)")
+                       help="Show at most N top strong titles (0 for none; default 10)")
     rep_p.add_argument("--dry-run", action="store_true",
                        help="Report what would change without writing to the database")
 
@@ -145,7 +145,18 @@ def _cmd_reprocess(args: argparse.Namespace) -> None:
         )
         top = JobRepository(db.conn).list_eligible(min_score=settings.strong_threshold)
 
-    tag = " [DRY RUN]" if args.dry_run else ""
+    _print_reprocess_summary(summary, top, limit=args.limit, dry_run=args.dry_run)
+
+
+def _print_reprocess_summary(
+    summary: RunSummary, top: list, *, limit: int | None, dry_run: bool
+) -> None:
+    """Aggregate counts, then the N best scores.
+
+    `--limit 0` prints the counts alone: the daily workflow runs this step in a public
+    Actions log, where individual postings have no business being.
+    """
+    tag = " [DRY RUN]" if dry_run else ""
     print(f"\nReprocess complete{tag}")
     print(f"  jobs read:  {summary.fetched}")
     print(f"  rejected:   {summary.rejected_jobs} jobs")
@@ -160,10 +171,10 @@ def _cmd_reprocess(args: argparse.Namespace) -> None:
     if summary.errors:
         print(f"  errors:     {summary.errors}")
 
-    limit = args.limit or 10
-    if top:
-        print(f"\n  top {min(limit, len(top))} strong titles:")
-        for job in top[:limit]:
+    n = 10 if limit is None else limit
+    if top and n > 0:
+        print(f"\n  top {min(n, len(top))} strong titles:")
+        for job in top[:n]:
             print(f"    {job.score:>3}  {job.title}  —  {job.company}")
 
 
