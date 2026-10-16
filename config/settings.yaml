@@ -9,6 +9,26 @@ base_score: 50
 title_bonus: 10
 ft_requests_per_second: 3
 
+# Job sources. France Travail has a generous quota and runs one query per keyword x
+# department (see profile.ft_search). Jooble and Adzuna have small free quotas, so they
+# run one query per keyword x region instead, capped by max_calls_per_run.
+# Credentials come from the environment only; a source with no key is skipped with a
+# warning and the run continues.
+sources:
+  enabled: [france_travail, jooble]   # adzuna: add here once the plan is paid
+  regions:                            # quota-light sources only
+    - Île-de-France
+    - Lyon
+    - Toulouse
+    - Lille
+    - Bordeaux
+    - Rennes
+    - Nice
+  jooble:
+    max_calls_per_run: 15
+  adzuna:
+    max_calls_per_run: 20
+
 # Seniority keywords → minimum required years.  Explicit number in the text wins.
 seniority_min_years:
   junior:      0

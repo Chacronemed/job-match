@@ -1,12 +1,13 @@
 from job_match.config.schema import Profile, Settings
 from job_match.domain.models import (
+    ContractType,
     EligibilityResult,
     ExperienceRequirement,
     Job,
     RejectionReason,
 )
 from job_match.experience.parser import infer_seniority_min
-from job_match.normalization.location import normalize_location, parse_department
+from job_match.normalization.location import departments_for, normalize_location
 from job_match.normalization.skills import matches_skill, title_keyword
 
 
@@ -58,10 +59,12 @@ def evaluate(
     if effective_min is not None and effective_min > profile.candidate.experience_years:
         reasons.append(RejectionReason.EXPERIENCE)
 
-    # 2. Contract type
+    # 2. Contract type. UNKNOWN is "not stated", not "wrong": Jooble and Adzuna often
+    # ship no usable contract field, and we never reject on something we could not read.
     allowed = profile.filters.contract_types
-    if allowed and job.contract_type not in allowed:
-        reasons.append(RejectionReason.CONTRACT)
+    if allowed and job.contract_type is not ContractType.UNKNOWN:
+        if job.contract_type not in allowed:
+            reasons.append(RejectionReason.CONTRACT)
 
     # 3. Location
     locs = profile.filters.locations
@@ -75,15 +78,19 @@ def location_allowed(location: str, profile: Profile) -> bool:
     """Accept remote, a configured city name, or a department we actually queried.
 
     The department codes come from `ft_search.departments` — the same list that drives the
-    API fan-out, so there is no second location list to keep in sync. A location with no
-    readable "NN - City" prefix is kept: we never reject on a location we could not parse.
+    API fan-out, so there is no second location list to keep in sync.
+
+    Source-independent by design: France Travail sends "92 - Nanterre", Jooble and Adzuna
+    send "Nanterre" or "Île-de-France", and `departments_for` resolves all three. A region
+    passes when it overlaps the departments we query. A location that resolves to nothing
+    is kept — we never reject on a location we could not read.
     """
     job_loc = normalize_location(location)
-    if "remote" in job_loc:
+    if "remote" in job_loc or "teletravail" in job_loc:
         return True
     if any(normalize_location(loc) in job_loc for loc in profile.filters.locations):
         return True
-    dept = parse_department(location)
-    if dept is None:
+    candidates = departments_for(location)
+    if not candidates:
         return True  # unknown / unparseable → keep the job
-    return dept in {str(d).upper() for d in profile.ft_search.departments}
+    return bool(candidates & {str(d).upper() for d in profile.ft_search.departments})

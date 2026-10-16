@@ -589,7 +589,7 @@ def test_every_department_is_queried():
 
     queried = [dict(c.request.url.params).get("departement") for c in search_route.calls]
     assert queried == depts
-    assert [s.department for s in source.query_stats] == depts
+    assert [s.area for s in source.query_stats] == depts
 
 
 def test_per_query_cap_does_not_starve_later_departments():
@@ -629,7 +629,7 @@ def test_query_stats_record_keyword_department_and_fetched():
         source = _source(profile)
         list(source.fetch())
 
-    assert [(s.query, s.department, s.fetched, s.available) for s in source.query_stats] == [
+    assert [(s.query, s.area, s.fetched, s.available) for s in source.query_stats] == [
         ("devops", "75", 1, 1),
         ("devops", "92", 1, 1),
         ("sre", "75", 1, 1),
@@ -645,7 +645,7 @@ def test_empty_query_is_still_recorded_in_stats():
         source = _source(_profile(departments=["75", "92"]))
         list(source.fetch())
 
-    assert [(s.department, s.fetched) for s in source.query_stats] == [("75", 0), ("92", 0)]
+    assert [(s.area, s.fetched) for s in source.query_stats] == [("75", 0), ("92", 0)]
 
 
 def _query_log_lines(caplog, level: str) -> list[str]:

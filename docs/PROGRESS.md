@@ -3,10 +3,47 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**Milestone 12: Lead ↔ Company ↔ Job + leads digest + daily wiring** — **DONE** (2026-10-05).
+**Milestone 13: multi-source job ingestion (Jooble + Adzuna)** — **code DONE** (2026-10-16),
+one verification step pending: the Jooble-only live run needs `JOOBLE_API_KEY` in `.env`
+(`job-match run --limit 10 --dry-run` with `sources.enabled: [jooble]`).
 M9 manual GitHub setup still pending (see below).
 
 ## Done
+- **Milestone 13** (2026-10-16):
+  - `adapters/jobs/jooble.py` (`JoobleSource`, POST per keyword × region) and
+    `adapters/jobs/adzuna.py` (`AdzunaSource`, one `what_or` GET per region — all keywords OR'd).
+    No keyword × department fan-out: their free quotas are a few hundred calls a day.
+  - `adapters/jobs/factory.py` — `build_sources(profile, settings, limit=)` + `REQUIRED_ENV`.
+    Enabled source without credentials → one WARNING, run continues; empty list → exit 1.
+  - `config/settings.yaml` `sources:` block — `enabled: [france_travail, jooble]` (adzuna off
+    until the plan is paid), `regions`, `jooble.max_calls_per_run: 15`, `adzuna: 20`.
+    `SourcesConfig`/`SourceLimits` in schema; any key other than `enabled`/`regions` is a
+    per-source limit, so a 4th source needs no schema change.
+  - `normalization/fr_geo.py` (regions → departments, ~170 cities, department names) +
+    `location.departments_for()`: resolves `"92 - Nanterre"`, `"Nanterre"`,
+    `"Nanterre, Hauts-de-Seine"` and `"Île-de-France"`. Empty result = unknown → job kept.
+    Longest name wins (Boulogne-Billancourt 92 vs Boulogne-sur-Mer 62).
+  - `normalization/contract.py` — `parse_contract_type(*texts)` (FR/EN). "Full-time" is working
+    time, not a contract, and stays UNKNOWN.
+  - Gate: contract `UNKNOWN` no longer rejects (same rule as unknown experience/location); a
+    *stated* contract outside the filter still does. Location gate uses `departments_for`.
+  - `pipelines/jobs.py` — `run_jobs(sources, ...)` takes one source or a sequence, drains them
+    in order through one dedup pass, and reports `by_source` (fetched/eligible/duplicates/calls).
+    A source whose `fetch` raises costs one error, not the run.
+  - Dedup blocks on the company alone (`JobRepository.list_by_company`): the same offer on
+    Jooble carries UNKNOWN contract, so the old `(company, contract_type)` block never
+    compared them. First source in `enabled` order wins the canonical row.
+  - `cli.py` — `_quiet_http_logs()` keeps `httpx`/`httpcore` above INFO. Jooble puts its API key
+    in the URL *path* and Adzuna in the query string, and httpx logs full URLs at INFO straight
+    into the public Actions log. Adapters log their own line with the URL redacted (`<key>`).
+    Summary prints a per-source block; `QueryStat.department` → `area`,
+    `RunSummary.by_department` → `by_area` (a region is not a department).
+  - `.env.example` + `daily.yml` env: `JOOBLE_API_KEY`, `ADZUNA_APP_ID`, `ADZUNA_APP_KEY`.
+    README sources line + diagram. `docs/adr/0004-multi-source-ingestion.md`.
+  - 124 new tests (710 total), all HTTP mocked with respx, ruff clean.
+  - Verified locally: jooble-only without a key → one WARNING + exit 1; committed config →
+    jooble skipped, France Travail ran (503 fetched, 111 eligible, 29 strong, 98 calls);
+    no httpx URL line reaches stdout.
 - Project brief written (`docs/PROJECT_BRIEF.md`, `CLAUDE.md`)
 - `docs/ARCHITECTURE.md` (brief §25, 14 sections).
 - **Milestone 12** (2026-10-05):
@@ -111,9 +148,14 @@ M9 manual GitHub setup still pending (see below).
   - 26 tests green, `ruff check .` clean
 
 ## Next step
+- **Pending from M13:** add `JOOBLE_API_KEY` to `.env`, then run the Jooble-only check
+  (`sources.enabled: [jooble]`, `job-match run --limit 10 --dry-run`) and review what Jooble
+  actually returns: location formats not in `fr_geo.py`, and how many jobs land with
+  UNKNOWN contract.
+- Add `JOOBLE_API_KEY` as a GitHub secret before the next daily run, or Jooble stays skipped in CI.
 - Complete the M9 manual GitHub setup and trigger the first daily run; review the first digest's leads and
   evidence sentences (precision check before M11b).
-- **Milestone 13:** optional web application (only if needed).
+- **Milestone 14:** optional web application (only if needed).
 - Manual setup still required (see session log 2026-10-02 M9 entry).
 
 ## Deferred
@@ -173,6 +215,9 @@ Add each of the following:
 | `DIGEST_TO` | Email address to send the digest to |
 | `PROFILE_YAML` | `base64 -w0 config/profile.yaml` — run this locally and paste the output |
 | `DATA_REPO_DEPLOY_KEY` | Contents of `~/.ssh/job_match_data_deploy` (the private key, full including header/footer lines) |
+| `JOOBLE_API_KEY` | Jooble API key (jooble.org/api/keys) — optional; without it Jooble is skipped |
+| `ADZUNA_APP_ID` | Adzuna app id — optional, and Adzuna is off in `sources.enabled` anyway |
+| `ADZUNA_APP_KEY` | Adzuna app key — optional, same |
 
 **Gmail App Password:** Google Account → Security → 2-Step Verification → App passwords → create one named "job-match".
 
@@ -196,6 +241,14 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
 - ~~**M9 — WAL flush before data-repo push:**~~ **Resolved in M9.** `PRAGMA wal_checkpoint(TRUNCATE)` + `VACUUM` run in daily.yml before DB push. `*.sqlite-wal` and `*.sqlite-shm` added to `.gitignore`.
 
 ## Known issues
+- `fr_geo.py` is deliberately incomplete: an unlisted city resolves to no department and the
+  job is kept. Expect noise from Jooble locations outside the table, never silent drops.
+- Contract `UNKNOWN` now passes the gate, so Jooble/Adzuna jobs with no contract field reach
+  scoring. If that proves noisy, add a scoring penalty — not a gate rejection.
+- Cross-source dedup is fuzzy on title+description within one company. A reposting agency that
+  renames the company still yields two canonical rows (same limitation as before).
+- Jooble returns a snippet, not the full description: the experience parser and the scorer see
+  less text for those jobs than for France Travail ones.
 - Existing funding events also lack the stricter hiring/country extraction until reprocessed: trigger
   "Daily run" manually with `reprocess_since` (the DB lives in the private data repo).
 - Existing funding events have no `country` until `job-match funding reprocess --since <date>` is run.
@@ -259,6 +312,12 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
   `digest.max_leads: 10`, priority then amount, overflow rolls over. Migration 0005. 537 tests passing.
   Replay on today's frozen live data: jobs emailed 102 → 25, leads emailed 26 → 10 (3 country-filtered,
   13 roll over), high-priority leads 14 → 1 (see open decision on the hiring window).
+- 2026-10-16: Location gate fixed to accept the departments we query (`ft_search.departments` as
+  the single source of truth, unparseable location kept); FT per-query keyword moved to DEBUG and
+  the per-keyword summary block off stdout (public Actions log). 586 tests.
+- 2026-10-16: M13 complete (bar the Jooble live run). Jooble + Adzuna adapters, source factory,
+  `sources` config, `fr_geo.py`, contract parser, multi-source pipeline with cross-source dedup
+  and `by_source`, httpx URL logging silenced, ADR 0004. 710 tests passing.
 - 2026-10-05: Follow-ups. Single-topic hiring exception (tie-back to raise/company), lead ranking
   hiring → early round → recency, keyword `production` replaced by `ingénieur de production informatique`
   (`exploitation` kept), `daily.yml` workflow_dispatch input `reprocess_since` (runs before the digest,

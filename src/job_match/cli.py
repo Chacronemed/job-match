@@ -8,9 +8,19 @@ from dotenv import load_dotenv
 
 from job_match.domain.models import RunSummary
 
-_FT_VARS = ("FT_CLIENT_ID", "FT_CLIENT_SECRET")
-
 _logger = logging.getLogger(__name__)
+
+
+def _quiet_http_logs() -> None:
+    """Keep httpx's request log above INFO.
+
+    It prints the full URL, and for Jooble that URL carries the API key in its path
+    (Adzuna puts credentials in the query string). `job-match run` output goes to a
+    public Actions log, so the secret must never be written there. Errors still surface:
+    adapters log their own aggregate line per query, with the URL redacted.
+    """
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
 def _config_dir() -> Path:
@@ -163,8 +173,9 @@ def _cmd_digest(args: argparse.Namespace) -> None:
 
 def _cmd_run(args: argparse.Namespace) -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+    _quiet_http_logs()
 
-    from job_match.adapters.jobs.france_travail import FranceTravailSource
+    from job_match.adapters.jobs.factory import build_sources, missing_env
     from job_match.config.loader import load_aliases, load_profile, load_settings
     from job_match.persistence.db import Database
     from job_match.pipelines.jobs import run_jobs
@@ -180,20 +191,22 @@ def _cmd_run(args: argparse.Namespace) -> None:
     if not args.dry_run:
         data_dir.mkdir(parents=True, exist_ok=True)
 
-    missing = [v for v in _FT_VARS if not os.environ.get(v)]
-    if missing:
-        for var in missing:
-            print(f"Missing {var}: set it in .env or as an env var", file=sys.stderr)
+    # Each enabled source with credentials runs; the others are skipped with a warning
+    # inside build_sources. Only an empty result is fatal.
+    sources = build_sources(profile, settings, limit=args.limit)
+    if not sources:
+        print("No job source could run. Missing credentials:", file=sys.stderr)
+        for name in settings.sources.enabled:
+            for var in missing_env(name):
+                print(f"  {name}: {var}", file=sys.stderr)
+        print("Set them in .env or as env vars (see .env.example).", file=sys.stderr)
         sys.exit(1)
+    print(f"sources: {', '.join(s.name for s in sources)}")
 
     db_path = ":memory:" if args.dry_run else str(data_dir / "jobs.sqlite")
-    ft_kwargs = {} if args.limit is None else {"max_results": args.limit}
-    source = FranceTravailSource(
-        profile, requests_per_second=settings.ft_requests_per_second, **ft_kwargs
-    )
 
     with Database(path=db_path) as db:
-        summary = run_jobs(source, profile, settings, db, aliases, dry_run=args.dry_run)
+        summary = run_jobs(sources, profile, settings, db, aliases, dry_run=args.dry_run)
 
     _print_summary(summary, dry_run=args.dry_run)
 
@@ -323,10 +336,18 @@ def _print_summary(summary: RunSummary, *, dry_run: bool = False) -> None:
         print(f"  api_calls:  {summary.api_calls}")
     if summary.errors:
         print(f"  errors:     {summary.errors}")
-    if summary.by_department:
-        print("  fetched per department:")
-        for dept, count in sorted(summary.by_department.items()):
-            print(f"    {dept}: {count}")
+    if summary.by_source:
+        print("  per source (fetched / eligible / duplicates / api calls):")
+        for name in sorted(summary.by_source):
+            c = summary.by_source[name]
+            print(
+                f"    {name:<16} {c.get('fetched', 0):>5} / {c.get('eligible', 0):>4}"
+                f" / {c.get('duplicates', 0):>4} / {c.get('calls', 0):>4}"
+            )
+    if summary.by_area:
+        print("  fetched per area (department or region):")
+        for area, count in sorted(summary.by_area.items()):
+            print(f"    {area}: {count}")
     if summary.by_keyword:
         # Query keywords come from the private profile and this output lands in a public
         # CI log: departments are printed, the per-keyword breakdown stays at DEBUG.

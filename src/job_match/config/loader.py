@@ -19,6 +19,8 @@ from job_match.config.schema import (
     Settings,
     Skills,
     SkillWeight,
+    SourceLimits,
+    SourcesConfig,
 )
 from job_match.domain.models import ContractType
 
@@ -89,6 +91,7 @@ def load_settings(path: Path) -> Settings:
         seniority_min_years={
             str(k): int(v) for k, v in (raw.get("seniority_min_years") or {}).items()
         },
+        sources=_parse_sources(raw.get("sources"), path),
         scoring=ScoringConfig(
             jms=JMSConfig(
                 enabled=bool(jms_raw.get("enabled", False)),
@@ -146,6 +149,33 @@ def _parse_lead_filters(value: object, path: Path) -> LeadFilterConfig:
             raw.get("exclude_sectors"), "funding.lead_filters.exclude_sectors", path
         ),
         fx_to_eur={str(k).upper(): float(v) for k, v in fx.items()},
+    )
+
+
+def _parse_sources(value: object, path: Path) -> SourcesConfig:
+    """Parse the `sources` block.
+
+    `enabled` and `regions` are lists; every other key is a source name carrying that
+    source's limits, so adding a source needs no schema change.
+    """
+    raw = _mapping(value, "sources", path)
+    d = SourcesConfig()
+    if not raw:
+        return d
+    limits: dict[str, SourceLimits] = {}
+    for key, sub in raw.items():
+        if key in ("enabled", "regions"):
+            continue
+        sub_raw = _mapping(sub, f"sources.{key}", path)
+        limits[str(key)] = SourceLimits(
+            max_calls_per_run=int(
+                sub_raw.get("max_calls_per_run", SourceLimits().max_calls_per_run)
+            )
+        )
+    return SourcesConfig(
+        enabled=_str_list(raw.get("enabled", d.enabled), "sources.enabled", path),
+        regions=_str_list(raw.get("regions"), "sources.regions", path),
+        limits=limits,
     )
 
 

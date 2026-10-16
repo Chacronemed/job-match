@@ -9,7 +9,7 @@ Verifies that:
 import logging
 from pathlib import Path
 
-from job_match.cli import _config_dir, _data_dir, _print_summary
+from job_match.cli import _config_dir, _data_dir, _print_summary, _quiet_http_logs
 from job_match.domain.models import RunSummary
 from job_match.persistence.db import Database, _default_migrations
 
@@ -140,7 +140,7 @@ def test_print_summary_keeps_keywords_off_stdout(capsys, caplog):
         pipeline="jobs",
         fetched=3,
         queries=2,
-        by_department={"92": 2, "77": 1},
+        by_area={"92": 2, "77": 1},
         by_keyword={"devops": 2, "sre": 1},
     )
 
@@ -152,3 +152,39 @@ def test_print_summary_keeps_keywords_off_stdout(capsys, caplog):
     assert "devops" not in out
     assert "per keyword" not in out
     assert "devops=2" in caplog.text  # still available at DEBUG
+
+
+# ---------------------------------------------------------------------------
+# _quiet_http_logs — Jooble's API key travels in the URL path
+# ---------------------------------------------------------------------------
+
+def test_quiet_http_logs_hides_the_request_url(caplog):
+    """httpx logs the full URL at INFO; for Jooble that URL contains the API key.
+
+    `job-match run` output goes to a public Actions log, so that logger has to stay
+    above INFO. Warnings and errors still get through.
+    """
+    logging.getLogger("httpx").setLevel(logging.INFO)  # simulate basicConfig(INFO)
+    _quiet_http_logs()
+
+    httpx_logger = logging.getLogger("httpx")
+    assert httpx_logger.isEnabledFor(logging.WARNING)
+    assert not httpx_logger.isEnabledFor(logging.INFO)
+    assert not logging.getLogger("httpcore").isEnabledFor(logging.INFO)
+
+
+def test_print_summary_shows_counts_per_source(capsys):
+    summary = RunSummary(
+        pipeline="jobs",
+        fetched=3,
+        by_source={
+            "france_travail": {"fetched": 2, "eligible": 2, "duplicates": 0, "calls": 98},
+            "jooble": {"fetched": 1, "eligible": 0, "duplicates": 1, "calls": 7},
+        },
+    )
+    _print_summary(summary)
+
+    out = capsys.readouterr().out
+    assert "per source" in out
+    assert "france_travail" in out and "98" in out
+    assert "jooble" in out and "7" in out

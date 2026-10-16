@@ -359,12 +359,26 @@ class JobRepository:
         self._conn.commit()
         return cursor.rowcount
 
+    def list_by_company(self, company_normalized: str, since: datetime) -> list[Job]:
+        """Dedup block: every recent job of one company, whatever its contract type.
+
+        Cross-source dedup needs this. The same offer on Jooble usually carries no
+        contract type, so a (company, contract_type) block would never compare it to the
+        France Travail row.
+        """
+        rows = self._conn.execute(
+            "SELECT * FROM jobs WHERE company_normalized = ? AND collected_at >= ?",
+            (company_normalized, since.isoformat()),
+        ).fetchall()
+        return [_row_to_job(r) for r in rows]
+
     def list_by_block(
         self,
         company_normalized: str,
         contract_type: ContractType,
         since: datetime,
     ) -> list[Job]:
+        """Narrower block, kept for callers that know the contract type is reliable."""
         rows = self._conn.execute(
             "SELECT * FROM jobs WHERE company_normalized = ? AND contract_type = ?"
             " AND collected_at >= ?",
@@ -470,7 +484,7 @@ class RunRepository:
                         "leads_deduped": summary.leads_deduped,
                         "by_source": summary.by_source,
                         "queries": summary.queries,
-                        "by_department": summary.by_department,
+                        "by_area": summary.by_area,
                         "by_keyword": summary.by_keyword,
                     }
                 ),

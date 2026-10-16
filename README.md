@@ -16,12 +16,12 @@ Generic job boards fail a junior DevOps engineer in four ways:
 
 - **Noise.** A keyword search for "production" or "infrastructure" returns hotel receptionists and factory line operators.
 - **Hidden experience requirements.** "5 ans d'expérience minimum" sits in paragraph four; the title just says "Ingénieur DevOps".
-- **Duplicates.** The same position appears several times through agencies and reposts.
+- **Duplicates.** The same position appears several times through agencies and reposts — and again on every board that carries it.
 - **Invisible "hiring soon" signals.** A startup that just raised a seed round will hire, but that news is in tech media, not on job boards.
 
 ## What it does, every day
 
-- **Fetches** offers from the France Travail API (one query per keyword × department) and rejects, before any scoring, jobs that are irrelevant or that require more experience than the candidate has.
+- **Fetches** offers from several job boards — France Travail (one query per keyword × department), Jooble and optionally Adzuna (one query per keyword × region, under a hard call budget) — and rejects, before any scoring, jobs that are irrelevant or that require more experience than the candidate has. A source whose API key is missing is skipped; the run continues on the others.
 - **Scores** the rest with an explainable rule engine: every point is traceable to a matched or penalised skill.
 - **Deduplicates** with a stable fingerprint plus fuzzy matching, and records duplicate links instead of deleting rows.
 - **Reads funding news** (Maddyness, FrenchWeb RSS), extracts *who raised how much, in which round, from whom, and whether they plan to hire*, and turns it into leads linked to the same companies' job offers.
@@ -35,8 +35,9 @@ Two independent pipelines that only meet in SQLite and in the digest. A funding 
 flowchart LR
     subgraph JOBS["Jobs pipeline"]
         FT["France Travail API<br/>OAuth2, paginated"] --> NORM["Normalize<br/>company, title, location"]
+        JB["Jooble / Adzuna<br/>quota-capped"] --> NORM
         NORM --> GATE["Hard gates<br/>relevance, experience,<br/>contract, location"]
-        GATE --> DEDUP["Fingerprint +<br/>fuzzy dedup"]
+        GATE --> DEDUP["Fingerprint +<br/>fuzzy dedup<br/>across sources"]
         DEDUP --> SCORE["Explainable<br/>rule scoring"]
     end
 

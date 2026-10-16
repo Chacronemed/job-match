@@ -1,0 +1,77 @@
+from pathlib import Path
+
+import pytest
+
+from job_match.config.loader import load_settings
+from job_match.config.schema import ConfigError
+
+
+def _write(tmp_path: Path, body: str) -> Path:
+    path = tmp_path / "settings.yaml"
+    path.write_text(body, encoding="utf-8")
+    return path
+
+
+def test_sources_defaults_to_france_travail_only(tmp_path):
+    s = load_settings(_write(tmp_path, "strong_threshold: 70\n"))
+    assert s.sources.enabled == ["france_travail"]
+    assert s.sources.regions == []
+    assert s.sources.limits == {}
+
+
+def test_sources_parsed(tmp_path):
+    s = load_settings(
+        _write(
+            tmp_path,
+            "sources:\n"
+            "  enabled: [france_travail, jooble]\n"
+            "  regions: [Île-de-France, Lyon]\n"
+            "  jooble:\n    max_calls_per_run: 15\n"
+            "  adzuna:\n    max_calls_per_run: 20\n",
+        )
+    )
+    assert s.sources.enabled == ["france_travail", "jooble"]
+    assert s.sources.regions == ["Île-de-France", "Lyon"]
+    assert s.sources.max_calls("jooble") == 15
+    assert s.sources.max_calls("adzuna") == 20
+
+
+def test_limits_can_be_declared_for_a_disabled_source(tmp_path):
+    """Adzuna's cap is configured before it is switched on."""
+    s = load_settings(
+        _write(tmp_path, "sources:\n  enabled: [jooble]\n  adzuna:\n    max_calls_per_run: 20\n")
+    )
+    assert s.sources.is_enabled("adzuna") is False
+    assert s.sources.max_calls("adzuna") == 20
+
+
+def test_unconfigured_source_falls_back_to_the_default_cap(tmp_path):
+    s = load_settings(_write(tmp_path, "sources:\n  enabled: [jooble]\n"))
+    assert s.sources.max_calls("jooble") == 10
+    assert s.sources.max_calls("jooble", default=5) == 5
+
+
+def test_is_enabled(tmp_path):
+    s = load_settings(_write(tmp_path, "sources:\n  enabled: [france_travail, jooble]\n"))
+    assert s.sources.is_enabled("france_travail") is True
+    assert s.sources.is_enabled("adzuna") is False
+
+
+def test_enabled_must_be_a_list_of_strings(tmp_path):
+    with pytest.raises(ConfigError, match="sources.enabled"):
+        load_settings(_write(tmp_path, "sources:\n  enabled: jooble\n"))
+
+
+def test_sources_must_be_a_mapping(tmp_path):
+    with pytest.raises(ConfigError, match="sources must be a mapping"):
+        load_settings(_write(tmp_path, "sources: [jooble]\n"))
+
+
+def test_committed_settings_enable_jooble_and_keep_adzuna_off():
+    """The real config: Adzuna stays out of `enabled` until the plan is paid."""
+    s = load_settings(Path("config/settings.yaml"))
+    assert s.sources.enabled == ["france_travail", "jooble"]
+    assert s.sources.is_enabled("adzuna") is False
+    assert s.sources.max_calls("jooble") == 15
+    assert s.sources.max_calls("adzuna") == 20
+    assert "Île-de-France" in s.sources.regions

@@ -157,7 +157,7 @@ class FranceTravailSource:
                 start += len(results)
         finally:
             # Runs on normal exit, on the max_results return, and on errors.
-            self._query_stats.append(QueryStat(label, dept_label, fetched, total))
+            self._query_stats.append(QueryStat(label, dept_label, fetched, total, self.name))
             available = total if total is not None else "?"
             # Query keywords come from the private profile: aggregates at INFO, keyword at DEBUG.
             logger.info("query dept=%s fetched=%d available=%s", dept_label, fetched, available)

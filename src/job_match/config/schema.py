@@ -39,6 +39,34 @@ class FTSearch:
 
 
 @dataclass
+class SourceLimits:
+    """Per-source hard caps. Jooble and Adzuna have small free quotas."""
+
+    max_calls_per_run: int = 10
+
+
+@dataclass
+class SourcesConfig:
+    """Which job sources run, and the geography/quota they run with.
+
+    `regions` drives the quota-light sources: one query per keyword x region, never the
+    keyword x department fan-out used for France Travail. Keywords stay in the profile
+    (`ft_search.keywords`) — they are personal, regions are not.
+    """
+
+    enabled: list[str] = field(default_factory=lambda: ["france_travail"])
+    regions: list[str] = field(default_factory=list)
+    limits: dict[str, SourceLimits] = field(default_factory=dict)
+
+    def is_enabled(self, name: str) -> bool:
+        return name in self.enabled
+
+    def max_calls(self, name: str, default: int = 10) -> int:
+        limit = self.limits.get(name)
+        return limit.max_calls_per_run if limit else default
+
+
+@dataclass
 class JMSConfig:
     enabled: bool = False
     commit_sha: str | None = None
@@ -99,6 +127,7 @@ class Settings:
     title_bonus: int = 10
     ft_requests_per_second: float = 3.0
     seniority_min_years: dict[str, int] = field(default_factory=dict)
+    sources: SourcesConfig = field(default_factory=SourcesConfig)
     scoring: ScoringConfig = field(default_factory=ScoringConfig)
     funding: FundingConfig = field(default_factory=FundingConfig)
     relevance: RelevanceConfig = field(default_factory=RelevanceConfig)

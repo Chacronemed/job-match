@@ -366,3 +366,73 @@ def test_seniority_confirme_in_title():
         job, req, _make_profile(experience_years=2.0), _make_settings(seniority_min_years=_SMAP)
     )
     assert not result.eligible  # confirmé → 3 yrs; candidate has 2
+
+
+# ---------------------------------------------------------------------------
+# Location gate — Jooble / Adzuna formats (city or region name, no "NN -" prefix)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    ("location", "why"),
+    [
+        ("Nanterre", "bare city resolves to 92, which we query"),
+        ("Nanterre, Hauts-de-Seine", "Adzuna's city + department form"),
+        ("Île-de-France", "region overlaps the departments we query"),
+        ("Melun", "77 is queried even though no city name is configured"),
+        ("Télétravail", "remote in French"),
+        ("Zurich", "unknown place is kept, never rejected"),
+        ("France", "country-wide posting is kept"),
+    ],
+)
+def test_location_accepted_without_a_department_prefix(location, why):
+    result = evaluate(
+        _make_job(location=location),
+        _req(),
+        _make_profile(locations=["Paris"], departments=_IDF),
+    )
+    assert result.eligible is True, why
+
+
+@pytest.mark.parametrize("location", ["Marseille", "Nantes", "Strasbourg"])
+def test_location_rejected_for_a_city_outside_the_queried_departments(location):
+    result = evaluate(
+        _make_job(location=location),
+        _req(),
+        _make_profile(locations=["Paris"], departments=_IDF),
+    )
+    assert result.eligible is False
+    assert RejectionReason.LOCATION in result.reasons
+
+
+def test_region_passes_when_only_one_of_its_departments_is_queried():
+    """"Provence-Alpes-Côte d'Azur" covers 06, which we query — keep it."""
+    result = evaluate(
+        _make_job(location="Provence-Alpes-Côte d'Azur"),
+        _req(),
+        _make_profile(locations=["Nice"], departments=["06"]),
+    )
+    assert result.eligible is True
+
+
+# ---------------------------------------------------------------------------
+# Contract gate — UNKNOWN is "not stated", not "wrong"
+# ---------------------------------------------------------------------------
+
+def test_unknown_contract_type_is_not_a_rejection():
+    """Jooble and Adzuna often ship no usable contract field; we don't reject on silence."""
+    result = evaluate(
+        _make_job(contract_type=ContractType.UNKNOWN),
+        _req(),
+        _make_profile(contract_types=[ContractType.CDI]),
+    )
+    assert result.eligible is True
+
+
+def test_a_stated_contract_outside_the_filter_is_still_rejected():
+    result = evaluate(
+        _make_job(contract_type=ContractType.STAGE),
+        _req(),
+        _make_profile(contract_types=[ContractType.CDI]),
+    )
+    assert result.eligible is False
+    assert RejectionReason.CONTRACT in result.reasons

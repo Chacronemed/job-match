@@ -64,12 +64,17 @@ jobs:
             echo "No existing DB — starting fresh"
           fi
 
+      # Sources without a secret are skipped with a warning; the run continues on the
+      # rest. Which sources are enabled is config/settings.yaml, not this file.
       - name: Run pipeline
         id: pipeline
         run: job-match run
         env:
           FT_CLIENT_ID:     ${{ secrets.FT_CLIENT_ID }}
           FT_CLIENT_SECRET: ${{ secrets.FT_CLIENT_SECRET }}
+          JOOBLE_API_KEY:   ${{ secrets.JOOBLE_API_KEY }}
+          ADZUNA_APP_ID:    ${{ secrets.ADZUNA_APP_ID }}
+          ADZUNA_APP_KEY:   ${{ secrets.ADZUNA_APP_KEY }}
 
       # Funding pipeline: RSS → articles → FundingEvent → Lead. Needs no secrets.
       # Feed/article failures are counted, never fatal; continue-on-error only guards

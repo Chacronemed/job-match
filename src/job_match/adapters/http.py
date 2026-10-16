@@ -59,10 +59,17 @@ class HttpClient:
         url: str,
         *,
         data: dict | None = None,
+        json: dict | None = None,
         headers: dict | None = None,
         params: dict | None = None,
     ) -> httpx.Response:
-        return self._request("POST", url, headers=headers, data=data, params=params)
+        """`data` form-encodes (France Travail OAuth2), `json` sends a JSON body (Jooble)."""
+        kwargs: dict[str, object] = {"headers": headers, "params": params}
+        if json is not None:
+            kwargs["json"] = json
+        else:
+            kwargs["data"] = data
+        return self._request("POST", url, **kwargs)
 
     def _request(self, method: str, url: str, **kwargs: object) -> httpx.Response:
         for attempt in range(self._max_retries + 1):

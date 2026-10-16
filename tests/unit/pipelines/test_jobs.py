@@ -263,7 +263,7 @@ def test_summary_aggregates_fetched_per_department_and_keyword(db):
     summary = run_jobs(StatSource(jobs, stats), _profile(), _settings(), db, {})
 
     assert summary.queries == 3
-    assert summary.by_department == {"75": 2, "92": 1}
+    assert summary.by_area == {"75": 2, "92": 1}
     assert summary.by_keyword == {"devops": 3, "sre": 0}
 
 
@@ -282,10 +282,179 @@ def test_run_is_recorded_in_the_runs_table(db):
     assert payload["fetched"] == 1
     assert payload["eligible"] == 1
     assert payload["queries"] == 1
-    assert payload["by_department"] == {"75": 1}
+    assert payload["by_area"] == {"75": 1}
     assert payload["by_keyword"] == {"devops": 1}
 
 
 def test_dry_run_records_no_run(db):
     run_jobs(FakeSource([_job("FT-001")]), _profile(), _settings(), db, {}, dry_run=True)
     assert db.conn.execute("SELECT COUNT(*) AS n FROM runs").fetchone()["n"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Multi-source runs
+# ---------------------------------------------------------------------------
+
+class NamedSource(FakeSource):
+    """A fake source with its own name and call count."""
+
+    def __init__(self, name: str, jobs: list[Job], calls: int = 0) -> None:
+        super().__init__(jobs)
+        self.name = name
+        self.api_calls_count = calls
+
+
+def _ft_and_jooble_same_job() -> tuple[Job, Job]:
+    """The same offer as the two sources report it.
+
+    Different ids, different location format, and Jooble has no contract type — which is
+    exactly why the dedup block keys on the company alone.
+    """
+    description = (
+        "Nous recherchons un ingenieur DevOps pour industrialiser nos deploiements "
+        "Kubernetes et Terraform au sein d'une equipe de huit personnes."
+    )
+    ft = _job(
+        "FT-77",
+        title="Ingénieur DevOps",
+        company="Acme Corp",
+        location="92 - Nanterre",
+        contract_type=ContractType.CDI,
+        description=description,
+        url="https://candidat.francetravail.fr/offres/FT-77",
+    )
+    jooble = _job(
+        "JB-9001",
+        source="jooble",
+        title="Ingenieur DevOps",
+        company="Acme Corp",
+        location="Nanterre",
+        contract_type=ContractType.UNKNOWN,
+        description=description,
+        url="https://jooble.org/jdp/9001",
+    )
+    return ft, jooble
+
+
+def test_the_same_job_on_two_sources_becomes_canonical_plus_duplicate(db):
+    ft, jooble = _ft_and_jooble_same_job()
+
+    summary = run_jobs(
+        [NamedSource("france_travail", [ft]), NamedSource("jooble", [jooble])],
+        _profile(), _settings(), db, {},
+    )
+
+    assert summary.fetched == 2
+    assert summary.eligible == 1    # scored once
+    assert summary.duplicates == 1  # the second copy is linked, not scored
+
+    links = db.conn.execute(
+        "SELECT canonical_job_id, duplicate_job_id, reason FROM job_duplicates"
+    ).fetchall()
+    assert len(links) == 1
+
+    canonical = db.conn.execute(
+        "SELECT source_id, source_job_id FROM jobs WHERE id = ?", (links[0]["canonical_job_id"],)
+    ).fetchone()
+    duplicate = db.conn.execute(
+        "SELECT source_id, source_job_id FROM jobs WHERE id = ?", (links[0]["duplicate_job_id"],)
+    ).fetchone()
+
+    # Read first wins the canonical slot; neither row is deleted.
+    assert canonical["source_id"] == "france_travail"
+    assert duplicate["source_id"] == "jooble"
+    assert db.conn.execute("SELECT COUNT(*) AS n FROM jobs").fetchone()["n"] == 2
+
+
+def test_cross_source_duplicate_is_only_linked_in_one_direction(db):
+    """Reversing the source order reverses which row is canonical — nothing is lost."""
+    ft, jooble = _ft_and_jooble_same_job()
+
+    run_jobs(
+        [NamedSource("jooble", [jooble]), NamedSource("france_travail", [ft])],
+        _profile(), _settings(), db, {},
+    )
+
+    row = db.conn.execute(
+        "SELECT j.source_id AS canonical, d.source_id AS duplicate"
+        " FROM job_duplicates l"
+        " JOIN jobs j ON j.id = l.canonical_job_id"
+        " JOIN jobs d ON d.id = l.duplicate_job_id"
+    ).fetchone()
+    assert row["canonical"] == "jooble"
+    assert row["duplicate"] == "france_travail"
+
+
+def test_distinct_jobs_from_two_sources_are_both_kept(db):
+    a = _job("FT-1", company="Acme Corp", title="Ingénieur DevOps")
+    b = _job(
+        "JB-1",
+        source="jooble",
+        company="Globex",
+        title="Administrateur Systèmes Linux",
+        description="Administration Linux, supervision et scripts Python.",
+        url="https://jooble.org/jdp/1",
+    )
+    summary = run_jobs(
+        [NamedSource("france_travail", [a]), NamedSource("jooble", [b])],
+        _profile(), _settings(), db, {},
+    )
+    assert summary.eligible == 2
+    assert summary.duplicates == 0
+
+
+def test_by_source_reports_fetched_eligible_duplicates_and_calls(db):
+    ft, jooble = _ft_and_jooble_same_job()
+    other = _job("FT-2", company="Globex", url="https://example.com/jobs/2")
+
+    summary = run_jobs(
+        [
+            NamedSource("france_travail", [ft, other], calls=98),
+            NamedSource("jooble", [jooble], calls=7),
+        ],
+        _profile(), _settings(), db, {},
+    )
+
+    assert summary.by_source == {
+        "france_travail": {"fetched": 2, "eligible": 2, "duplicates": 0, "calls": 98},
+        "jooble": {"fetched": 1, "eligible": 0, "duplicates": 1, "calls": 7},
+    }
+    assert summary.api_calls == 105  # summed across sources
+
+
+def test_a_failing_source_does_not_stop_the_others(db):
+    class DeadSource(NamedSource):
+        def fetch(self, since):
+            raise RuntimeError("API down")
+
+    summary = run_jobs(
+        [DeadSource("jooble", []), NamedSource("france_travail", [_job("FT-1")])],
+        _profile(), _settings(), db, {},
+    )
+
+    assert summary.errors == 1
+    assert summary.eligible == 1
+    assert summary.by_source["france_travail"]["fetched"] == 1
+    assert summary.by_source["jooble"]["fetched"] == 0
+
+
+def test_query_stats_are_merged_across_sources(db):
+    ft = StatSource([_job("FT-1")], [QueryStat("devops", "75", 1, 10, "france_travail")])
+    ft.name = "france_travail"
+    jb = StatSource(
+        [_job("JB-1", source="jooble", company="Globex", url="https://jooble.org/1")],
+        [QueryStat("devops", "Île-de-France", 1, 50, "jooble")],
+    )
+    jb.name = "jooble"
+
+    summary = run_jobs([ft, jb], _profile(), _settings(), db, {})
+
+    assert summary.queries == 2
+    assert summary.by_area == {"75": 1, "Île-de-France": 1}
+    assert summary.by_keyword == {"devops": 2}
+
+
+def test_a_single_source_still_works_unwrapped(db):
+    """The common case stays a bare source, not a one-item list."""
+    summary = run_jobs(FakeSource([_job("FT-1")]), _profile(), _settings(), db, {})
+    assert summary.eligible == 1
