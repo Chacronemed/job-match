@@ -6,6 +6,7 @@ from job_match.domain.models import (
     RejectionReason,
 )
 from job_match.experience.parser import infer_seniority_min
+from job_match.normalization.location import normalize_location, parse_department
 from job_match.normalization.skills import matches_skill, title_keyword
 
 
@@ -62,12 +63,27 @@ def evaluate(
     if allowed and job.contract_type not in allowed:
         reasons.append(RejectionReason.CONTRACT)
 
-    # 3. Location — "remote" anywhere in job.location always passes
+    # 3. Location
     locs = profile.filters.locations
-    if locs:
-        job_loc = job.location.lower()
-        if "remote" not in job_loc:
-            if not any(loc.lower() in job_loc for loc in locs):
-                reasons.append(RejectionReason.LOCATION)
+    if locs and not location_allowed(job.location, profile):
+        reasons.append(RejectionReason.LOCATION)
 
     return EligibilityResult(eligible=not reasons, reasons=tuple(reasons))
+
+
+def location_allowed(location: str, profile: Profile) -> bool:
+    """Accept remote, a configured city name, or a department we actually queried.
+
+    The department codes come from `ft_search.departments` — the same list that drives the
+    API fan-out, so there is no second location list to keep in sync. A location with no
+    readable "NN - City" prefix is kept: we never reject on a location we could not parse.
+    """
+    job_loc = normalize_location(location)
+    if "remote" in job_loc:
+        return True
+    if any(normalize_location(loc) in job_loc for loc in profile.filters.locations):
+        return True
+    dept = parse_department(location)
+    if dept is None:
+        return True  # unknown / unparseable → keep the job
+    return dept in {str(d).upper() for d in profile.ft_search.departments}

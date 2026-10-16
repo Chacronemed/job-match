@@ -1,5 +1,7 @@
 from datetime import UTC, datetime
 
+import pytest
+
 from job_match.config.schema import (
     Candidate,
     Filters,
@@ -45,6 +47,7 @@ def _make_profile(
     experience_years: float = 5.0,
     contract_types: list | None = None,
     locations: list | None = None,
+    departments: list[str] | None = None,
 ) -> Profile:
     return Profile(
         candidate=Candidate(experience_years=experience_years),
@@ -53,7 +56,7 @@ def _make_profile(
             contract_types=contract_types or [],
             locations=locations or [],
         ),
-        ft_search=FTSearch(),
+        ft_search=FTSearch(departments=departments or []),
         scoring=ScoringConfig(),
     )
 
@@ -202,6 +205,61 @@ def test_location_case_insensitive_match():
         _make_job(location="75 - paris"),
         _req(),
         _make_profile(locations=["Paris"]),
+    )
+    assert result.eligible is True
+
+
+# ---------------------------------------------------------------------------
+# Location gate — department prefix (the codes we actually query)
+# ---------------------------------------------------------------------------
+
+_IDF = ["75", "77", "78", "91", "92", "93", "94", "95"]
+
+
+@pytest.mark.parametrize(
+    ("location", "why"),
+    [
+        ("92 - Nanterre", "department 92 is queried, city is not in the list"),
+        ("77 - Melun", "department 77 is queried, city is not in the list"),
+        ("Paris 15e", "city name matches, no department prefix to read"),
+        ("France", "unparseable location is kept, never rejected"),
+    ],
+)
+def test_location_accepted(location, why):
+    result = evaluate(
+        _make_job(location=location),
+        _req(),
+        _make_profile(locations=["Paris"], departments=_IDF),
+    )
+    assert result.eligible is True, why
+
+
+def test_location_rejected_when_department_is_not_queried():
+    """A readable department outside the configured list is still a rejection."""
+    result = evaluate(
+        _make_job(location="13 - Marseille"),
+        _req(),
+        _make_profile(locations=["Paris"], departments=_IDF),
+    )
+    assert result.eligible is False
+    assert RejectionReason.LOCATION in result.reasons
+
+
+def test_location_department_match_needs_no_duplicated_city_list():
+    """ft_search.departments is the single source of truth: no city names configured."""
+    result = evaluate(
+        _make_job(location="93 - Saint-Denis"),
+        _req(),
+        _make_profile(locations=["Paris"], departments=["93"]),
+    )
+    assert result.eligible is True
+
+
+def test_location_remote_passes_even_for_a_foreign_department():
+    result = evaluate(
+        _make_job(location="13 - Marseille, remote"),
+        _req(),
+        _make_profile(locations=["Paris"], departments=_IDF),
     )
     assert result.eligible is True
 

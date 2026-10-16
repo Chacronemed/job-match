@@ -469,6 +469,9 @@ class RunRepository:
                         "funding_no_company": summary.funding_no_company,
                         "leads_deduped": summary.leads_deduped,
                         "by_source": summary.by_source,
+                        "queries": summary.queries,
+                        "by_department": summary.by_department,
+                        "by_keyword": summary.by_keyword,
                     }
                 ),
             ),

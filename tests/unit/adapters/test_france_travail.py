@@ -567,3 +567,131 @@ def test_to_job_without_query_tag_has_no_search_query():
     raw = _load("ft_search_p1.json")["resultats"][0]
     raw.pop("_jm_query", None)
     assert _source().to_job(raw).search_query is None
+
+
+# ---------------------------------------------------------------------------
+# fan-out — every keyword x department query must run
+# ---------------------------------------------------------------------------
+
+
+def test_every_department_is_queried():
+    """One request per department, each carrying its own `departement` param."""
+    p1 = {"resultats": [_load("ft_search_p1.json")["resultats"][0]]}
+    depts = ["75", "92", "93", "69", "31"]
+
+    with respx.mock:
+        respx.post(TOKEN_URL).mock(return_value=httpx.Response(200, json=_load("ft_token.json")))
+        search_route = respx.get(SEARCH_URL).mock(
+            return_value=httpx.Response(200, json=p1, headers={"Content-Range": "offres 0-0/1"})
+        )
+        source = _source(_profile(departments=depts))
+        list(source.fetch())
+
+    queried = [dict(c.request.url.params).get("departement") for c in search_route.calls]
+    assert queried == depts
+    assert [s.department for s in source.query_stats] == depts
+
+
+def test_per_query_cap_does_not_starve_later_departments():
+    """Regression: max_results caps each query, never the fan-out.
+
+    A global cap let the first department consume the whole budget, so every
+    later (keyword, department) query was abandoned unqueried.
+    """
+    page = _load("ft_search_p1.json")  # 2 results, Content-Range says 100 exist
+    depts = ["75", "92", "93"]
+
+    with respx.mock:
+        respx.post(TOKEN_URL).mock(return_value=httpx.Response(200, json=_load("ft_token.json")))
+        search_route = respx.get(SEARCH_URL).mock(
+            return_value=httpx.Response(
+                200, json=page, headers={"Content-Range": "offres 0-1/100"}
+            )
+        )
+        source = _source(_profile(departments=depts), max_results=1)
+        results = list(source.fetch())
+
+    assert search_route.call_count == 3  # one per department, despite max_results=1
+    assert len(results) == 3  # one offer per department
+    assert sorted(dict(c.request.url.params)["departement"] for c in search_route.calls) == depts
+
+
+def test_query_stats_record_keyword_department_and_fetched():
+    p1 = {"resultats": [_load("ft_search_p1.json")["resultats"][0]]}
+    profile = _profile(departments=["75", "92"])
+    profile.ft_search.keywords.append("sre")
+
+    with respx.mock:
+        respx.post(TOKEN_URL).mock(return_value=httpx.Response(200, json=_load("ft_token.json")))
+        respx.get(SEARCH_URL).mock(
+            return_value=httpx.Response(200, json=p1, headers={"Content-Range": "offres 0-0/1"})
+        )
+        source = _source(profile)
+        list(source.fetch())
+
+    assert [(s.query, s.department, s.fetched, s.available) for s in source.query_stats] == [
+        ("devops", "75", 1, 1),
+        ("devops", "92", 1, 1),
+        ("sre", "75", 1, 1),
+        ("sre", "92", 1, 1),
+    ]
+
+
+def test_empty_query_is_still_recorded_in_stats():
+    """A department returning 204 must still appear, with fetched=0."""
+    with respx.mock:
+        respx.post(TOKEN_URL).mock(return_value=httpx.Response(200, json=_load("ft_token.json")))
+        respx.get(SEARCH_URL).mock(return_value=httpx.Response(204))
+        source = _source(_profile(departments=["75", "92"]))
+        list(source.fetch())
+
+    assert [(s.department, s.fetched) for s in source.query_stats] == [("75", 0), ("92", 0)]
+
+
+def _query_log_lines(caplog, level: str) -> list[str]:
+    return [
+        r.getMessage()
+        for r in caplog.records
+        if r.levelname == level and r.getMessage().startswith("query ")
+    ]
+
+
+def test_one_info_log_per_query_without_the_keyword(caplog):
+    """INFO stays aggregate: the keyword comes from the private profile."""
+    p1 = {"resultats": [_load("ft_search_p1.json")["resultats"][0]]}
+
+    with respx.mock:
+        respx.post(TOKEN_URL).mock(return_value=httpx.Response(200, json=_load("ft_token.json")))
+        respx.get(SEARCH_URL).mock(
+            return_value=httpx.Response(200, json=p1, headers={"Content-Range": "offres 0-0/1"})
+        )
+        source = _source(_profile(departments=["75", "92"]))
+        with caplog.at_level("INFO", logger="job_match.adapters.jobs.france_travail"):
+            list(source.fetch())
+
+    lines = _query_log_lines(caplog, "INFO")
+    assert lines == [
+        "query dept=75 fetched=1 available=1",
+        "query dept=92 fetched=1 available=1",
+    ]
+    # No keyword, and no job title, company or id.
+    assert not any(
+        "devops" in line or "Ingénieur DevOps" in line or "167DFDB" in line for line in lines
+    )
+
+
+def test_keyword_is_logged_at_debug(caplog):
+    p1 = {"resultats": [_load("ft_search_p1.json")["resultats"][0]]}
+
+    with respx.mock:
+        respx.post(TOKEN_URL).mock(return_value=httpx.Response(200, json=_load("ft_token.json")))
+        respx.get(SEARCH_URL).mock(
+            return_value=httpx.Response(200, json=p1, headers={"Content-Range": "offres 0-0/1"})
+        )
+        source = _source(_profile(departments=["75"]))
+        with caplog.at_level("DEBUG", logger="job_match.adapters.jobs.france_travail"):
+            list(source.fetch())
+
+    assert _query_log_lines(caplog, "DEBUG") == [
+        "query keyword=devops dept=75 fetched=1 available=1"
+    ]

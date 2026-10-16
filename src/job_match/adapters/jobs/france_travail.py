@@ -6,7 +6,7 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 
 from job_match.adapters.http import HttpClient
-from job_match.adapters.jobs.base import RawItem
+from job_match.adapters.jobs.base import QueryStat, RawItem
 from job_match.config.schema import Profile
 from job_match.domain.models import ContractType, Job, WorkplaceType
 
@@ -51,10 +51,16 @@ class FranceTravailSource:
         self._min_interval: float = 1.0 / requests_per_second if requests_per_second > 0 else 0.0
         self._last_request_time: float = 0.0
         self._api_calls: int = 0
+        self._query_stats: list[QueryStat] = []
 
     @property
     def api_calls_count(self) -> int:
         return self._api_calls
+
+    @property
+    def query_stats(self) -> tuple[QueryStat, ...]:
+        """One entry per (keyword|rome, department) query, in execution order."""
+        return tuple(self._query_stats)
 
     def _ensure_token(self) -> str:
         if self._token and time.monotonic() < self._token_expires_at - 60:
@@ -110,47 +116,55 @@ class FranceTravailSource:
         dept_label = dept or "all"
         start = 0
         fetched = 0
-        total_logged = False
+        total: int | None = None
 
-        while fetched < self._max_results:
-            end = start + PAGE_SIZE - 1
-            token = self._ensure_token()
-            self._throttle()
-            resp = self._http.get(
-                SEARCH_URL,
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Range": f"{start}-{end}",
-                },
-                params=params,
-            )
-            self._api_calls += 1
-            resp.raise_for_status()
-
-            if resp.status_code == 204:
-                logger.info("query keyword=%r dept=%s → 0 results", label, dept_label)
-                break
-
-            body = resp.json()
-            results: list[RawItem] = body.get("resultats") or []
-            total = _parse_content_range_total(resp.headers.get("Content-Range", ""))
-
-            if not total_logged:
-                logger.info(
-                    "query keyword=%r dept=%s → %d total", label, dept_label, total or len(results)
+        # _max_results caps THIS query only — never the fan-out, so every
+        # (keyword, department) pair always gets its own budget.
+        try:
+            while fetched < self._max_results:
+                end = start + PAGE_SIZE - 1
+                token = self._ensure_token()
+                self._throttle()
+                resp = self._http.get(
+                    SEARCH_URL,
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Range": f"{start}-{end}",
+                    },
+                    params=params,
                 )
-                total_logged = True
+                self._api_calls += 1
+                resp.raise_for_status()
 
-            for item in results:
-                item[QUERY_KEY] = label  # adapter-private: which query returned the item
-                yield item
-                fetched += 1
-                if fetched >= self._max_results:
-                    return
+                if resp.status_code == 204:
+                    break
 
-            if total is None or fetched >= total or not results:
-                break
-            start += len(results)
+                body = resp.json()
+                results: list[RawItem] = body.get("resultats") or []
+                page_total = _parse_content_range_total(resp.headers.get("Content-Range", ""))
+                if page_total is not None:
+                    total = page_total
+
+                for item in results:
+                    item[QUERY_KEY] = label  # adapter-private: which query returned the item
+                    yield item
+                    fetched += 1
+                    if fetched >= self._max_results:
+                        return
+
+                if total is None or fetched >= total or not results:
+                    break
+                start += len(results)
+        finally:
+            # Runs on normal exit, on the max_results return, and on errors.
+            self._query_stats.append(QueryStat(label, dept_label, fetched, total))
+            available = total if total is not None else "?"
+            # Query keywords come from the private profile: aggregates at INFO, keyword at DEBUG.
+            logger.info("query dept=%s fetched=%d available=%s", dept_label, fetched, available)
+            logger.debug(
+                "query keyword=%s dept=%s fetched=%d available=%s",
+                label, dept_label, fetched, available,
+            )
 
     def to_job(self, raw: RawItem) -> Job:
         return Job(

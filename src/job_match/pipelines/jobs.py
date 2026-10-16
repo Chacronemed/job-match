@@ -14,6 +14,7 @@ from job_match.persistence.repositories import (
     CompanyRepository,
     JobDuplicateRepository,
     JobRepository,
+    RunRepository,
 )
 from job_match.scoring.engine import ScoringEngine
 from job_match.scoring.native import NativeRuleScorer
@@ -28,10 +29,14 @@ def run_jobs(
     db: Database,
     aliases: dict[str, list[str]],
     *,
-    limit: int | None = None,
     dry_run: bool = False,
 ) -> RunSummary:
-    """Fetch → normalize → experience gate → dedup → score → store."""
+    """Fetch → normalize → experience gate → dedup → score → store.
+
+    Volume is capped by the source, per (keyword, department) query. The pipeline
+    never caps globally: a global cap starves every query after the first one.
+    """
+    started_at = datetime.now(UTC)
     job_repo = JobRepository(db.conn)
     company_repo = CompanyRepository(db.conn)
     dup_repo = JobDuplicateRepository(db.conn)
@@ -41,7 +46,6 @@ def run_jobs(
 
     window = datetime.now(UTC) - timedelta(days=settings.dedup_window_days)
 
-    processed = 0
     fetched = 0
     rejected_jobs = 0
     rejected_by_reason: dict[str, int] = {}
@@ -51,10 +55,6 @@ def run_jobs(
     errors = 0
 
     for raw in source.fetch(since=None):
-        if limit is not None and processed >= limit:
-            break
-        processed += 1
-
         try:
             job: Job = source.to_job(raw)
         except Exception as exc:
@@ -127,7 +127,14 @@ def run_jobs(
             _save(job, company_repo, job_repo)
 
     api_calls = getattr(source, "api_calls_count", 0)
-    return RunSummary(
+    stats = tuple(getattr(source, "query_stats", ()))
+    by_department: dict[str, int] = {}
+    by_keyword: dict[str, int] = {}
+    for stat in stats:
+        by_department[stat.department] = by_department.get(stat.department, 0) + stat.fetched
+        by_keyword[stat.query] = by_keyword.get(stat.query, 0) + stat.fetched
+
+    summary = RunSummary(
         pipeline="jobs",
         fetched=fetched,
         normalized=fetched,
@@ -138,7 +145,15 @@ def run_jobs(
         strong=strong,
         errors=errors,
         api_calls=api_calls,
+        by_department=by_department,
+        by_keyword=by_keyword,
+        queries=len(stats),
     )
+
+    if not dry_run:
+        RunRepository(db.conn).save(summary, started_at, datetime.now(UTC))
+
+    return summary
 
 
 def _save(job: Job, company_repo: CompanyRepository, job_repo: JobRepository) -> Job:

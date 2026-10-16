@@ -10,6 +10,8 @@ from job_match.domain.models import RunSummary
 
 _FT_VARS = ("FT_CLIENT_ID", "FT_CLIENT_SECRET")
 
+_logger = logging.getLogger(__name__)
+
 
 def _config_dir() -> Path:
     """Config directory: $JOB_MATCH_CONFIG_DIR or ./config (relative to CWD)."""
@@ -32,7 +34,8 @@ def main() -> None:
 
     run_p = sub.add_parser("run", help="Fetch and process jobs from France Travail")
     run_p.add_argument("--limit", type=int, default=None, metavar="N",
-                       help="Maximum number of items to process")
+                       help="Maximum offers per keyword x department query "
+                            "(not a global cap: every query still runs)")
     run_p.add_argument("--dry-run", action="store_true",
                        help="Run the full pipeline but write nothing to the database")
 
@@ -184,14 +187,13 @@ def _cmd_run(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     db_path = ":memory:" if args.dry_run else str(data_dir / "jobs.sqlite")
-    source = FranceTravailSource(profile, requests_per_second=settings.ft_requests_per_second)
+    ft_kwargs = {} if args.limit is None else {"max_results": args.limit}
+    source = FranceTravailSource(
+        profile, requests_per_second=settings.ft_requests_per_second, **ft_kwargs
+    )
 
     with Database(path=db_path) as db:
-        summary = run_jobs(
-            source, profile, settings, db, aliases,
-            limit=args.limit,
-            dry_run=args.dry_run,
-        )
+        summary = run_jobs(source, profile, settings, db, aliases, dry_run=args.dry_run)
 
     _print_summary(summary, dry_run=args.dry_run)
 
@@ -306,6 +308,7 @@ def _print_funding_summary(
 def _print_summary(summary: RunSummary, *, dry_run: bool = False) -> None:
     tag = " [DRY RUN]" if dry_run else ""
     print(f"\nJobs run complete{tag}")
+    print(f"  queries:    {summary.queries}  (keyword x department)")
     print(f"  fetched:    {summary.fetched}")
     print(f"  normalized: {summary.normalized}")
     print(f"  rejected:   {summary.rejected_jobs} jobs")  # unique jobs, not reason count
@@ -320,3 +323,14 @@ def _print_summary(summary: RunSummary, *, dry_run: bool = False) -> None:
         print(f"  api_calls:  {summary.api_calls}")
     if summary.errors:
         print(f"  errors:     {summary.errors}")
+    if summary.by_department:
+        print("  fetched per department:")
+        for dept, count in sorted(summary.by_department.items()):
+            print(f"    {dept}: {count}")
+    if summary.by_keyword:
+        # Query keywords come from the private profile and this output lands in a public
+        # CI log: departments are printed, the per-keyword breakdown stays at DEBUG.
+        _logger.debug(
+            "fetched per keyword: %s",
+            ", ".join(f"{kw}={count}" for kw, count in sorted(summary.by_keyword.items())),
+        )

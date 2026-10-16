@@ -4,7 +4,6 @@
 
 [![CI](https://github.com/Chacronemed/job-match/actions/workflows/ci.yml/badge.svg)](https://github.com/Chacronemed/job-match/actions/workflows/ci.yml)
 ![Python 3.12](https://img.shields.io/badge/python-3.12-blue)
-![Tests](https://img.shields.io/badge/tests-549%20passing-brightgreen)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
 Single user, not a SaaS. Python, SQLite and GitHub Actions; no servers to run.
@@ -88,8 +87,8 @@ Bugs that unit tests did not catch, found in live runs and in CI. All but the wo
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| A query with no results broke the fetch. | The API answers **204 No Content**, with no body, for an empty result set; the adapter called `resp.json()` on it. | Explicit 204 branch that ends that query cleanly (`b93bd3f`). |
-| All profile keywords were sent as one search, which narrowed results instead of widening them. | `motsCles` is an **AND**: "devops sre infrastructure" only matches offers containing every word. | One request per keyword × department, throttled, with an API-call counter in the run summary (`b93bd3f`). |
+| A query with no results broke the fetch. | The API answers **204 No Content**, with no body, for an empty result set; the adapter called `resp.json()` on it. | Explicit 204 branch that ends that query cleanly (landed with `b93bd3f`, a commit titled "seniority keyword gate"). |
+| All profile keywords were sent as one search, which narrowed results instead of widening them. | `motsCles` is an **AND**: "devops sre infrastructure" only matches offers containing every word. | One request per keyword × department, throttled, with an API-call counter in the run summary (landed with `b93bd3f`, same commit). |
 | Config and migrations were not found once the package was installed (CI runs `pip install .`). | Paths were computed from `__file__`, which points into `site-packages` after install. | Config and data paths resolved from the working directory (overridable by env vars), SQL migrations shipped as package data and loaded with `importlib.resources` (`df9e7ee`). |
 | Opening the database failed on a fresh checkout. | `data/` is gitignored, so it does not exist in a clean clone. | `Database.connect` creates parent directories (`4a3ad51`). |
 | A failed digest still produced a green workflow run. | The digest step had `continue-on-error: true`. | The step now fails visibly, the DB push still runs (`always()` guarded by the WAL checkpoint), and `digest --resend-since` replays a lost digest (`c7df4f2`). |
@@ -180,3 +179,7 @@ Skill aliases (`k8s` ↔ `kubernetes`, `CI/CD` ↔ `CI CD`) are centralized in `
 ## Built with Claude Code
 
 This project was built with [Claude Code](https://claude.com/claude-code) as a pair programmer. I wrote the brief and the rules in [`CLAUDE.md`](CLAUDE.md) (modular boundaries, experience as a hard gate, never invent extracted facts, no secrets in code or logs), then worked one milestone at a time. Non-trivial milestones started in plan mode, where the design was proposed, questioned and approved before any code was written. Significant decisions were recorded as ADRs. Every milestone had to pass `ruff` and `pytest` before I reviewed the diff and committed it myself; the assistant never commits. The most useful findings came from live runs rather than from generated code: most of the "Lessons from production" above were caught that way and turned into tests.
+
+## License
+
+[MIT](LICENSE) © 2026 Mohamed Chacrone

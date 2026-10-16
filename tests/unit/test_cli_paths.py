@@ -6,9 +6,11 @@ Verifies that:
 - Database() (no migrations_dir) finds SQL migrations via importlib.resources regardless of CWD.
 - The CLI resolves config correctly when run from a temp directory that mimics CI layout.
 """
+import logging
 from pathlib import Path
 
-from job_match.cli import _config_dir, _data_dir
+from job_match.cli import _config_dir, _data_dir, _print_summary
+from job_match.domain.models import RunSummary
 from job_match.persistence.db import Database, _default_migrations
 
 # ---------------------------------------------------------------------------
@@ -122,3 +124,31 @@ def test_cli_path_resolution_from_temp_project_root(monkeypatch, tmp_path):
     result = _config_dir()
     assert result == Path("config")
     assert (tmp_path / result / "marker.txt").exists()
+
+
+# ---------------------------------------------------------------------------
+# _print_summary — the jobs summary goes to a public CI log
+# ---------------------------------------------------------------------------
+
+def test_print_summary_keeps_keywords_off_stdout(capsys, caplog):
+    """Departments are printed; the per-keyword breakdown stays at DEBUG.
+
+    `job-match run` stdout lands in the public Actions log, and query keywords come
+    from the private profile — same rule as the adapter's per-query log line.
+    """
+    summary = RunSummary(
+        pipeline="jobs",
+        fetched=3,
+        queries=2,
+        by_department={"92": 2, "77": 1},
+        by_keyword={"devops": 2, "sre": 1},
+    )
+
+    with caplog.at_level(logging.DEBUG, logger="job_match.cli"):
+        _print_summary(summary)
+
+    out = capsys.readouterr().out
+    assert "92: 2" in out  # departments stay visible
+    assert "devops" not in out
+    assert "per keyword" not in out
+    assert "devops=2" in caplog.text  # still available at DEBUG

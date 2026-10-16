@@ -1,9 +1,11 @@
 """Integration tests for pipelines/jobs.py using in-memory SQLite and a fake source."""
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
+from job_match.adapters.jobs.base import QueryStat
 from job_match.config.schema import (
     Candidate,
     Filters,
@@ -175,10 +177,14 @@ def test_dry_run_still_counts_correctly(db):
     assert summary.rejected_by_reason.get("EXPERIENCE", 0) == 1
 
 
-def test_limit_caps_processing(db):
+def test_no_global_cap_every_fetched_item_is_processed(db):
+    """The pipeline never caps: a global cap starved every query after the first.
+
+    Volume is capped by the source, per (keyword, department) query.
+    """
     jobs = [_job(f"FT-{i:03}", url=f"https://example.com/jobs/{i}") for i in range(10)]
-    summary = run_jobs(FakeSource(jobs), _profile(), _settings(), db, {}, limit=3)
-    assert summary.fetched == 3
+    summary = run_jobs(FakeSource(jobs), _profile(), _settings(), db, {})
+    assert summary.fetched == 10
 
 
 def test_to_job_error_counted_as_error(db):
@@ -232,3 +238,54 @@ def test_summary_invariant_rejected_unique_count(db):
 
 def job_repo_count(db: Database) -> int:
     return db.conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
+
+
+# ---------------------------------------------------------------------------
+# observability: runs table + per-query aggregates
+# ---------------------------------------------------------------------------
+
+class StatSource(FakeSource):
+    """A fake source that exposes per-query stats, like the real adapter."""
+
+    def __init__(self, jobs, stats) -> None:
+        super().__init__(jobs)
+        self.query_stats = tuple(stats)
+        self.api_calls_count = len(self.query_stats)
+
+
+def test_summary_aggregates_fetched_per_department_and_keyword(db):
+    jobs = [_job(f"FT-{i:03}", url=f"https://example.com/jobs/{i}") for i in range(3)]
+    stats = [
+        QueryStat("devops", "75", 2, 40),
+        QueryStat("devops", "92", 1, 1),
+        QueryStat("sre", "75", 0, 0),
+    ]
+    summary = run_jobs(StatSource(jobs, stats), _profile(), _settings(), db, {})
+
+    assert summary.queries == 3
+    assert summary.by_department == {"75": 2, "92": 1}
+    assert summary.by_keyword == {"devops": 3, "sre": 0}
+
+
+def test_run_is_recorded_in_the_runs_table(db):
+    stats = [QueryStat("devops", "75", 1, 1)]
+    run_jobs(StatSource([_job("FT-001")], stats), _profile(), _settings(), db, {})
+
+    rows = db.conn.execute(
+        "SELECT pipeline, started_at, finished_at, summary_json FROM runs"
+    ).fetchall()
+    assert len(rows) == 1
+    assert rows[0]["pipeline"] == "jobs"
+    assert rows[0]["started_at"] and rows[0]["finished_at"]
+
+    payload = json.loads(rows[0]["summary_json"])
+    assert payload["fetched"] == 1
+    assert payload["eligible"] == 1
+    assert payload["queries"] == 1
+    assert payload["by_department"] == {"75": 1}
+    assert payload["by_keyword"] == {"devops": 1}
+
+
+def test_dry_run_records_no_run(db):
+    run_jobs(FakeSource([_job("FT-001")]), _profile(), _settings(), db, {}, dry_run=True)
+    assert db.conn.execute("SELECT COUNT(*) AS n FROM runs").fetchone()["n"] == 0
