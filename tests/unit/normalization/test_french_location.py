@@ -7,6 +7,7 @@ import pytest
 
 from job_match.normalization.fr_geo import FRENCH_DEPARTMENTS
 from job_match.normalization.location import (
+    block_location,
     department_of,
     french_location,
     is_french_department,
@@ -124,3 +125,30 @@ def test_a_foreign_marker_must_be_a_whole_word():
 )
 def test_department_of(location, expected):
     assert department_of(location) == expected
+
+
+# ---------------------------------------------------------------------------
+# block_location: the dedup blocking key
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("location", "expected"),
+    [
+        ("35 - Rennes", "35"),
+        ("Rennes, France", "35"),      # same key across sources
+        ("Rennes", "35"),
+        ("75 - Paris", "75"),
+        ("Paris 15e", "75"),
+        ("Bretagne", "bretagne"),      # a region has no single department
+        ("France", "france"),
+        ("Teletravail", "teletravail"),
+        ("", ""),
+    ],
+)
+def test_block_location(location, expected):
+    assert block_location(location) == expected
+
+
+def test_two_departments_never_share_a_block():
+    assert block_location("35 - Rennes") != block_location("75 - Paris")

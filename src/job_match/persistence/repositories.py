@@ -22,6 +22,8 @@ from job_match.domain.models import (
     WorkplaceType,
 )
 from job_match.normalization.company import normalize_company
+from job_match.normalization.location import block_location
+from job_match.normalization.title import normalize_title
 
 # ---------------------------------------------------------------------------
 # Serialisation helpers
@@ -399,6 +401,44 @@ class JobRepository:
         ).fetchall()
         return [_row_to_job(r) for r in rows]
 
+    def list_by_title_department(
+        self,
+        title_normalized: str,
+        location_key: str,
+        since: datetime,
+        *,
+        hidden_employer_only: bool = False,
+    ) -> list[Job]:
+        """Dedup block for postings France Travail publishes without an employer name.
+
+        Same normalized title, same department, any company: the company block cannot work
+        when the employer is hidden, because every hidden employer shares the empty string.
+        `hidden_employer_only` keeps just the nameless rows, for a posting that does have a
+        company and only needs to find its hidden twin.
+
+        The title and the department are computed in Python, so this scans the window once
+        on three small columns and only materializes the matches. If the window ever grows
+        enough for that to hurt, the fix is a `title_normalized` column with an index, the
+        way `company_normalized` already has one.
+        """
+        sql = "SELECT id, title, location FROM jobs WHERE collected_at >= ?"
+        params: list = [since.isoformat()]
+        if hidden_employer_only:
+            sql += " AND COALESCE(company_normalized, '') = ''"
+        ids = [
+            row["id"]
+            for row in self._conn.execute(sql, params).fetchall()
+            if normalize_title(row["title"]) == title_normalized
+            and block_location(row["location"]) == location_key
+        ]
+        if not ids:
+            return []
+        placeholders = ",".join("?" * len(ids))
+        rows = self._conn.execute(
+            f"SELECT * FROM jobs WHERE id IN ({placeholders})", ids
+        ).fetchall()
+        return [_row_to_job(r) for r in rows]
+
 
 class JobScoreRepository:
     def __init__(self, conn: sqlite3.Connection) -> None:
@@ -438,14 +478,20 @@ class JobDuplicateRepository:
         duplicate_id: int,
         reason: str,
         similarity: float | None = None,
-    ) -> None:
-        self._conn.execute(
+    ) -> bool:
+        """Record one canonical/duplicate pair. True when the link is new.
+
+        The insert ignores an existing pair, so the return value is what lets a reprocess
+        report how many duplicates it actually found.
+        """
+        cursor = self._conn.execute(
             "INSERT OR IGNORE INTO job_duplicates"
             "(canonical_job_id, duplicate_job_id, reason, similarity, detected_at)"
             " VALUES (?, ?, ?, ?, ?)",
             (canonical_id, duplicate_id, reason, similarity, datetime.now(UTC).isoformat()),
         )
         self._conn.commit()
+        return cursor.rowcount > 0
 
     def delete_self_links(self) -> int:
         """Remove rows where a job is recorded as its own duplicate.
@@ -459,6 +505,13 @@ class JobDuplicateRepository:
         )
         self._conn.commit()
         return cursor.rowcount
+
+    def duplicate_ids(self) -> set[int]:
+        """Every job already recorded as someone else's duplicate."""
+        return {
+            row["duplicate_job_id"]
+            for row in self._conn.execute("SELECT duplicate_job_id FROM job_duplicates")
+        }
 
     def get_canonical_id(self, job_id: int) -> int | None:
         row = self._conn.execute(
@@ -497,6 +550,7 @@ class RunRepository:
                         "normalized": summary.normalized,
                         "rejected_by_reason": summary.rejected_by_reason,
                         "duplicates": summary.duplicates,
+                        "self_links_dropped": summary.self_links_dropped,
                         "eligible": summary.eligible,
                         "strong": summary.strong,
                         "articles": summary.articles,

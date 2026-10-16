@@ -226,6 +226,8 @@ class RunSummary:
     funding_events: int = 0
     funding_no_company: int = 0
     leads_deduped: int = 0
+    # Reprocess only: corrupt self-referential links removed, not duplicates found.
+    self_links_dropped: int = 0
     by_source: dict[str, dict[str, int]] = field(default_factory=dict)
     by_area: dict[str, int] = field(default_factory=dict)  # queried area → fetched
     # Where the offers actually are, parsed from each offer's own location: the only

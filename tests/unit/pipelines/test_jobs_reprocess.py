@@ -246,7 +246,8 @@ def test_reprocess_drops_self_links_and_frees_the_jobs(db):
 
     summary = reprocess_jobs(_profile(), _settings(), db, {})
 
-    assert summary.duplicates == 1  # one self-link removed
+    assert summary.self_links_dropped == 1
+    assert summary.duplicates == 0  # `duplicates` now counts links found, not links removed
     assert len(JobRepository(db.conn).list_unnotified()) == 1
 
 
@@ -297,3 +298,96 @@ def test_reprocess_records_its_own_run_row(db):
 def test_reprocess_on_an_empty_db_is_a_no_op(db):
     summary = reprocess_jobs(_profile(), _settings(), db, {})
     assert (summary.fetched, summary.eligible, summary.rejected_jobs) == (0, 0, 0)
+
+
+# ---------------------------------------------------------------------------
+# The dedup replay
+# ---------------------------------------------------------------------------
+
+_HIDDEN_DESC = (
+    "Vous administrez nos clusters Kubernetes, nos pipelines CI/CD et notre IaC Terraform."
+)
+
+
+def _hidden(sid: str, *, collected_at: datetime, **overrides) -> Job:
+    """A posting France Travail published without an employer name."""
+    fields = dict(
+        company="",
+        title="Ingenieur DevOps (H/F)",
+        location="35 - Rennes",
+        description=_HIDDEN_DESC,
+        collected_at=collected_at,
+        url=f"https://candidat.francetravail.fr/offres/{sid}",
+    )
+    return _job(sid, **{**fields, **overrides})
+
+
+def _store(db, *jobs: Job) -> list[int]:
+    """Save rows straight to the DB, as runs before the fix left them."""
+    repo = JobRepository(db.conn)
+    return [repo.save(j).id for j in jobs]
+
+
+def test_the_replay_links_a_pair_the_original_run_missed(db):
+    older = _hidden("FT-OLD", collected_at=_NOW - timedelta(hours=1))
+    newer = _hidden(
+        "FT-NEW", collected_at=_NOW, description=_HIDDEN_DESC + " Poste a pourvoir."
+    )
+    newer_id, older_id = _store(db, newer, older)  # saved newest first, as ids show
+
+    summary = reprocess_jobs(_profile(), _settings(), db, {})
+
+    assert summary.duplicates == 1
+    row = db.conn.execute(
+        "SELECT canonical_job_id c, duplicate_job_id d FROM job_duplicates"
+    ).fetchone()
+    assert (row["c"], row["d"]) == (older_id, newer_id)  # the older posting stays canonical
+    assert len(JobRepository(db.conn).list_unnotified()) == 1
+
+
+def test_the_replay_is_idempotent(db):
+    _store(
+        db,
+        _hidden("FT-OLD", collected_at=_NOW - timedelta(hours=1)),
+        _hidden("FT-NEW", collected_at=_NOW, description=_HIDDEN_DESC + " Urgent."),
+    )
+    first = reprocess_jobs(_profile(), _settings(), db, {})
+    second = reprocess_jobs(_profile(), _settings(), db, {})
+
+    assert (first.duplicates, second.duplicates) == (1, 0)
+    assert db.conn.execute("SELECT COUNT(*) AS n FROM job_duplicates").fetchone()["n"] == 1
+
+
+def test_the_replay_reports_in_a_dry_run_without_writing(db):
+    _store(
+        db,
+        _hidden("FT-OLD", collected_at=_NOW - timedelta(hours=1)),
+        _hidden("FT-NEW", collected_at=_NOW, description=_HIDDEN_DESC + " Urgent."),
+    )
+
+    summary = reprocess_jobs(_profile(), _settings(), db, {}, dry_run=True)
+
+    assert summary.duplicates == 1  # what it would link
+    assert db.conn.execute("SELECT COUNT(*) AS n FROM job_duplicates").fetchone()["n"] == 0
+
+
+def test_the_replay_keeps_two_departments_apart(db):
+    _store(
+        db,
+        _hidden("FT-RNS", collected_at=_NOW - timedelta(hours=1)),
+        _hidden("FT-PAR", collected_at=_NOW, location="75 - Paris"),
+    )
+
+    summary = reprocess_jobs(_profile(), _settings(), db, {})
+
+    assert summary.duplicates == 0
+    assert len(JobRepository(db.conn).list_unnotified()) == 2
+
+
+def test_the_replay_leaves_an_unrelated_job_alone(db):
+    run_jobs(FakeSource([_job("FT-001")]), _profile(), _settings(), db, {})
+
+    summary = reprocess_jobs(_profile(), _settings(), db, {})
+
+    assert summary.duplicates == 0
+    assert db.conn.execute("SELECT COUNT(*) AS n FROM job_duplicates").fetchone()["n"] == 0

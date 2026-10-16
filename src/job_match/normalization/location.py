@@ -128,3 +128,14 @@ def french_location(location: str) -> bool | None:
     if _FRANCE.search(normalized) or departments_for(location):
         return True
     return None
+
+
+def block_location(location: str) -> str:
+    """Dedup blocking key for a location: its department, or the normalized text.
+
+    Two postings in different departments are different offers, so they must never be
+    compared. When no single department resolves ("France", "Teletravail", a town nobody
+    lists) the normalized text is the key: identical location strings still block together,
+    and nothing else does.
+    """
+    return department_of(location) or normalize_location(location)

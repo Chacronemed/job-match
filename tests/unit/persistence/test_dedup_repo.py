@@ -167,3 +167,106 @@ def test_company_normalized_stored(db):
     # Verify company_normalized is stored via list_by_block
     results = repo.list_by_block("acme", ContractType.CDI, _NOW)
     assert len(results) == 1
+
+
+# ---------------------------------------------------------------------------
+# list_by_title_department: the block for postings with no employer name
+# ---------------------------------------------------------------------------
+
+def test_list_by_title_department_matches_across_location_formats(db):
+    """France Travail writes "35 - Rennes", Jooble writes "Rennes, France"."""
+    repo = JobRepository(db.conn)
+    repo.save(_job("FT-001", company="", location="35 - Rennes"))
+    repo.save(_job("JB-001", source="jooble", company="", location="Rennes, France"))
+
+    results = repo.list_by_title_department("devops engineer", "35", _NOW)
+
+    assert {j.source_job_id for j in results} == {"FT-001", "JB-001"}
+
+
+def test_list_by_title_department_excludes_another_department(db):
+    repo = JobRepository(db.conn)
+    repo.save(_job("FT-001", company="", location="35 - Rennes"))
+    repo.save(_job("FT-002", company="", location="75 - Paris"))
+
+    results = repo.list_by_title_department("devops engineer", "35", _NOW)
+
+    assert [j.source_job_id for j in results] == ["FT-001"]
+
+
+def test_list_by_title_department_excludes_another_title(db):
+    repo = JobRepository(db.conn)
+    repo.save(_job("FT-001", company="", title="DevOps Engineer"))
+    repo.save(_job("FT-002", company="", title="Data Analyst"))
+
+    results = repo.list_by_title_department("devops engineer", "75", _NOW)
+
+    assert [j.source_job_id for j in results] == ["FT-001"]
+
+
+def test_list_by_title_department_ignores_gender_and_contract_noise(db):
+    """The key is the normalized title: "(H/F)" and "CDI" are not part of it."""
+    repo = JobRepository(db.conn)
+    repo.save(_job("FT-001", company="", title="DevOps Engineer (H/F) CDI"))
+
+    results = repo.list_by_title_department("devops engineer", "75", _NOW)
+
+    assert len(results) == 1
+
+
+def test_list_by_title_department_keeps_named_employers_by_default(db):
+    repo = JobRepository(db.conn)
+    repo.save(_job("FT-001", company="Acme Corp"))
+    repo.save(_job("FT-002", company=""))
+
+    results = repo.list_by_title_department("devops engineer", "75", _NOW)
+
+    assert {j.source_job_id for j in results} == {"FT-001", "FT-002"}
+
+
+def test_list_by_title_department_hidden_only_skips_named_employers(db):
+    repo = JobRepository(db.conn)
+    repo.save(_job("FT-001", company="Acme Corp"))
+    repo.save(_job("FT-002", company=""))
+
+    results = repo.list_by_title_department(
+        "devops engineer", "75", _NOW, hidden_employer_only=True
+    )
+
+    assert [j.source_job_id for j in results] == ["FT-002"]
+
+
+def test_list_by_title_department_respects_since(db):
+    repo = JobRepository(db.conn)
+    repo.save(_job("FT-001", company="", collected_at=datetime(2026, 9, 1, tzinfo=UTC)))
+
+    assert repo.list_by_title_department("devops engineer", "75", _NOW) == []
+
+
+def test_list_by_title_department_on_an_unreadable_location(db):
+    """No department resolves: the normalized location is the key."""
+    repo = JobRepository(db.conn)
+    repo.save(_job("FT-001", company="", location="Teletravail"))
+
+    assert len(repo.list_by_title_department("devops engineer", "teletravail", _NOW)) == 1
+    assert repo.list_by_title_department("devops engineer", "75", _NOW) == []
+
+
+def test_save_link_reports_whether_the_link_is_new(db):
+    job_repo = JobRepository(db.conn)
+    dup_repo = JobDuplicateRepository(db.conn)
+    j1 = job_repo.save(_job("FT-001"))
+    j2 = job_repo.save(_job("FT-002", url="https://example.com/jobs/ft-002"))
+
+    assert dup_repo.save_link(j1.id, j2.id, "fuzzy", 0.9) is True
+    assert dup_repo.save_link(j1.id, j2.id, "fuzzy", 0.9) is False
+
+
+def test_duplicate_ids_lists_the_duplicate_side_only(db):
+    job_repo = JobRepository(db.conn)
+    dup_repo = JobDuplicateRepository(db.conn)
+    j1 = job_repo.save(_job("FT-001"))
+    j2 = job_repo.save(_job("FT-002", url="https://example.com/jobs/ft-002"))
+    dup_repo.save_link(j1.id, j2.id, "fuzzy", 0.9)
+
+    assert dup_repo.duplicate_ids() == {j2.id}

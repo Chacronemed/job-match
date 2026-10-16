@@ -166,8 +166,9 @@ def _print_reprocess_summary(
             print(f"    {reason}: {count}")
     print(f"  eligible:   {summary.eligible}")
     print(f"  strong:     {summary.strong}")
-    if summary.duplicates:
-        print(f"  self-links dropped: {summary.duplicates}")
+    print(f"  new duplicate links: {summary.duplicates}")
+    if summary.self_links_dropped:
+        print(f"  self-links dropped: {summary.self_links_dropped}")
     if summary.errors:
         print(f"  errors:     {summary.errors}")
 

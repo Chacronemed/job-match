@@ -9,7 +9,8 @@ from job_match.domain.models import Company, Eligibility, Job, RunSummary
 from job_match.eligibility import gate
 from job_match.experience import parser as exp_parser
 from job_match.normalization.company import normalize_company
-from job_match.normalization.location import department_of
+from job_match.normalization.location import block_location, department_of
+from job_match.normalization.title import normalize_title
 from job_match.persistence.db import Database
 from job_match.persistence.repositories import (
     CompanyRepository,
@@ -119,12 +120,7 @@ def run_jobs(
                 continue
 
             # Dedup
-            company_n = normalize_company(job.company)
-            # Block on the company alone, not (company, contract): the same offer on
-            # another source often has UNKNOWN contract, and a contract-keyed block
-            # would never compare them.
-            exact = _other_postings(job, job_repo.get_by_fingerprint(fp))
-            fuzzy = _other_postings(job, job_repo.list_by_company(company_n, window))
+            exact, fuzzy = _candidate_blocks(job, job_repo, window)
             dedup_result = dedup_engine.check(job, exact, fuzzy)
 
             if dedup_result.is_duplicate:
@@ -134,12 +130,14 @@ def run_jobs(
                 if not dry_run:
                     saved = _save(job, company_repo, job_repo)
                     if saved.id is not None and dedup_result.canonical_id is not None:
-                        dup_repo.save_link(
-                            dedup_result.canonical_id,
-                            saved.id,
-                            dedup_result.reason or "unknown",
-                            dedup_result.similarity,
-                        )
+                        canonical_id = _canonical_of(dup_repo, dedup_result.canonical_id)
+                        if canonical_id != saved.id:
+                            dup_repo.save_link(
+                                canonical_id,
+                                saved.id,
+                                dedup_result.reason or "unknown",
+                                dedup_result.similarity,
+                            )
                 continue
 
             # Score
@@ -207,9 +205,10 @@ def reprocess_jobs(
     """Re-apply the gate and the scorer to jobs already in the DB. No network calls.
 
     For when the rules change — a new relevance veto, a new threshold — and the question
-    is what the current rules say about the data we already have. Dedup is not redone:
-    the links are already stored. Self-links left by older runs are dropped first,
-    because they hide otherwise-canonical jobs from the digest.
+    is what the current rules say about the data we already have. Dedup is replayed in
+    collection order, so a pair the original run could not see is linked now: the employer
+    was hidden on one side, or the two postings arrived in the same run. Self-links left by
+    older runs are dropped first, because they hide otherwise-canonical jobs from the digest.
 
     `notified_at` is never touched, so a job already emailed is not emailed twice.
     """
@@ -218,6 +217,7 @@ def reprocess_jobs(
     company_repo = CompanyRepository(db.conn)
     dup_repo = JobDuplicateRepository(db.conn)
     scoring_engine = ScoringEngine([NativeRuleScorer(aliases)])
+    dedup_engine = DedupEngine(settings)
 
     self_links = 0
     if not dry_run:
@@ -225,12 +225,15 @@ def reprocess_jobs(
         if self_links:
             logger.info("dropped %d self-referential duplicate links", self_links)
 
+    already_duplicates = dup_repo.duplicate_ids()
+
     fetched = 0
     rejected_jobs = 0
     rejected_by_reason: dict[str, int] = {}
     eligible = 0
     strong = 0
     errors = 0
+    new_links = 0
 
     for stored in job_repo.list_all(since):
         fetched += 1
@@ -266,6 +269,11 @@ def reprocess_jobs(
 
             if not dry_run:
                 _save(job, company_repo, job_repo)
+
+            if elig.eligible and job.id is not None and job.id not in already_duplicates:
+                new_links += _replay_dedup(
+                    job, job_repo, dup_repo, dedup_engine, settings, dry_run=dry_run
+                )
         except Exception as exc:
             logger.warning("reprocess failed for %s: %s", stored.source_job_id, exc)
             errors += 1
@@ -276,7 +284,8 @@ def reprocess_jobs(
         normalized=fetched,
         rejected_jobs=rejected_jobs,
         rejected_by_reason=rejected_by_reason,
-        duplicates=self_links,  # self-links removed, not duplicates found
+        duplicates=new_links,
+        self_links_dropped=self_links,
         eligible=eligible,
         strong=strong,
         errors=errors,
@@ -284,6 +293,110 @@ def reprocess_jobs(
     if not dry_run:
         RunRepository(db.conn).save(summary, started_at, datetime.now(UTC))
     return summary
+
+
+def _candidate_blocks(
+    job: Job,
+    job_repo: JobRepository,
+    window: datetime,
+    *,
+    before: tuple[datetime, int] | None = None,
+) -> tuple[list[Job], list[Job]]:
+    """The (exact, fuzzy) blocks one posting is compared against.
+
+    With an employer name: its company block -- not (company, contract), because the same
+    offer on another source often has UNKNOWN contract -- plus the employer-hidden postings
+    sharing its title and department, so whichever of the two arrives second can still find
+    the other.
+
+    With no employer name (France Travail hides some employers): the title and department
+    block instead, any company. The company block cannot do that job, because every hidden
+    employer shares the same empty name: it compares all of them to each other and ignores
+    the location entirely.
+
+    `before` keeps only postings strictly older than `(collected_at, id)`, so a replay over
+    stored rows cannot turn a later posting into the canonical one.
+    """
+    title_n = normalize_title(job.title)
+    location_key = block_location(job.location)
+    company_n = normalize_company(job.company)
+
+    if company_n:
+        fuzzy = job_repo.list_by_company(company_n, window)
+        fuzzy += job_repo.list_by_title_department(
+            title_n, location_key, window, hidden_employer_only=True
+        )
+    else:
+        fuzzy = job_repo.list_by_title_department(title_n, location_key, window)
+
+    exact = job_repo.get_by_fingerprint(job.fingerprint or "")
+    return _usable_candidates(job, exact, before), _usable_candidates(job, fuzzy, before)
+
+
+def _usable_candidates(
+    job: Job, candidates: list[Job], before: tuple[datetime, int] | None
+) -> list[Job]:
+    """Candidates worth comparing: not the job itself, not rejected, not listed twice.
+
+    A rejected posting must never become a canonical: `list_unnotified` hides every
+    duplicate, so an eligible job linked to a rejected one would vanish from the digest
+    instead of being deduped.
+    """
+    seen: set[tuple[str, str]] = set()
+    usable: list[Job] = []
+    for c in _other_postings(job, candidates):
+        if c.eligibility is Eligibility.REJECTED:
+            continue
+        if before is not None and (c.collected_at, c.id or 0) >= before:
+            continue
+        key = (c.source, c.source_job_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        usable.append(c)
+    return usable
+
+
+def _canonical_of(dup_repo: JobDuplicateRepository, job_id: int) -> int:
+    """The head of a duplicate group: linking to a duplicate would build a chain."""
+    return dup_repo.get_canonical_id(job_id) or job_id
+
+
+def _replay_dedup(
+    job: Job,
+    job_repo: JobRepository,
+    dup_repo: JobDuplicateRepository,
+    dedup_engine: DedupEngine,
+    settings: Settings,
+    *,
+    dry_run: bool,
+) -> int:
+    """Re-run dedup for one stored job. Returns 1 when a new link is found.
+
+    The window is measured from the job's own collection date, not from today, so the
+    replay asks what the current rules would have said when the posting arrived.
+    """
+    window = job.collected_at - timedelta(days=settings.dedup_window_days)
+    exact, fuzzy = _candidate_blocks(
+        job, job_repo, window, before=(job.collected_at, job.id or 0)
+    )
+    result = dedup_engine.check(job, exact, fuzzy)
+    if not result.is_duplicate or result.canonical_id is None:
+        return 0
+
+    canonical_id = _canonical_of(dup_repo, result.canonical_id)
+    if canonical_id == job.id:
+        return 0
+    if not dry_run and not dup_repo.save_link(
+        canonical_id, job.id, result.reason or "unknown", result.similarity
+    ):
+        return 0
+
+    # ids only: the daily workflow runs reprocess in a public Actions log.
+    logger.info(
+        "reprocess: job %d is a duplicate of %d (%s)", job.id, canonical_id, result.reason
+    )
+    return 1
 
 
 def _other_postings(job: Job, candidates: list[Job]) -> list[Job]:

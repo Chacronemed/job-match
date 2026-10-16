@@ -209,7 +209,8 @@ def _reprocess_summary() -> RunSummary:
         rejected_by_reason={"EXPERIENCE": 286, "NOT_RELEVANT": 194},
         eligible=85,
         strong=28,
-        duplicates=85,
+        duplicates=2,
+        self_links_dropped=85,
     )
 
 
@@ -228,6 +229,7 @@ def test_reprocess_summary_with_limit_zero_prints_counts_without_titles(capsys):
     assert "jobs read:  533" in out
     assert "eligible:   85" in out
     assert "strong:     28" in out
+    assert "new duplicate links: 2" in out
     assert "self-links dropped: 85" in out
     assert "EXPERIENCE: 286" in out
     assert "strong titles" not in out

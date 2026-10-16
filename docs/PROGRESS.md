@@ -3,12 +3,43 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**Milestone 14: national search scope** — **DONE** (2026-10-16). One profile key,
-`location_scope: france`, drives the queries and the location gate. M13 is complete.
-M9 manual GitHub setup still pending (see below), and the `PROFILE_YAML` secret needs
-re-encoding before CI searches nationally.
+**Milestone 15: dedup when the employer is hidden** — **DONE** (2026-10-16). France Travail
+publishes some offers without an employer name, and the dedup block was the normalized company,
+so those postings were never compared with anything. M14 is complete. M9 manual GitHub setup
+still pending (see below), and the `PROFILE_YAML` secret needs re-encoding before CI searches
+nationally.
 
 ## Done
+- **Dedup when the employer is hidden** (2026-10-16, M15):
+  - **The bug:** the digest sent "Ingénieur DevOps — Rennes" twice. Measured on the local DB:
+    jobs 155 and 160 shared a normalized title and a department, their descriptions were 98.6%
+    similar, both were eligible and canonical. One had an employer name, the other did not, and
+    the fuzzy block is `company_normalized` — `""` and `"acme"` are different blocks, so the pair
+    was never compared. The `""` block was also too wide: all 107 employer-hidden postings of the
+    window in one block, with no location constraint at all.
+  - With no employer name the block is **the normalized title plus the department**, any company
+    (`JobRepository.list_by_title_department`); the descriptions decide as before. A posting that
+    *does* have an employer also looks at the employer-hidden postings with the same title and
+    department, so the fix does not depend on arrival order. Two named employers are never
+    compared on title and department alone.
+  - `normalization.block_location` is the key: `department_of(location)`, falling back to the
+    normalized text ("France", "Télétravail", an unlisted town). Source-independent — France
+    Travail's "35 - Rennes" and Jooble's "Rennes, France" both give "35".
+  - `pipelines/jobs._candidate_blocks` / `_usable_candidates`: one place decides who a posting is
+    compared against, used by the run and by the reprocess replay. A **rejected** row is never a
+    candidate (`list_unnotified` hides every duplicate, so an eligible job behind a rejected
+    canonical would be lost), and a match against a row that is itself a duplicate links to that
+    group's canonical instead of starting a chain.
+  - **`job-match reprocess` now replays dedup** (it used to skip it, which made this fix invisible
+    on data already collected). Collection order, window measured from each job's own
+    `collected_at`, candidates strictly earlier in `(collected_at, id)` so the older posting stays
+    canonical, ids only in the log. `RunSummary.duplicates` = new links found,
+    `RunSummary.self_links_dropped` = corrupt self-links removed.
+  - Reprocess on the real DB (533 jobs): **2 new duplicate links** (160 → 155, 200 → 155 — the
+    latter missed because both arrived in one run), digest pool 83 → 81 canonical eligible. The
+    one remaining same-title/same-department pair is two named employers whose descriptions are
+    57% similar: two different offers, correctly kept.
+  - ADR 0006. 34 new tests (937 total), ruff clean.
 - **National search scope** (2026-10-16, M14):
   - One profile key replaces two lists: `location_scope: france` (or a department list) drives
     the France Travail queries, the Jooble location, and the location gate. Parsed in
@@ -17,7 +48,7 @@ re-encoding before CI searches nationally.
     `ft_search.departments` key still loads (deprecated alias), `filters.locations` is gone
     from the profile.
   - France Travail: no `departement` param nationally, one paginated query per keyword, and
-    the API window is now enforced in the adapter [md] `Range` start <= 1000, end <= 1149, so
+    the API window is now enforced in the adapter — `Range` start <= 1000, end <= 1149, so
     1050 offers over 7 pages. Truncation logs a WARNING with reachable vs available; an HTTP
     400 on a page ends that query instead of the run.
   - Jooble: `regions=["France"]` when national (chosen in the source factory), so the whole
@@ -49,7 +80,8 @@ re-encoding before CI searches nationally.
     Both lists in `config/settings.yaml` under `relevance:`, nothing hard-coded.
   - `job-match reprocess [--since YYYY-MM-DD] [--limit N] [--dry-run]` +
     `pipelines/jobs.reprocess_jobs`: re-applies the gate and scorer to stored jobs, no API
-    calls, no dedup re-run, `notified_at` never touched. Drops self-links first.
+    calls, `notified_at` never touched. Drops self-links first. (Since M15 it also replays
+    dedup.)
     `JobRepository.list_all(since)` added.
   - Reprocess on the real DB (533 jobs): 85 self-links dropped, 448 rejected
     (EXPERIENCE 286, NOT_RELEVANT 194, CONTRACT 154), **85 eligible / 28 strong**,
@@ -212,6 +244,9 @@ re-encoding before CI searches nationally.
   - 26 tests green, `ruff check .` clean
 
 ## Next step
+- Watch the next digest: it should no longer carry the same offer twice. If a twin shows up, the
+  pair to look at is two *named* employers (the cross-company path needs a hidden employer on one
+  side) or two titles that normalize differently.
 - **Re-encode the `PROFILE_YAML` secret** from the updated `config/profile.yaml`, or CI keeps
   searching the old 14 departments (the deprecated `departments` alias still loads):
   `base64 -w0 config/profile.yaml`.
@@ -355,6 +390,10 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
   use fixtures.
 
 ## Session log
+- 2026-10-16: Dedup for employer-hidden postings. Title + department block when the company is
+  empty, the department as a source-independent blocking key, rejected rows excluded as
+  canonicals, and a dedup replay inside `job-match reprocess` (2 new links on the real DB,
+  digest pool 83 -> 81). ADR 0006. 937 tests passing.
 - 2026-10-16: National search. `location_scope: france` as the single geography setting,
   France Travail paginated nationwide inside its 1050-offer API window (truncation warned,
   HTTP 400 non-fatal), Jooble querying "France" once, a tri-state French/foreign/unknown
