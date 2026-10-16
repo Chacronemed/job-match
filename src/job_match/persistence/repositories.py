@@ -309,6 +309,19 @@ class JobRepository:
         ).fetchall()
         return [_row_to_job(r) for r in rows]
 
+    def list_all(self, since: datetime | None = None) -> list[Job]:
+        """Every stored job, oldest first. For reprocessing with changed rules."""
+        if since is None:
+            rows = self._conn.execute(
+                "SELECT * FROM jobs ORDER BY collected_at"
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT * FROM jobs WHERE collected_at >= ? ORDER BY collected_at",
+                (since.isoformat(),),
+            ).fetchall()
+        return [_row_to_job(r) for r in rows]
+
     def get_by_fingerprint(self, fingerprint: str) -> list[Job]:
         rows = self._conn.execute(
             "SELECT * FROM jobs WHERE fingerprint = ?", (fingerprint,)
@@ -433,6 +446,19 @@ class JobDuplicateRepository:
             (canonical_id, duplicate_id, reason, similarity, datetime.now(UTC).isoformat()),
         )
         self._conn.commit()
+
+    def delete_self_links(self) -> int:
+        """Remove rows where a job is recorded as its own duplicate.
+
+        Those are corrupt, not dedup history: they came from re-running a day twice
+        before `_other_postings` existed, and the digest's canonical filter treats the
+        affected jobs as duplicates forever. Returns the number of rows removed.
+        """
+        cursor = self._conn.execute(
+            "DELETE FROM job_duplicates WHERE canonical_job_id = duplicate_job_id"
+        )
+        self._conn.commit()
+        return cursor.rowcount
 
     def get_canonical_id(self, job_id: int) -> int | None:
         row = self._conn.execute(

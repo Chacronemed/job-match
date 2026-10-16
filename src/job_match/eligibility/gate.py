@@ -1,4 +1,4 @@
-from job_match.config.schema import Profile, Settings
+from job_match.config.schema import Profile, RelevanceConfig, Settings
 from job_match.domain.models import (
     ContractType,
     EligibilityResult,
@@ -8,7 +8,7 @@ from job_match.domain.models import (
 )
 from job_match.experience.parser import infer_seniority_min
 from job_match.normalization.location import departments_for, normalize_location
-from job_match.normalization.skills import matches_skill, title_keyword
+from job_match.normalization.skills import matches_skill, title_keyword, title_term
 
 
 def is_relevant(
@@ -27,6 +27,24 @@ def is_relevant(
     return any(matches_skill(text, s.name, aliases or {}) for s in profile.skills.preferred)
 
 
+def title_is_a_dev_role(title: str, relevance: RelevanceConfig) -> bool:
+    """True when the TITLE says developer and never says the role we want.
+
+    The description is not consulted on purpose. "Développeur(se) - Java Angular & Cloud"
+    matches kubernetes, cloud and docker in its body text and scored 74 as a strong match,
+    but the title decides what the job is. A dev_title plus an explicit role_title is
+    fine ("Ingénieur DevOps Java"), because then the role is stated.
+
+    "cloud" is deliberately absent from role_titles: only "cloud engineer" and
+    "ingénieur cloud" count, so "Développeur Cloud" stays rejected.
+    """
+    if not relevance.dev_titles:
+        return False  # veto off
+    if title_term(title, relevance.dev_titles) is None:
+        return False
+    return title_term(title, relevance.role_titles) is None
+
+
 def evaluate(
     job: Job,
     requirement: ExperienceRequirement,
@@ -36,9 +54,12 @@ def evaluate(
 ) -> EligibilityResult:
     reasons: list[RejectionReason] = []
 
-    # 0. Relevance: not a target role at all (e.g. "Réceptionniste en hôtellerie")
-    if settings and not is_relevant(
-        job, profile, settings.relevance.target_title_keywords, aliases
+    # 0. Relevance: not a target role at all (e.g. "Réceptionniste en hôtellerie"), or a
+    # developer role wearing our keywords in its description. The title veto runs first
+    # and overrides the skill match — that is the point of it.
+    if settings and (
+        title_is_a_dev_role(job.title, settings.relevance)
+        or not is_relevant(job, profile, settings.relevance.target_title_keywords, aliases)
     ):
         reasons.append(RejectionReason.NOT_RELEVANT)
 

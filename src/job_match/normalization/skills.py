@@ -19,6 +19,21 @@ def matches_skill(text: str, name: str, aliases: dict[str, list[str]]) -> bool:
     return any(contains_term(text, form) for form in skill_forms(name, aliases))
 
 
+def title_term(title: str, terms: list[str]) -> str | None:
+    """First term present in the title as a whole word, accent- and case-insensitive.
+
+    Whole-word, unlike `title_keyword`: ".net" normalizes to "net" and must not match
+    "network", and "dev" must not match "devops". Use this when a false positive costs
+    more than a miss.
+    """
+    folded = normalize_text(title)
+    for term in terms:
+        t = normalize_text(term)
+        if t and contains_term(folded, t):
+            return term
+    return None
+
+
 def title_keyword(title: str, keywords: list[str]) -> str | None:
     """First keyword found at the start of a word in the title, accent- and case-insensitive.
 

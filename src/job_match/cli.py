@@ -49,6 +49,17 @@ def main() -> None:
     run_p.add_argument("--dry-run", action="store_true",
                        help="Run the full pipeline but write nothing to the database")
 
+    rep_p = sub.add_parser(
+        "reprocess",
+        help="Re-apply the gate and scorer to jobs already in the DB (no API calls)",
+    )
+    rep_p.add_argument("--since", metavar="YYYY-MM-DD",
+                       help="Only jobs collected on or after this date")
+    rep_p.add_argument("--limit", type=int, default=None, metavar="N",
+                       help="Show at most N top scores in the output (default 10)")
+    rep_p.add_argument("--dry-run", action="store_true",
+                       help="Report what would change without writing to the database")
+
     digest_p = sub.add_parser("digest", help="Send email digest of unnotified jobs")
     digest_p.add_argument(
         "--dry-run", action="store_true",
@@ -81,6 +92,8 @@ def main() -> None:
 
     if args.command == "run":
         _cmd_run(args)
+    elif args.command == "reprocess":
+        _cmd_reprocess(args)
     elif args.command == "digest":
         _cmd_digest(args)
     elif args.command == "funding":
@@ -94,6 +107,64 @@ def main() -> None:
     else:
         parser.print_help()
         sys.exit(1)
+
+
+def _cmd_reprocess(args: argparse.Namespace) -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+    _quiet_http_logs()
+
+    from datetime import UTC, datetime
+
+    from job_match.config.loader import load_aliases, load_profile, load_settings
+    from job_match.persistence.db import Database
+    from job_match.persistence.repositories import JobRepository
+    from job_match.pipelines.jobs import reprocess_jobs
+
+    cfg = _config_dir()
+    data_dir = _data_dir()
+    profile = load_profile(cfg / "profile.yaml")
+    settings = load_settings(cfg / "settings.yaml")
+    aliases = load_aliases(cfg / "aliases.yaml")
+
+    since = None
+    if args.since:
+        try:
+            since = datetime.fromisoformat(args.since).replace(tzinfo=UTC)
+        except ValueError:
+            print(f"--since must be YYYY-MM-DD, got {args.since!r}", file=sys.stderr)
+            sys.exit(1)
+
+    db_path = data_dir / "jobs.sqlite"
+    if not db_path.exists():
+        print(f"No database at {db_path}: run `job-match run` first.", file=sys.stderr)
+        sys.exit(1)
+
+    with Database(path=str(db_path)) as db:
+        summary = reprocess_jobs(
+            profile, settings, db, aliases, since=since, dry_run=args.dry_run
+        )
+        top = JobRepository(db.conn).list_eligible(min_score=settings.strong_threshold)
+
+    tag = " [DRY RUN]" if args.dry_run else ""
+    print(f"\nReprocess complete{tag}")
+    print(f"  jobs read:  {summary.fetched}")
+    print(f"  rejected:   {summary.rejected_jobs} jobs")
+    if summary.rejected_by_reason:
+        print("  reason breakdown (may sum > jobs; a job can fail multiple gates):")
+        for reason, count in sorted(summary.rejected_by_reason.items()):
+            print(f"    {reason}: {count}")
+    print(f"  eligible:   {summary.eligible}")
+    print(f"  strong:     {summary.strong}")
+    if summary.duplicates:
+        print(f"  self-links dropped: {summary.duplicates}")
+    if summary.errors:
+        print(f"  errors:     {summary.errors}")
+
+    limit = args.limit or 10
+    if top:
+        print(f"\n  top {min(limit, len(top))} strong titles:")
+        for job in top[:limit]:
+            print(f"    {job.score:>3}  {job.title}  —  {job.company}")
 
 
 def _cmd_digest(args: argparse.Namespace) -> None:

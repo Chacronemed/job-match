@@ -89,6 +89,10 @@ class LeadFilterConfig:
 class RelevanceConfig:
     # A job must match >=1 preferred skill or have one of these in its title. Empty = off.
     target_title_keywords: list[str] = field(default_factory=list)
+    # Title veto: a dev_title in the title rejects the job unless a role_title is there too.
+    # Both empty = veto off.
+    role_titles: list[str] = field(default_factory=list)
+    dev_titles: list[str] = field(default_factory=list)
 
 
 @dataclass

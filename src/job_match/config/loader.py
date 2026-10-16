@@ -184,7 +184,9 @@ def _parse_relevance(value: object, path: Path) -> RelevanceConfig:
     return RelevanceConfig(
         target_title_keywords=_str_list(
             raw.get("target_title_keywords"), "relevance.target_title_keywords", path
-        )
+        ),
+        role_titles=_str_list(raw.get("role_titles"), "relevance.role_titles", path),
+        dev_titles=_str_list(raw.get("dev_titles"), "relevance.dev_titles", path),
     )
 
 

@@ -9,6 +9,34 @@ one verification step pending: the Jooble-only live run needs `JOOBLE_API_KEY` i
 M9 manual GitHub setup still pending (see below).
 
 ## Done
+- **Empty-digest bug + relevance title veto** (2026-10-16):
+  - **Root cause of "112 eligible, 1 job emailed":** running the jobs pipeline twice in one
+    day. `JobRepository.save` upserts on (source, source_job_id), so the second run re-read
+    each posting, matched its *own* fingerprint, saved over its own row, and then wrote a
+    `job_duplicates` row with `canonical_job_id == duplicate_job_id`. `list_unnotified`
+    excludes duplicates, so every job vanished from the digest, and the dedup branch skips
+    scoring so their scores were blanked too. The local DB had 85 such self-links.
+  - Fix: `pipelines/jobs._other_postings` drops the job's own stored row from both dedup
+    candidate lists. Keyed on (source, source_job_id), so the same offer on another source
+    is still a duplicate. 10 consecutive runs now leave one visible, scored job.
+  - `JobDuplicateRepository.delete_self_links()` cleans rows left by the old behaviour.
+  - **Title veto** (`gate.title_is_a_dev_role`): a `dev_titles` word in the title means the
+    job is a developer role whatever its description says, unless the title also names a
+    `role_titles` term. Runs before and overrides the skill match. Whole-word, accent-
+    insensitive matching (`skills.title_term`), so ".net" never matches "network" and "dev"
+    never matches "devops". `cloud` is deliberately not a role_title — only "cloud engineer"
+    and "ingénieur cloud" — so "Développeur Cloud" stays rejected.
+    Both lists in `config/settings.yaml` under `relevance:`, nothing hard-coded.
+  - `job-match reprocess [--since YYYY-MM-DD] [--limit N] [--dry-run]` +
+    `pipelines/jobs.reprocess_jobs`: re-applies the gate and scorer to stored jobs, no API
+    calls, no dedup re-run, `notified_at` never touched. Drops self-links first.
+    `JobRepository.list_all(since)` added.
+  - Reprocess on the real DB (533 jobs): 85 self-links dropped, 448 rejected
+    (EXPERIENCE 286, NOT_RELEVANT 194, CONTRACT 154), **85 eligible / 28 strong**,
+    digest-visible went 0 → 70 (40 at or above `digest.min_score` 60). The veto rejects 41
+    of the 533 titles; 2 dev-worded titles survive on an explicit role_title
+    ("Ingénieur Développeur DevOps Kubernetes").
+  - 55 new tests (765 total), ruff clean.
 - **Milestone 13** (2026-10-16):
   - `adapters/jobs/jooble.py` (`JoobleSource`, POST per keyword × region) and
     `adapters/jobs/adzuna.py` (`AdzunaSource`, one `what_or` GET per region — all keywords OR'd).
@@ -148,6 +176,8 @@ M9 manual GitHub setup still pending (see below).
   - 26 tests green, `ruff check .` clean
 
 ## Next step
+- Re-check the next real digest: it should now carry ~40 jobs, not 1. If the CI DB (private
+  data repo) was also double-run, `job-match reprocess` there drops its self-links too.
 - **Pending from M13:** add `JOOBLE_API_KEY` to `.env`, then run the Jooble-only check
   (`sources.enabled: [jooble]`, `job-match run --limit 10 --dry-run`) and review what Jooble
   actually returns: location formats not in `fr_geo.py`, and how many jobs land with
@@ -241,6 +271,11 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
 - ~~**M9 — WAL flush before data-repo push:**~~ **Resolved in M9.** `PRAGMA wal_checkpoint(TRUNCATE)` + `VACUUM` run in daily.yml before DB push. `*.sqlite-wal` and `*.sqlite-shm` added to `.gitignore`.
 
 ## Known issues
+- The title veto keeps a dev title that also names a role_title: "Développeur FullStack -
+  Java/Angular/DevOps" survives the veto by design (it was rejected on CONTRACT anyway).
+  Tighten `role_titles` if those turn out to be noise.
+- `job-match run` twice in a day is now safe, but the second run still re-scores every job
+  and rewrites its row. Harmless, just wasted work.
 - `fr_geo.py` is deliberately incomplete: an unlisted city resolves to no department and the
   job is kept. Expect noise from Jooble locations outside the table, never silent drops.
 - Contract `UNKNOWN` now passes the gate, so Jooble/Adzuna jobs with no contract field reach
@@ -315,6 +350,10 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
 - 2026-10-16: Location gate fixed to accept the departments we query (`ft_search.departments` as
   the single source of truth, unparseable location kept); FT per-query keyword moved to DEBUG and
   the per-keyword summary block off stdout (public Actions log). 586 tests.
+- 2026-10-16: Diagnosed the empty digest (self-referential duplicate links from running the
+  pipeline twice in a day), fixed the cause and added cleanup; added the dev-title relevance
+  veto and `job-match reprocess`. Reprocess on the real DB: 85 eligible, 28 strong,
+  digest-visible 0 → 70. 765 tests passing.
 - 2026-10-16: M13 complete (bar the Jooble live run). Jooble + Adzuna adapters, source factory,
   `sources` config, `fr_geo.py`, contract parser, multi-source pipeline with cross-source dedup
   and `by_source`, httpx URL logging silenced, ADR 0004. 710 tests passing.

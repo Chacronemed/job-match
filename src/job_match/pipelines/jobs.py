@@ -113,11 +113,11 @@ def run_jobs(
 
             # Dedup
             company_n = normalize_company(job.company)
-            exact = job_repo.get_by_fingerprint(fp)
             # Block on the company alone, not (company, contract): the same offer on
             # another source often has UNKNOWN contract, and a contract-keyed block
             # would never compare them.
-            fuzzy = job_repo.list_by_company(company_n, window)
+            exact = _other_postings(job, job_repo.get_by_fingerprint(fp))
+            fuzzy = _other_postings(job, job_repo.list_by_company(company_n, window))
             dedup_result = dedup_engine.check(job, exact, fuzzy)
 
             if dedup_result.is_duplicate:
@@ -185,6 +185,111 @@ def run_jobs(
         RunRepository(db.conn).save(summary, started_at, datetime.now(UTC))
 
     return summary
+
+
+def reprocess_jobs(
+    profile: Profile,
+    settings: Settings,
+    db: Database,
+    aliases: dict[str, list[str]],
+    *,
+    since: datetime | None = None,
+    dry_run: bool = False,
+) -> RunSummary:
+    """Re-apply the gate and the scorer to jobs already in the DB. No network calls.
+
+    For when the rules change — a new relevance veto, a new threshold — and the question
+    is what the current rules say about the data we already have. Dedup is not redone:
+    the links are already stored. Self-links left by older runs are dropped first,
+    because they hide otherwise-canonical jobs from the digest.
+
+    `notified_at` is never touched, so a job already emailed is not emailed twice.
+    """
+    started_at = datetime.now(UTC)
+    job_repo = JobRepository(db.conn)
+    company_repo = CompanyRepository(db.conn)
+    dup_repo = JobDuplicateRepository(db.conn)
+    scoring_engine = ScoringEngine([NativeRuleScorer(aliases)])
+
+    self_links = 0
+    if not dry_run:
+        self_links = dup_repo.delete_self_links()
+        if self_links:
+            logger.info("dropped %d self-referential duplicate links", self_links)
+
+    fetched = 0
+    rejected_jobs = 0
+    rejected_by_reason: dict[str, int] = {}
+    eligible = 0
+    strong = 0
+    errors = 0
+
+    for stored in job_repo.list_all(since):
+        fetched += 1
+        try:
+            exp = exp_parser.parse(stored.description)
+            job = replace(stored, experience=exp, fingerprint=compute_fingerprint(stored))
+
+            elig = gate.evaluate(job, exp, profile, settings, aliases)
+            if not elig.eligible:
+                rejection = ", ".join(str(r) for r in elig.reasons)
+                job = replace(
+                    job,
+                    eligibility=Eligibility.REJECTED,
+                    rejection_reason=rejection,
+                    score=None,
+                    scoring_breakdown=None,
+                )
+                rejected_jobs += 1
+                for r in elig.reasons:
+                    rejected_by_reason[str(r)] = rejected_by_reason.get(str(r), 0) + 1
+            else:
+                breakdown = scoring_engine.score(job, profile, settings, elig, exp)
+                job = replace(
+                    job,
+                    eligibility=Eligibility.ELIGIBLE,
+                    rejection_reason=None,
+                    score=breakdown.score,
+                    scoring_breakdown=breakdown,
+                )
+                eligible += 1
+                if breakdown.score is not None and breakdown.score >= settings.strong_threshold:
+                    strong += 1
+
+            if not dry_run:
+                _save(job, company_repo, job_repo)
+        except Exception as exc:
+            logger.warning("reprocess failed for %s: %s", stored.source_job_id, exc)
+            errors += 1
+
+    summary = RunSummary(
+        pipeline="jobs_reprocess",
+        fetched=fetched,
+        normalized=fetched,
+        rejected_jobs=rejected_jobs,
+        rejected_by_reason=rejected_by_reason,
+        duplicates=self_links,  # self-links removed, not duplicates found
+        eligible=eligible,
+        strong=strong,
+        errors=errors,
+    )
+    if not dry_run:
+        RunRepository(db.conn).save(summary, started_at, datetime.now(UTC))
+    return summary
+
+
+def _other_postings(job: Job, candidates: list[Job]) -> list[Job]:
+    """Dedup candidates minus the job's own stored row.
+
+    `JobRepository.save` upserts on (source, source_job_id), so re-running a day twice
+    re-reads the same posting. Without this, the row matched its own fingerprint, was
+    saved over itself and then linked as a duplicate of itself — which the digest's
+    canonical filter excludes, silently hiding every job.
+    """
+    return [
+        c for c in candidates
+        if not (c.source == job.source and c.source_job_id == job.source_job_id)
+    ]
 
 
 def _as_sources(sources) -> list:

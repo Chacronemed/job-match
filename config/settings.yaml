@@ -64,6 +64,39 @@ funding:
 # in its title (accent-insensitive word prefix: "infra" matches "infrastructure").
 # Rejected jobs get rejection_reason NOT_RELEVANT. Empty list = gate off.
 relevance:
+  # Title veto, applied before the skill match below. A dev_title in the title means the
+  # job IS a developer role, whatever its description mentions: "Developpeur Java Angular
+  # & Cloud" lists our skills but is not our job. It survives only if the title also names
+  # an explicit role_title. Note "cloud" alone is NOT a role_title — only "cloud engineer"
+  # and "ingenieur cloud" are, so "Developpeur Cloud" is still rejected.
+  # Matching is whole-word and accent-insensitive (".net" never matches "network").
+  role_titles:
+    - devops
+    - sre
+    - site reliability
+    - platform engineer
+    - cloud engineer
+    - ingénieur cloud
+    - infrastructure
+    - ops
+    - ingénieur système
+    - kubernetes
+  dev_titles:
+    - développeur
+    - développeuse
+    - developer
+    - dev
+    - fullstack
+    - full stack
+    - frontend
+    - backend
+    - java
+    - angular
+    - react
+    - .net
+    - php
+    - data scientist
+    - data analyst
   target_title_keywords:
     - devops
     - devsecops
