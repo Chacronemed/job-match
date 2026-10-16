@@ -400,10 +400,21 @@ def _print_funding_summary(
                   f"events={b.get('events', 0)} leads={b.get('leads', 0)}")
 
 
+def _print_top_departments(by_department: dict[str, int], top: int = 10) -> None:
+    """Where the offers are, biggest first. "?" = no single department (region or unknown)."""
+    ranked = sorted(by_department.items(), key=lambda kv: (-kv[1], kv[0]))
+    print(f"  fetched per department, from the offer location (top {top}):")
+    for dept, count in ranked[:top]:
+        print(f"    {dept}: {count}")
+    if len(ranked) > top:
+        rest = sum(count for _dept, count in ranked[top:])
+        print(f"    +{len(ranked) - top} more departments: {rest}")
+
+
 def _print_summary(summary: RunSummary, *, dry_run: bool = False) -> None:
     tag = " [DRY RUN]" if dry_run else ""
     print(f"\nJobs run complete{tag}")
-    print(f"  queries:    {summary.queries}  (keyword x department)")
+    print(f"  queries:    {summary.queries}  (keyword x area)")
     print(f"  fetched:    {summary.fetched}")
     print(f"  normalized: {summary.normalized}")
     print(f"  rejected:   {summary.rejected_jobs} jobs")  # unique jobs, not reason count
@@ -427,9 +438,11 @@ def _print_summary(summary: RunSummary, *, dry_run: bool = False) -> None:
                 f" / {c.get('duplicates', 0):>4} / {c.get('calls', 0):>4}"
             )
     if summary.by_area:
-        print("  fetched per area (department or region):")
+        print("  fetched per queried area:")
         for area, count in sorted(summary.by_area.items()):
             print(f"    {area}: {count}")
+    if summary.by_department:
+        _print_top_departments(summary.by_department)
     if summary.by_keyword:
         # Query keywords come from the private profile and this output lands in a public
         # CI log: departments are printed, the per-keyword breakdown stays at DEBUG.

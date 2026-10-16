@@ -1,4 +1,5 @@
 import json
+import logging
 import time
 from pathlib import Path
 from unittest.mock import patch
@@ -8,6 +9,9 @@ import pytest
 import respx
 
 from job_match.adapters.jobs.france_travail import (
+    MAX_RANGE_END,
+    MAX_RANGE_START,
+    PAGE_SIZE,
     SEARCH_URL,
     TOKEN_URL,
     FranceTravailSource,
@@ -695,3 +699,143 @@ def test_keyword_is_logged_at_debug(caplog):
     assert _query_log_lines(caplog, "DEBUG") == [
         "query keyword=devops dept=75 fetched=1 available=1"
     ]
+
+
+# ---------------------------------------------------------------------------
+# National scope: no departement param, paginated inside the API window
+# ---------------------------------------------------------------------------
+
+def _national(keywords: list[str] | None = None) -> Profile:
+    """`location_scope: france` arrives here as an empty department list."""
+    return Profile(
+        candidate=Candidate(experience_years=5),
+        skills=Skills(),
+        filters=Filters(),
+        ft_search=FTSearch(keywords=keywords or ["devops"], departments=[]),
+        scoring=ScoringConfig(),
+    )
+
+
+def _token_route():
+    return respx.post(TOKEN_URL).mock(
+        return_value=httpx.Response(200, json=_load("ft_token.json"))
+    )
+
+
+def _offers(count: int, start: int, total: int) -> httpx.Response:
+    """A page of synthetic offers with the Content-Range header the API sends."""
+    return httpx.Response(
+        200,
+        json={"resultats": [{"id": f"FT{start + i}"} for i in range(count)]},
+        headers={"Content-Range": f"offres {start}-{start + count - 1}/{total}"},
+    )
+
+
+def _window_pages(total: int) -> list[httpx.Response]:
+    """Full pages until the API window (1149) is drained, as the real endpoint behaves."""
+    pages = []
+    start = 0
+    while start <= MAX_RANGE_START:
+        count = min(PAGE_SIZE, MAX_RANGE_END + 1 - start)
+        pages.append(_offers(count, start, total))
+        start += count
+    return pages
+
+
+def test_a_national_scope_sends_no_departement_param():
+    with respx.mock:
+        _token_route()
+        route = respx.get(SEARCH_URL).mock(return_value=_offers(2, 0, 2))
+        list(_source(_national()).fetch())
+
+    assert route.call_count == 1
+    params = route.calls[0].request.url.params
+    assert "departement" not in params
+    assert params["motsCles"] == "devops"
+
+
+def test_a_national_scope_runs_one_query_per_keyword():
+    with respx.mock:
+        _token_route()
+        route = respx.get(SEARCH_URL).mock(return_value=_offers(1, 0, 1))
+        items = list(_source(_national(["devops", "sre", "kubernetes"])).fetch())
+
+    assert route.call_count == 3  # one nationwide query each, no department fan-out
+    assert len(items) == 3
+    assert [c.request.url.params["motsCles"] for c in route.calls] == [
+        "devops", "sre", "kubernetes",
+    ]
+
+
+def test_paging_stops_at_the_api_window_and_clamps_the_last_range():
+    with respx.mock:
+        _token_route()
+        route = respx.get(SEARCH_URL).mock(side_effect=_window_pages(total=5000))
+        items = list(_source(_national()).fetch())
+
+    ranges = [c.request.headers["Range"] for c in route.calls]
+    assert ranges[0] == "0-149"
+    assert ranges == [f"{n}-{n + PAGE_SIZE - 1}" for n in range(0, 1050, PAGE_SIZE)]
+    # start <= 1000 and end <= 1149: 7 pages, then no page is addressable any more
+    assert all(int(r.split("-")[0]) <= MAX_RANGE_START for r in ranges)
+    assert all(int(r.split("-")[1]) <= MAX_RANGE_END for r in ranges)
+    assert len(items) == 1050
+
+
+def test_truncation_by_the_window_is_logged(caplog):
+    with respx.mock:
+        _token_route()
+        respx.get(SEARCH_URL).mock(side_effect=_window_pages(total=5000))
+        with caplog.at_level(logging.WARNING):
+            list(_source(_national()).fetch())
+
+    assert "truncated by the API window" in caplog.text
+    assert "5000" in caplog.text
+
+
+def test_a_query_inside_the_window_logs_no_truncation(caplog):
+    with respx.mock:
+        _token_route()
+        respx.get(SEARCH_URL).mock(return_value=_offers(2, 0, 2))
+        with caplog.at_level(logging.WARNING):
+            list(_source(_national()).fetch())
+
+    assert "truncated" not in caplog.text
+
+
+def test_a_limited_query_does_not_claim_truncation(caplog):
+    """`--limit 50` is our own cap, not the API's window."""
+    with respx.mock:
+        _token_route()
+        respx.get(SEARCH_URL).mock(return_value=_offers(150, 0, 5000))
+        with caplog.at_level(logging.WARNING):
+            items = list(_source(_national(), max_results=50).fetch())
+
+    assert len(items) == 50
+    assert "truncated" not in caplog.text
+
+
+def test_a_refused_range_ends_the_query_without_killing_the_run(caplog):
+    with respx.mock:
+        _token_route()
+        route = respx.get(SEARCH_URL).mock(side_effect=[
+            _offers(150, 0, 5000),
+            httpx.Response(400, json={"message": "range invalide"}),
+            _offers(1, 0, 1),
+        ])
+        with caplog.at_level(logging.WARNING):
+            items = list(_source(_national(["devops", "sre"])).fetch())
+
+    assert route.call_count == 3
+    assert len(items) == 151  # 150 kept from the first keyword, 1 from the second
+    assert "refused (HTTP 400)" in caplog.text
+
+
+def test_the_national_query_area_is_reported_as_all():
+    with respx.mock:
+        _token_route()
+        respx.get(SEARCH_URL).mock(return_value=_offers(2, 0, 2))
+        source = _source(_national())
+        list(source.fetch())
+
+    assert [s.area for s in source.query_stats] == ["all"]

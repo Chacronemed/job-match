@@ -1,8 +1,16 @@
 """Jooble job source.
 
 Quota-light: the free plan allows a few hundred calls a day, so there is no
-keyword x department fan-out here. One POST per keyword x region, page 1 only, and a hard
-`max_calls_per_run` ceiling on top.
+keyword x department fan-out here. One POST per region, with every keyword in it, and a
+hard `max_calls_per_run` ceiling on top.
+
+One combined query is enough because Jooble ORs the words in `keywords` and ranks by
+relevance, it does not AND them: probing Ile-de-France (scripts/jooble_probe.py) returned
+21 offers for "devops", 3 for "kubernetes", and exactly their union -- the same 21 ids --
+for "devops kubernetes sre". The combined query covered 100% of both single-keyword result
+sets, so 7 keywords x 7 regions = 49 calls collapse to 7. The budget freed up pays for
+pagination instead: each page is one call, and a region gets at most
+`max_calls_per_run // len(regions)` of them, so page 1 of every region is always affordable.
 
 The API key is a path segment (`POST /api/<key>`), so it must never reach a log line.
 `_SAFE_URL` is what this module logs, and `cli.py` keeps httpx's own request log — which
@@ -24,7 +32,7 @@ logger = logging.getLogger(__name__)
 API_ROOT = "https://jooble.org/api"
 _SAFE_URL = f"{API_ROOT}/<key>"  # what we log instead of the real URL
 PAGE_SIZE = 50
-QUERY_KEY = "_jm_query"   # adapter-private: which keyword returned the item
+QUERY_KEY = "_jm_query"   # adapter-private: the keyword string the item came back for
 REGION_KEY = "_jm_region"
 
 
@@ -37,7 +45,7 @@ class JoobleSource:
         api_key: str,
         regions: list[str],
         http: HttpClient | None = None,
-        max_results: int = PAGE_SIZE,
+        max_results: int | None = None,
         max_calls_per_run: int = 15,
         requests_per_second: float = 1.0,
     ) -> None:
@@ -58,7 +66,7 @@ class JoobleSource:
 
     @property
     def query_stats(self) -> tuple[QueryStat, ...]:
-        """One entry per (keyword, region) query, in execution order."""
+        """One entry per region query, in execution order."""
         return tuple(self._query_stats)
 
     def _throttle(self) -> None:
@@ -67,54 +75,77 @@ class JoobleSource:
             time.sleep(wait)
         self._last_request_time = time.monotonic()
 
+    @property
+    def pages_per_region(self) -> int:
+        """Page budget per region, so every region can afford its page 1."""
+        return max(1, self._max_calls // max(1, len(self._regions)))
+
     def fetch(self, since: datetime | None = None) -> Iterator[RawItem]:
-        for keyword in self._profile.ft_search.keywords:
-            for region in self._regions:
-                if self._api_calls >= self._max_calls:
-                    logger.warning(
-                        "%s: call budget exhausted (%d/%d), stopping this run",
-                        self.name, self._api_calls, self._max_calls,
-                    )
-                    return
-                yield from self._fetch_query(keyword, region)
+        keywords = " ".join(self._profile.ft_search.keywords)
+        pages = self.pages_per_region
+        for region in self._regions:
+            if self._out_of_budget():
+                break
+            yield from self._fetch_query(keywords, region, pages)
         logger.info("%s: %d/%d calls used", self.name, self._api_calls, self._max_calls)
 
-    def _fetch_query(self, keyword: str, region: str) -> Iterator[RawItem]:
+    def _out_of_budget(self) -> bool:
+        if self._api_calls < self._max_calls:
+            return False
+        logger.warning(
+            "%s: call budget exhausted (%d/%d), stopping this run",
+            self.name, self._api_calls, self._max_calls,
+        )
+        return True
+
+    def _fetch_query(self, keywords: str, region: str, max_pages: int) -> Iterator[RawItem]:
+        """One region, pages 1..max_pages. Every page spends one call."""
         area = region or "all"
+        page_size = PAGE_SIZE if self._max_results is None else min(self._max_results, PAGE_SIZE)
         fetched = 0
+        pages = 0
         total: int | None = None
         try:
-            self._throttle()
-            resp = self._http.post(
-                f"{API_ROOT}/{self._api_key}",
-                json={
-                    "keywords": keyword,
-                    "location": region,
-                    "page": "1",
-                    "ResultOnPage": str(min(self._max_results, PAGE_SIZE)),
-                },
-            )
-            self._api_calls += 1
-            resp.raise_for_status()
-            body = resp.json() or {}
-            total = _as_int(body.get("totalCount"))
-
-            for item in body.get("jobs") or []:
-                if not isinstance(item, dict) or not item.get("id"):
-                    continue  # no stable id → nothing to dedup or upsert on
-                item[QUERY_KEY] = keyword
-                item[REGION_KEY] = area
-                yield item
-                fetched += 1
-                if fetched >= self._max_results:
+            for page in range(1, max_pages + 1):
+                if self._out_of_budget():
                     return
+                self._throttle()
+                resp = self._http.post(
+                    f"{API_ROOT}/{self._api_key}",
+                    json={
+                        "keywords": keywords,
+                        "location": region,
+                        "page": str(page),
+                        "ResultOnPage": str(page_size),
+                    },
+                )
+                self._api_calls += 1
+                pages += 1
+                resp.raise_for_status()
+                body = resp.json() or {}
+                if (count := _as_int(body.get("totalCount"))) is not None:
+                    total = count
+
+                raw_items = body.get("jobs") or []
+                for item in raw_items:
+                    if not isinstance(item, dict) or not item.get("id"):
+                        continue  # no stable id → nothing to dedup or upsert on
+                    item[QUERY_KEY] = keywords
+                    item[REGION_KEY] = area
+                    yield item
+                    fetched += 1
+                    if self._max_results is not None and fetched >= self._max_results:
+                        return
+                if len(raw_items) < page_size or (total is not None and fetched >= total):
+                    return  # last page for this region
         finally:
-            self._query_stats.append(QueryStat(keyword, area, fetched, total, self.name))
+            self._query_stats.append(QueryStat(keywords, area, fetched, total, self.name))
             logger.info(
-                "%s query area=%s fetched=%d available=%s (%s)",
-                self.name, area, fetched, total if total is not None else "?", _SAFE_URL,
+                "%s query area=%s pages=%d fetched=%d available=%s (%s)",
+                self.name, area, pages, fetched,
+                total if total is not None else "?", _SAFE_URL,
             )
-            logger.debug("%s query keyword=%s area=%s", self.name, keyword, area)
+            logger.debug("%s query keywords=%s area=%s", self.name, keywords, area)
 
     def to_job(self, raw: RawItem) -> Job:
         snippet = str(raw.get("snippet") or "")

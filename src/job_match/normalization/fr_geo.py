@@ -144,3 +144,32 @@ CITY_DEPARTMENT: dict[str, str] = {
     "Bourges": "18", "Chartres": "28", "Blois": "41", "Niort": "79", "Angoulême": "16",
     "Périgueux": "24", "Agen": "47", "Mont-de-Marsan": "40", "Bastia": "2B", "Ajaccio": "2A",
 }
+
+
+# Every French department and overseas code: 01-95 (Corsica is 2A/2B, never 20), the DOM
+# and the overseas collectivities. Used to tell a real department prefix from France
+# Travail's "99 - <COUNTRY>" abroad marker.
+FRENCH_DEPARTMENTS: frozenset[str] = frozenset(
+    [f"{n:02d}" for n in range(1, 96) if n != 20]
+    + ["2A", "2B"]
+    + [str(n) for n in range(971, 979)]     # Guadeloupe .. Saint-Martin
+    + ["984", "986", "987", "988"]          # TAAF, Wallis, Polynesie, Nouvelle-Caledonie
+)
+
+# Clearly-not-France markers, matched as whole words after `normalize_text` (so they are
+# written accent-free here). Deliberately short: countries plus the few foreign cities that
+# actually show up in French job boards. A place that is not listed stays *unknown*, and an
+# unknown location is kept, never rejected.
+FOREIGN_PLACES: tuple[str, ...] = (
+    "belgique", "belgium", "bruxelles", "brussels", "anvers", "liege", "wallonie", "flandre",
+    "luxembourg", "suisse", "switzerland", "geneve", "lausanne", "zurich", "bale",
+    "allemagne", "germany", "deutschland", "berlin", "munich", "francfort", "frankfurt",
+    "espagne", "spain", "madrid", "barcelone", "barcelona", "italie", "italy", "milan",
+    "rome", "turin", "royaume uni", "united kingdom", "angleterre", "londres", "london",
+    "irlande", "ireland", "dublin", "pays bas", "netherlands", "amsterdam", "rotterdam",
+    "portugal", "lisbonne", "lisbon", "porto", "pologne", "poland", "varsovie",
+    "roumanie", "bucarest", "maroc", "morocco", "casablanca", "rabat", "tunisie", "tunis",
+    "algerie", "alger", "senegal", "dakar", "cote d ivoire", "abidjan", "canada", "quebec",
+    "montreal", "etats unis", "united states", "new york", "san francisco", "londres uk",
+    "singapour", "singapore", "dubai", "emirats arabes unis", "inde", "india", "bangalore",
+)

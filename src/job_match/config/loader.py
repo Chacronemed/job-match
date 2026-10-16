@@ -1,4 +1,5 @@
 import base64
+import logging
 import os
 from pathlib import Path
 
@@ -23,6 +24,8 @@ from job_match.config.schema import (
     SourcesConfig,
 )
 from job_match.domain.models import ContractType
+
+logger = logging.getLogger(__name__)
 
 
 def load_profile(path: Path) -> Profile:
@@ -205,6 +208,37 @@ def _require_key(raw: dict, key: str, source: str) -> object:
     return raw[key]
 
 
+_NATIONAL_SCOPES = {"france", "fr", "national", "all", "nationwide", "*"}
+
+
+def _parse_location_scope(raw: dict, ft_search_raw: dict, source: str) -> list[str]:
+    """The profile's one geography setting -> a department list (empty = whole country).
+
+    `location_scope: france` (or fr / national / all) searches and accepts all of France.
+    `location_scope: ["75", "92"]` restricts both the queries and the gate to those
+    departments. The key is read from the top level, or from inside `ft_search` for
+    convenience; the legacy `ft_search.departments` list is still accepted when neither is
+    set, so an older profile keeps working.
+    """
+    scope = raw.get("location_scope", ft_search_raw.get("location_scope"))
+    if scope is None:
+        legacy = [str(d) for d in (ft_search_raw.get("departments") or [])]
+        if legacy:
+            logger.debug(
+                "%s: ft_search.departments is deprecated, use location_scope", source
+            )
+        return legacy
+    if isinstance(scope, str):
+        if scope.strip().lower() in _NATIONAL_SCOPES or not scope.strip():
+            return []
+        return [scope.strip().upper()]  # a single department code
+    if isinstance(scope, list):
+        return [str(d).strip().upper() for d in scope if str(d).strip()]
+    raise ConfigError(
+        f"location_scope must be 'france' or a list of department codes (in {source})"
+    )
+
+
 def _parse_profile(raw: object, source: str) -> Profile:
     if not isinstance(raw, dict):
         raise ConfigError(f"Profile must be a YAML mapping (in {source})")
@@ -253,7 +287,7 @@ def _parse_profile(raw: object, source: str) -> Profile:
     ft_search = FTSearch(
         rome_codes=[str(c) for c in (ft_search_raw.get("rome_codes") or [])],
         keywords=[str(k) for k in (ft_search_raw.get("keywords") or [])],
-        departments=[str(d) for d in (ft_search_raw.get("departments") or [])],
+        departments=_parse_location_scope(raw, ft_search_raw, source),
         use_rome_search=bool(ft_search_raw.get("use_rome_search", False)),
     )
 

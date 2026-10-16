@@ -36,7 +36,11 @@ def build_sources(
     """The sources listed in `settings.sources.enabled` that have credentials.
 
     `limit` is a per-query cap, not a global one: France Travail applies it to every
-    (keyword, department) query, the quota-light sources to every (keyword, region) query.
+    (keyword, area) query, the quota-light sources to every region query.
+
+    Geography comes from the profile's `location_scope`. A national scope means France
+    Travail drops its `departement` param and the quota-light sources send no location at
+    all (one paginated query), instead of walking `settings.sources.regions`.
     """
     # Imported here so a missing optional source never breaks `job-match --help`.
     from job_match.adapters.jobs.adzuna import AdzunaSource
@@ -59,6 +63,11 @@ def build_sources(
 
         regions = list(settings.sources.regions)
         max_calls = settings.sources.max_calls(name)
+        # A national scope sends no location at all. Jooble's `location` is a literal
+        # place filter: measured 2026-10-16, "France" matched 16 offers for our keywords
+        # while an empty location matched 18168 on the same day. jooble.org is already
+        # the French index, so "no location" is the national query.
+        areas = [""] if profile.ft_search.national else regions
 
         if name == "france_travail":
             kwargs = {} if limit is None else {"max_results": limit}
@@ -74,7 +83,7 @@ def build_sources(
                 JoobleSource(
                     profile,
                     api_key=os.environ["JOOBLE_API_KEY"],
-                    regions=regions,
+                    regions=areas,
                     max_calls_per_run=max_calls,
                     **({} if limit is None else {"max_results": limit}),
                 )
@@ -85,7 +94,7 @@ def build_sources(
                     profile,
                     app_id=os.environ["ADZUNA_APP_ID"],
                     app_key=os.environ["ADZUNA_APP_KEY"],
-                    regions=regions,
+                    regions=areas,
                     max_calls_per_run=max_calls,
                     **({} if limit is None else {"max_results": limit}),
                 )

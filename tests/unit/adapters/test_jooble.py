@@ -99,11 +99,12 @@ def test_to_job_reads_contract_from_the_snippet_when_type_is_vague():
 
 
 # ---------------------------------------------------------------------------
-# Fan-out: one call per keyword x region
+# Fan-out: one combined query per region
 # ---------------------------------------------------------------------------
 
 @respx.mock
-def test_one_call_per_keyword_and_region():
+def test_one_call_per_region_whatever_the_keyword_count():
+    """Jooble ORs the keywords (see scripts/jooble_probe.py), so one query holds them all."""
     route = respx.post(URL).mock(return_value=httpx.Response(200, json=_body([_item()])))
     source = _source(
         _profile(["devops", "sre"]), regions=["Île-de-France", "Lyon", "Toulouse"]
@@ -111,9 +112,9 @@ def test_one_call_per_keyword_and_region():
 
     items = list(source.fetch())
 
-    assert route.call_count == 6  # 2 keywords x 3 regions, never x 14 departments
-    assert len(items) == 6
-    assert source.api_calls_count == 6
+    assert route.call_count == 3  # 3 regions, not 2 keywords x 3 regions
+    assert len(items) == 3
+    assert source.api_calls_count == 3
 
 
 @respx.mock
@@ -125,7 +126,17 @@ def test_request_body_carries_the_keyword_and_region():
     sent = json.loads(respx.calls.last.request.content)
     assert sent["keywords"] == "sre"
     assert sent["location"] == "Lyon"
-    assert sent["page"] == "1"  # page 1 only: the quota is the scarce resource
+    assert sent["page"] == "1"  # page 1 first; later pages only if the budget allows
+
+
+@respx.mock
+def test_every_keyword_goes_into_the_same_query():
+    route = respx.post(URL).mock(return_value=httpx.Response(200, json=_body([])))
+    list(_source(_profile(["devops", "sre", "kubernetes"]), regions=["Lyon"]).fetch())
+
+    assert route.call_count == 1
+    sent = json.loads(respx.calls.last.request.content)
+    assert sent["keywords"] == "devops sre kubernetes"
 
 
 @respx.mock
@@ -172,20 +183,20 @@ def test_max_calls_per_run_is_a_hard_cap():
     source = _source(
         _profile(["devops", "sre", "cloud"]),
         regions=["Île-de-France", "Lyon", "Toulouse"],
-        max_calls_per_run=4,
+        max_calls_per_run=2,
     )
 
     items = list(source.fetch())
 
-    assert route.call_count == 4  # 9 pairs requested, 4 calls allowed
-    assert len(items) == 4
-    assert source.api_calls_count == 4
+    assert route.call_count == 2  # 3 regions requested, 2 calls allowed
+    assert len(items) == 2
+    assert source.api_calls_count == 2
 
 
 @respx.mock
 def test_hitting_the_cap_logs_a_warning(caplog):
     respx.post(URL).mock(return_value=httpx.Response(200, json=_body([])))
-    source = _source(_profile(["a", "b"]), regions=["Lyon"], max_calls_per_run=1)
+    source = _source(_profile(["a", "b"]), regions=["Lyon", "Nice"], max_calls_per_run=1)
     with caplog.at_level(logging.WARNING):
         list(source.fetch())
     assert "call budget exhausted" in caplog.text
@@ -260,3 +271,109 @@ def test_the_adapter_logs_the_url_redacted(caplog):
     )
     assert API_KEY not in ours
     assert "<key>" in ours  # the redacted form is what we print
+
+
+# ---------------------------------------------------------------------------
+# Pagination: a page is a call
+# ---------------------------------------------------------------------------
+
+def _page(ids: list[str], total: int) -> httpx.Response:
+    return httpx.Response(200, json=_body([_item(i) for i in ids], total=total))
+
+
+@respx.mock
+def test_a_full_page_is_followed_by_the_next_one():
+    route = respx.post(URL).mock(side_effect=[
+        _page([f"a{i}" for i in range(50)], 101),
+        _page([f"b{i}" for i in range(50)], 101),
+        _page(["c0"], 101),
+    ])
+    source = _source(regions=["Lyon"], max_calls_per_run=5)
+
+    items = list(source.fetch())
+
+    assert route.call_count == 3
+    assert len(items) == 101
+    assert [json.loads(c.request.content)["page"] for c in respx.calls] == ["1", "2", "3"]
+    assert source.api_calls_count == 3  # pages count as calls
+
+
+@respx.mock
+def test_a_short_page_ends_the_region():
+    route = respx.post(URL).mock(return_value=_page([f"a{i}" for i in range(10)], 999))
+    list(_source(regions=["Lyon"], max_calls_per_run=5).fetch())
+    assert route.call_count == 1  # fewer items than asked for: there is no page 2
+
+
+@respx.mock
+def test_pagination_stops_at_total_count():
+    route = respx.post(URL).mock(return_value=_page([f"a{i}" for i in range(50)], 50))
+    list(_source(regions=["Lyon"], max_calls_per_run=5).fetch())
+    assert route.call_count == 1  # page 1 held everything Jooble claims to have
+
+
+@respx.mock
+def test_pagination_never_starves_a_region_of_its_first_page():
+    """15 calls / 7 regions = 2 pages each: no region is skipped to paginate another."""
+    route = respx.post(URL).mock(return_value=_page([f"a{i}" for i in range(50)], 5000))
+    source = _source(regions=[f"r{i}" for i in range(7)], max_calls_per_run=15)
+    assert source.pages_per_region == 2
+
+    list(source.fetch())
+
+    assert route.call_count == 14
+    assert len({json.loads(c.request.content)["location"] for c in respx.calls}) == 7
+
+
+@respx.mock
+def test_without_a_limit_a_region_can_pass_one_page():
+    """No max_results: the call budget is the only ceiling."""
+    respx.post(URL).mock(side_effect=[
+        _page([f"a{i}" for i in range(50)], 80),
+        _page([f"b{i}" for i in range(30)], 80),
+    ])
+    assert len(list(_source(regions=["Lyon"], max_calls_per_run=4).fetch())) == 80
+
+
+@respx.mock
+def test_max_results_shrinks_the_page_and_caps_the_region():
+    route = respx.post(URL).mock(return_value=_page([f"a{i}" for i in range(5)], 500))
+    items = list(_source(regions=["Lyon"], max_results=5, max_calls_per_run=9).fetch())
+
+    assert len(items) == 5
+    assert json.loads(respx.calls.last.request.content)["ResultOnPage"] == "5"
+    assert route.call_count == 1
+
+
+@respx.mock
+def test_the_pages_used_are_logged_per_region(caplog):
+    respx.post(URL).mock(side_effect=[
+        _page([f"a{i}" for i in range(50)], 60),
+        _page(["b0"], 60),
+    ])
+    with caplog.at_level(logging.INFO):
+        list(_source(regions=["Lyon"], max_calls_per_run=4).fetch())
+
+    assert "area=Lyon pages=2 fetched=51" in caplog.text
+    assert "jooble: 2/4 calls used" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# National scope: one query for the whole country, paginated
+# ---------------------------------------------------------------------------
+
+@respx.mock
+def test_a_national_query_spends_the_whole_budget_on_pages():
+    """`location_scope: france` arrives as regions=[""] (see the source factory)."""
+    route = respx.post(URL).mock(return_value=_page([f"a{i}" for i in range(50)], 5000))
+    source = _source(regions=[""], max_calls_per_run=4)
+    assert source.pages_per_region == 4
+
+    items = list(source.fetch())
+
+    assert route.call_count == 4
+    assert len(items) == 200
+    locations = {json.loads(c.request.content)["location"] for c in respx.calls}
+    assert locations == {""}  # no place filter at all: the whole French index
+    assert [json.loads(c.request.content)["page"] for c in respx.calls] == ["1", "2", "3", "4"]
+    assert [s.area for s in source.query_stats] == ["all"]

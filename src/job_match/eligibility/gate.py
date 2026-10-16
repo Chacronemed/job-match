@@ -7,7 +7,11 @@ from job_match.domain.models import (
     RejectionReason,
 )
 from job_match.experience.parser import infer_seniority_min
-from job_match.normalization.location import departments_for, normalize_location
+from job_match.normalization.location import (
+    departments_for,
+    french_location,
+    normalize_location,
+)
 from job_match.normalization.skills import matches_skill, title_keyword, title_term
 
 
@@ -87,31 +91,39 @@ def evaluate(
         if job.contract_type not in allowed:
             reasons.append(RejectionReason.CONTRACT)
 
-    # 3. Location
-    locs = profile.filters.locations
-    if locs and not location_allowed(job.location, profile):
+    # 3. Location. Always checked now: with a national scope there is no department list
+    # to opt in with, and a foreign offer would otherwise sail through.
+    if not location_allowed(job.location, profile):
         reasons.append(RejectionReason.LOCATION)
 
     return EligibilityResult(eligible=not reasons, reasons=tuple(reasons))
 
 
 def location_allowed(location: str, profile: Profile) -> bool:
-    """Accept remote, a configured city name, or a department we actually queried.
+    """Accept remote, a configured city name, and whatever the search scope covers.
 
-    The department codes come from `ft_search.departments` — the same list that drives the
-    API fan-out, so there is no second location list to keep in sync.
+    The scope is `profile.ft_search.departments`, the parsed form of the profile's single
+    `location_scope` key, so there is no second location list to keep in sync:
+
+    * national scope (empty list) -> every French location passes and only a location we
+      can see is abroad is rejected ("Bruxelles, Belgique", "99 - ALLEMAGNE", "London");
+    * restricted scope -> the location must resolve to one of those departments.
 
     Source-independent by design: France Travail sends "92 - Nanterre", Jooble and Adzuna
-    send "Nanterre" or "Île-de-France", and `departments_for` resolves all three. A region
-    passes when it overlaps the departments we query. A location that resolves to nothing
-    is kept — we never reject on a location we could not read.
+    send "Nanterre" or "Ile-de-France", and `departments_for` resolves all three. In both
+    modes a location that resolves to nothing is kept: we never reject on a location we
+    could not read.
     """
     job_loc = normalize_location(location)
     if "remote" in job_loc or "teletravail" in job_loc:
         return True
     if any(normalize_location(loc) in job_loc for loc in profile.filters.locations):
         return True
+
+    if profile.ft_search.national:
+        return french_location(location) is not False
+
     candidates = departments_for(location)
     if not candidates:
-        return True  # unknown / unparseable → keep the job
+        return True  # unknown / unparseable -> keep the job
     return bool(candidates & {str(d).upper() for d in profile.ft_search.departments})

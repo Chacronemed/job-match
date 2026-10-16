@@ -249,3 +249,38 @@ def test_reprocess_summary_limit_caps_the_titles_and_marks_a_dry_run(capsys):
     assert "Reprocess complete [DRY RUN]" in out
     assert "top 1 strong titles:" in out
     assert "Externatic" not in out
+
+
+# ---------------------------------------------------------------------------
+# The department breakdown, top 10
+# ---------------------------------------------------------------------------
+
+def test_the_summary_ranks_departments_by_count(capsys):
+    _print_summary(RunSummary(
+        pipeline="jobs",
+        fetched=6,
+        by_department={"75": 4, "92": 10, "?": 1},
+    ))
+
+    out = capsys.readouterr().out
+    assert "fetched per department, from the offer location (top 10):" in out
+    lines = [ln.strip() for ln in out.splitlines() if ln.strip().startswith(("75:", "92:", "?:"))]
+    assert lines == ["92: 10", "75: 4", "?: 1"]  # biggest first
+    assert "more departments" not in out
+
+
+def test_the_summary_keeps_the_department_list_to_ten_lines(capsys):
+    _print_summary(RunSummary(
+        pipeline="jobs",
+        by_department={f"{n:02d}": 100 - n for n in range(1, 16)},
+    ))
+
+    out = capsys.readouterr().out
+    listed = [ln for ln in out.splitlines() if ln.startswith("    ") and ":" in ln]
+    assert len(listed) == 11  # 10 departments plus the tail line
+    assert "+5 more departments: 435" in out  # 89+88+87+86+85
+
+
+def test_a_run_without_locations_prints_no_department_block(capsys):
+    _print_summary(RunSummary(pipeline="jobs"))
+    assert "per department" not in capsys.readouterr().out

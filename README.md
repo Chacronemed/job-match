@@ -21,7 +21,7 @@ Generic job boards fail a junior DevOps engineer in four ways:
 
 ## What it does, every day
 
-- **Fetches** offers from several job boards — France Travail (one query per keyword × department), Jooble and optionally Adzuna (one query per keyword × region, under a hard call budget) — and rejects, before any scoring, jobs that are irrelevant or that require more experience than the candidate has. A source whose API key is missing is skipped; the run continues on the others.
+- **Fetches** offers from several job boards — France Travail (one paginated query per keyword, nationwide), Jooble and optionally Adzuna (one combined query, paginated under a hard call budget) — and rejects, before any scoring, jobs that are irrelevant or that require more experience than the candidate has. A source whose API key is missing is skipped; the run continues on the others.
 - **Scores** the rest with an explainable rule engine: every point is traceable to a matched or penalised skill.
 - **Deduplicates** with a stable fingerprint plus fuzzy matching, and records duplicate links instead of deleting rows.
 - **Reads funding news** (Maddyness, FrenchWeb RSS), extracts *who raised how much, in which round, from whom, and whether they plan to hire*, and turns it into leads linked to the same companies' job offers.
@@ -135,8 +135,9 @@ Personal values live in `config/profile.yaml` (gitignored; in CI it comes from a
 | `candidate.experience_years` | `5` | Upper bound for the experience gate |
 | `skills.preferred` | `kubernetes: 3`, `terraform: 3`, `python: 2` | Add points; a missing skill never rejects |
 | `skills.negative` | `SAP: -5`, `cobol: -5` | Remove points |
-| `filters.contract_types`, `filters.locations` | `CDI`; `Paris`, `remote` | Hard filters |
-| `ft_search.keywords`, `ft_search.departments` | `devops`, `sre`; `75`, `92` | One API query per pair |
+| `location_scope` | `france`, or `["75", "92"]` | Where we search **and** what the gate accepts — the only geography setting |
+| `filters.contract_types` | `CDI` | Hard filter; a contract the offer does not state never rejects |
+| `ft_search.keywords` | `devops`, `sre` | One API query per keyword |
 
 **`settings.yaml`** — how the system behaves ([file](config/settings.yaml))
 

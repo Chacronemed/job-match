@@ -458,3 +458,44 @@ def test_a_single_source_still_works_unwrapped(db):
     """The common case stays a bare source, not a one-item list."""
     summary = run_jobs(FakeSource([_job("FT-1")]), _profile(), _settings(), db, {})
     assert summary.eligible == 1
+
+
+# ---------------------------------------------------------------------------
+# by_department: where the offers are, not where we searched
+# ---------------------------------------------------------------------------
+
+def test_by_department_counts_offers_by_their_own_location(db):
+    jobs = [
+        _job("FT-1", location="92 - Nanterre"),
+        _job("FT-2", location="92 - Courbevoie", url="https://example.com/jobs/2"),
+        _job("FT-3", location="31 - Toulouse", url="https://example.com/jobs/3"),
+        _job("FT-4", location="Lyon", url="https://example.com/jobs/4"),
+    ]
+    summary = run_jobs(FakeSource(jobs), _profile(), _settings(), db, {}, dry_run=True)
+
+    assert summary.by_department == {"92": 2, "31": 1, "69": 1}
+
+
+def test_by_department_marks_unresolvable_locations(db):
+    """A region, a country or a town nobody listed has no single department."""
+    jobs = [
+        _job("FT-1", location="Bretagne"),
+        _job("FT-2", location="France", url="https://example.com/jobs/2"),
+        _job("FT-3", location="", url="https://example.com/jobs/3"),
+        _job("FT-4", location="75 - Paris", url="https://example.com/jobs/4"),
+    ]
+    summary = run_jobs(FakeSource(jobs), _profile(), _settings(), db, {}, dry_run=True)
+
+    assert summary.by_department == {"?": 3, "75": 1}
+
+
+def test_by_department_counts_rejected_offers_too(db):
+    """It answers "where are the offers", not "where are the matches"."""
+    jobs = [
+        _job("FT-1", location="92 - Nanterre", contract_type=ContractType.ALTERNANCE),
+        _job("FT-2", location="99 - BELGIQUE", url="https://example.com/jobs/2"),
+    ]
+    summary = run_jobs(FakeSource(jobs), _profile(), _settings(), db, {}, dry_run=True)
+
+    assert summary.eligible == 0
+    assert summary.by_department == {"92": 1, "99": 1}

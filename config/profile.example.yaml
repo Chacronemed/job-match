@@ -3,6 +3,11 @@
 # config/profile.yaml is gitignored and never committed.
 # In CI it is written from the PROFILE_YAML secret (base64-encoded YAML).
 
+# Where we search AND what the location gate accepts — one setting, no second list.
+# `france` searches the whole country: every French location is kept, only a location we
+# can see is abroad is rejected. A list restricts both: location_scope: ["75", "92", "93"]
+location_scope: france
+
 candidate:
   experience_years: 5
 
@@ -22,9 +27,6 @@ skills:
 filters:
   contract_types:
     - CDI
-  locations:
-    - Paris
-    - remote
 
 ft_search:
   rome_codes:
@@ -33,12 +35,7 @@ ft_search:
     - devops
     - sre
     - infrastructure
-  departments:
-    - "75"
-    - "92"
-    - "93"
-    - "94"
-  use_rome_search: false  # if true, also runs codeROME-only searches (one per rome_code × dept)
+  use_rome_search: false  # if true, also runs codeROME-only searches (one per rome_code)
 
 scoring:
   jms:

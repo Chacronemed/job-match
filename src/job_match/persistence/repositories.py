@@ -511,6 +511,7 @@ class RunRepository:
                         "by_source": summary.by_source,
                         "queries": summary.queries,
                         "by_area": summary.by_area,
+                        "by_department": summary.by_department,
                         "by_keyword": summary.by_keyword,
                     }
                 ),

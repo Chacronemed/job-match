@@ -227,6 +227,9 @@ class RunSummary:
     funding_no_company: int = 0
     leads_deduped: int = 0
     by_source: dict[str, dict[str, int]] = field(default_factory=dict)
-    by_area: dict[str, int] = field(default_factory=dict)  # dept code or region → fetched
+    by_area: dict[str, int] = field(default_factory=dict)  # queried area → fetched
+    # Where the offers actually are, parsed from each offer's own location: the only
+    # geographic breakdown left once the search is national and by_area is just "all".
+    by_department: dict[str, int] = field(default_factory=dict)
     by_keyword: dict[str, int] = field(default_factory=dict)     # query label → items fetched
     queries: int = 0  # source queries executed (keyword × department)

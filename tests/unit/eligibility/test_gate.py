@@ -164,13 +164,24 @@ def test_location_match_substring():
 
 
 def test_location_rejected():
+    """A restricted scope rejects a department outside it."""
+    result = evaluate(
+        _make_job(location="69 - Lyon"),
+        _req(),
+        _make_profile(locations=["Paris"], departments=["75"]),
+    )
+    assert result.eligible is False
+    assert RejectionReason.LOCATION in result.reasons
+
+
+def test_a_city_filter_alone_does_not_restrict_a_national_scope():
+    """No department list = national: Lyon is in France, so it stays."""
     result = evaluate(
         _make_job(location="69 - Lyon"),
         _req(),
         _make_profile(locations=["Paris"]),
     )
-    assert result.eligible is False
-    assert RejectionReason.LOCATION in result.reasons
+    assert result.eligible is True
 
 
 def test_location_remote_always_passes():
@@ -277,6 +288,7 @@ def test_multiple_rejections_all_three():
             experience_years=5.0,
             contract_types=[ContractType.CDI],
             locations=["Paris"],
+            departments=["75"],
         ),
     )
     assert result.eligible is False

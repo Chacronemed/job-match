@@ -9,6 +9,7 @@ from job_match.domain.models import Company, Eligibility, Job, RunSummary
 from job_match.eligibility import gate
 from job_match.experience import parser as exp_parser
 from job_match.normalization.company import normalize_company
+from job_match.normalization.location import department_of
 from job_match.persistence.db import Database
 from job_match.persistence.repositories import (
     CompanyRepository,
@@ -59,6 +60,7 @@ def run_jobs(
     strong = 0
     errors = 0
     by_source: dict[str, dict[str, int]] = {}
+    by_department: dict[str, int] = {}
 
     for source in source_list:
         counts = by_source.setdefault(
@@ -84,6 +86,11 @@ def run_jobs(
 
             fetched += 1
             counts["fetched"] += 1
+            # Where the offer is, not where we searched: a national query reports
+            # area "all". "?" means no single department (a region, or a place that
+            # is not in fr_geo).
+            offer_dept = department_of(job.location) or "?"
+            by_department[offer_dept] = by_department.get(offer_dept, 0) + 1
 
             # Experience
             exp = exp_parser.parse(job.description)
@@ -177,6 +184,7 @@ def run_jobs(
         api_calls=api_calls,
         by_area=by_area,
         by_keyword=by_keyword,
+        by_department=by_department,
         by_source=by_source,
         queries=len(stats),
     )

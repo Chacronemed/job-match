@@ -3,6 +3,8 @@ import re
 from job_match.normalization.fr_geo import (
     CITY_DEPARTMENT,
     DEPARTMENT_NAMES,
+    FOREIGN_PLACES,
+    FRENCH_DEPARTMENTS,
     REGION_DEPARTMENTS,
 )
 from job_match.normalization.text import normalize_text
@@ -79,3 +81,50 @@ def departments_for(location: str) -> frozenset[str]:
             matched_spans.append(span)
             found |= depts
     return frozenset(found)
+
+
+_FOREIGN = [
+    re.compile(r"(?<!\w)" + re.escape(normalize_text(name)) + r"(?!\w)")
+    for name in sorted(FOREIGN_PLACES, key=len, reverse=True)
+]
+_FRANCE = re.compile(r"(?<!\w)france(?!\w)")
+
+
+def is_french_department(code: str) -> bool:
+    """True for a real department or overseas code. France Travail says "99" for abroad."""
+    return (code or "").strip().upper() in FRENCH_DEPARTMENTS
+
+
+def department_of(location: str) -> str | None:
+    """The single department a location resolves to, or None.
+
+    None covers both "unreadable" and "ambiguous": a region name resolves to many
+    departments, so it gets no single one. For run-summary breakdowns, not for gating.
+    """
+    candidates = departments_for(location)
+    if len(candidates) != 1:
+        return None
+    return next(iter(candidates))
+
+
+def french_location(location: str) -> bool | None:
+    """Tri-state: True = clearly in France, False = clearly abroad, None = cannot tell.
+
+    Used by the gate when the search scope is the whole country: there is no department
+    list to compare against, so the only job we reject is one we can see is somewhere else.
+    None is the normal answer for "", "Teletravail" or a town nobody listed, and the caller
+    keeps those jobs.
+
+    Foreign markers are checked first, so "Lille, Belgique" is abroad rather than Nord.
+    """
+    normalized = normalize_location(location)
+    if not normalized:
+        return None
+    if any(pattern.search(normalized) for pattern in _FOREIGN):
+        return False
+    code = parse_department(location)
+    if code:
+        return is_french_department(code)
+    if _FRANCE.search(normalized) or departments_for(location):
+        return True
+    return None

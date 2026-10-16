@@ -32,10 +32,22 @@ class Filters:
 
 @dataclass
 class FTSearch:
+    """What we search for, and where.
+
+    `departments` is the parsed form of the profile's single `location_scope` key: a list of
+    department codes for a restricted search, and **empty for the whole country**. Every
+    source and the location gate read it, so there is one geography setting, not two.
+    """
+
     rome_codes: list[str] = field(default_factory=list)
     keywords: list[str] = field(default_factory=list)
     departments: list[str] = field(default_factory=list)
     use_rome_search: bool = False
+
+    @property
+    def national(self) -> bool:
+        """No department list = search and accept the whole country."""
+        return not self.departments
 
 
 @dataclass

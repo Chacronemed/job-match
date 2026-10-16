@@ -15,7 +15,13 @@ logger = logging.getLogger(__name__)
 TOKEN_URL = "https://entreprise.francetravail.fr/connexion/oauth2/access_token"
 SEARCH_URL = "https://api.francetravail.io/partenaire/offresdemploi/v2/offres/search"
 PAGE_SIZE = 150
-MAX_RESULTS = 3000
+# The endpoint only exposes a window: the Range start may not exceed 1000 and its end may
+# not exceed 1149, so with 150-offer pages a single query reaches 1050 offers over 7 pages
+# and no more. Per department that ceiling was out of reach; a national query hits it, so
+# we clamp the range, stop, and say so instead of being refused.
+MAX_RANGE_START = 1000
+MAX_RANGE_END = 1149
+MAX_RESULTS = MAX_RANGE_END + 1
 SCOPE = "api_offresdemploiv2 o2dsoffre"
 QUERY_KEY = "_jm_query"  # set on raw items by _fetch_query, mapped to Job.search_query
 
@@ -89,10 +95,12 @@ class FranceTravailSource:
         self._last_request_time = time.monotonic()
 
     def fetch(self, since: datetime | None = None) -> Iterator[RawItem]:
+        # An empty department list is a national search (`location_scope: france`): no
+        # `departement` param, one paginated query per keyword.
         departments = self._profile.ft_search.departments or [None]
         keywords = self._profile.ft_search.keywords or []
 
-        # One request per (keyword, department) — never join keywords (AND semantics)
+        # One request per (keyword, area) — never join keywords (AND semantics)
         for keyword in keywords:
             for dept in departments:
                 yield from self._fetch_query(since, dept, keyword=keyword)
@@ -117,12 +125,16 @@ class FranceTravailSource:
         start = 0
         fetched = 0
         total: int | None = None
+        window_exhausted = False
 
         # _max_results caps THIS query only — never the fan-out, so every
         # (keyword, department) pair always gets its own budget.
         try:
             while fetched < self._max_results:
-                end = start + PAGE_SIZE - 1
+                if start > MAX_RANGE_START:
+                    window_exhausted = True
+                    break  # no further page is addressable; see the warning in `finally`
+                end = min(start + PAGE_SIZE - 1, MAX_RANGE_END)
                 token = self._ensure_token()
                 self._throttle()
                 resp = self._http.get(
@@ -134,6 +146,15 @@ class FranceTravailSource:
                     params=params,
                 )
                 self._api_calls += 1
+
+                if resp.status_code == 400:
+                    # A refused range ends this query, it does not end the run: the other
+                    # keywords are still worth fetching.
+                    logger.warning(
+                        "%s: area=%s range %d-%d refused (HTTP 400), stopping this query",
+                        self.name, dept_label, start, end,
+                    )
+                    break
                 resp.raise_for_status()
 
                 if resp.status_code == 204:
@@ -157,6 +178,14 @@ class FranceTravailSource:
                 start += len(results)
         finally:
             # Runs on normal exit, on the max_results return, and on errors.
+            if window_exhausted and total is not None and fetched < total:
+                # Drained the whole window and the API says there is more. Nationwide this
+                # is the ceiling that bites, and it must not be silent.
+                logger.warning(
+                    "%s: area=%s truncated by the API window: %d of %d offers reachable "
+                    "(narrow the keyword, or restrict location_scope)",
+                    self.name, dept_label, fetched, total,
+                )
             self._query_stats.append(QueryStat(label, dept_label, fetched, total, self.name))
             available = total if total is not None else "?"
             # Query keywords come from the private profile: aggregates at INFO, keyword at DEBUG.

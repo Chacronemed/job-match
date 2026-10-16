@@ -3,12 +3,32 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**Milestone 13: multi-source job ingestion (Jooble + Adzuna)** — **code DONE** (2026-10-16),
-one verification step pending: the Jooble-only live run needs `JOOBLE_API_KEY` in `.env`
-(`job-match run --limit 10 --dry-run` with `sources.enabled: [jooble]`).
-M9 manual GitHub setup still pending (see below).
+**Milestone 14: national search scope** — **DONE** (2026-10-16). One profile key,
+`location_scope: france`, drives the queries and the location gate. M13 is complete.
+M9 manual GitHub setup still pending (see below), and the `PROFILE_YAML` secret needs
+re-encoding before CI searches nationally.
 
 ## Done
+- **National search scope** (2026-10-16, M14):
+  - One profile key replaces two lists: `location_scope: france` (or a department list) drives
+    the France Travail queries, the Jooble location, and the location gate. Parsed in
+    `config/loader._parse_location_scope` into `FTSearch.departments`, where empty already
+    meant "no department filter"; `FTSearch.national` names the condition. The old
+    `ft_search.departments` key still loads (deprecated alias), `filters.locations` is gone
+    from the profile.
+  - France Travail: no `departement` param nationally, one paginated query per keyword, and
+    the API window is now enforced in the adapter [md] `Range` start <= 1000, end <= 1149, so
+    1050 offers over 7 pages. Truncation logs a WARNING with reachable vs available; an HTTP
+    400 on a page ends that query instead of the run.
+  - Jooble: `regions=["France"]` when national (chosen in the source factory), so the whole
+    call budget goes into pages rather than regions.
+  - Gate: `location.french_location()` is tri-state (in France / abroad / cannot tell) and only
+    "abroad" rejects. Backed by `fr_geo.FRENCH_DEPARTMENTS` (France Travail files offers abroad
+    under the fake department 99) and a short `FOREIGN_PLACES` marker list, checked before city
+    names so "Lille, Belgique" is Belgium. The location check now runs on every job.
+  - `RunSummary.by_department`, parsed from each offer's own location, with the top 10 in the
+    run summary: with one national query `by_area` is just "all".
+  - ADR 0005. 123 new tests (903 total), ruff clean.
 - **Empty-digest bug + relevance title veto** (2026-10-16):
   - **Root cause of "112 eligible, 1 job emailed":** running the jobs pipeline twice in one
     day. `JobRepository.save` upserts on (source, source_job_id), so the second run re-read
@@ -42,7 +62,17 @@ M9 manual GitHub setup still pending (see below).
     both, default jobs). The step runs `--limit 0`, so only aggregate counts reach the
     public Actions log, and `continue-on-error` keeps a failed cleanup from costing the
     digest or the DB push.
-  - 62 new tests (772 total), ruff clean.
+  - **Jooble keyword semantics measured before optimizing** (`scripts/jooble_probe.py`,
+    4 real calls, Île-de-France, page 1): "devops" 21 offers, "kubernetes" 3,
+    "devops kubernetes sre" exactly their union of 21 ids, "devops OR sre OR kubernetes" the
+    same 21. Jooble ORs the words and ranks by relevance; it does not AND them, and a literal
+    "OR" is just another token. Coverage of the single-keyword sets: 100%.
+  - Adapter now sends **one combined query per region** (7 keywords × 7 regions = 49 calls
+    — 7) and spends the freed budget on **pagination**: each page is one call, at most
+    `max_calls_per_run // len(regions)` pages per region, so page 1 of every region is always
+    affordable. `max_results` now defaults to None (the budget is the only ceiling);
+    `--limit N` still caps a region and shrinks `ResultOnPage`.
+  - 70 new tests (780 total), ruff clean.
 - **Milestone 13** (2026-10-16):
   - `adapters/jobs/jooble.py` (`JoobleSource`, POST per keyword × region) and
     `adapters/jobs/adzuna.py` (`AdzunaSource`, one `what_or` GET per region — all keywords OR'd).
@@ -182,13 +212,18 @@ M9 manual GitHub setup still pending (see below).
   - 26 tests green, `ruff check .` clean
 
 ## Next step
+- **Re-encode the `PROFILE_YAML` secret** from the updated `config/profile.yaml`, or CI keeps
+  searching the old 14 departments (the deprecated `departments` alias still loads):
+  `base64 -w0 config/profile.yaml`.
+- Watch the first national runs for the `truncated by the API window` WARNING. If a keyword
+  hits it daily, the fix is one query per keyword × region, or passing `since`.
 - Clean the production DB: trigger "Daily run" manually with `reprocess_since` = the first
   collection date to re-check (e.g. 2026-10-11) and `reprocess_scope` = `jobs`. Then re-check
   the digest: it should carry ~40 jobs, not 1.
-- **Pending from M13:** add `JOOBLE_API_KEY` to `.env`, then run the Jooble-only check
-  (`sources.enabled: [jooble]`, `job-match run --limit 10 --dry-run`) and review what Jooble
-  actually returns: location formats not in `fr_geo.py`, and how many jobs land with
-  UNKNOWN contract.
+- **Pending from M13:** run the Jooble-only check (`sources.enabled: [jooble]`,
+  `job-match run --limit 10 --dry-run`) and review what Jooble actually returns: location
+  formats not in `fr_geo.py`, and how many jobs land with UNKNOWN contract. The key is in
+  `.env` and the keyword probe is done; this is the end-to-end pass.
 - Add `JOOBLE_API_KEY` as a GitHub secret before the next daily run, or Jooble stays skipped in CI.
 - Complete the M9 manual GitHub setup and trigger the first daily run; review the first digest's leads and
   evidence sentences (precision check before M11b).
@@ -289,6 +324,16 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
   scoring. If that proves noisy, add a scoring penalty — not a gate rejection.
 - Cross-source dedup is fuzzy on title+description within one company. A reposting agency that
   renames the company still yields two canonical rows (same limitation as before).
+- A national France Travail query reaches 1050 offers (`Range` start <= 1000, end <= 1149, 150
+  per page). A keyword with more live offers than that is truncated, with a WARNING per query.
+- `FOREIGN_PLACES` is a short marker list: an unlisted foreign city resolves to unknown and its
+  job is kept. Noise, never a dropped French job.
+- A French employer whose location field names a foreign HQ is now rejected on LOCATION.
+- Jooble pagination depth is `max_calls_per_run // len(regions)` pages: adding regions makes
+  every region shallower (7 regions, 15 calls = 2 pages = 100 offers each). Raise
+  `sources.jooble.max_calls_per_run` rather than trimming regions if depth matters.
+- The Jooble probe measured one region on one day. If a region's union of keywords ever exceeds
+  what the budget can page through, the relevance ranking decides what we lose, not us.
 - Jooble returns a snippet, not the full description: the experience parser and the scorer see
   less text for those jobs than for France Travail ones.
 - Existing funding events also lack the stricter hiring/country extraction until reprocessed: trigger
@@ -310,6 +355,10 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
   use fixtures.
 
 ## Session log
+- 2026-10-16: National search. `location_scope: france` as the single geography setting,
+  France Travail paginated nationwide inside its 1050-offer API window (truncation warned,
+  HTTP 400 non-fatal), Jooble querying "France" once, a tri-state French/foreign/unknown
+  gate, and `by_department` in the run summary. ADR 0005. 903 tests passing.
 - 2026-09-30: brief created. M0 architecture written, with user-requested changes: M1/M2 swapped, private data
   repo, example profile, JMS experimental.
 - 2026-10-01: M1 complete. Project skeleton, domain model, config loader, 26 tests green.
@@ -354,6 +403,9 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
   `digest.max_leads: 10`, priority then amount, overflow rolls over. Migration 0005. 537 tests passing.
   Replay on today's frozen live data: jobs emailed 102 → 25, leads emailed 26 → 10 (3 country-filtered,
   13 roll over), high-priority leads 14 → 1 (see open decision on the hiring window).
+- 2026-10-16: Measured Jooble's keyword semantics (OR + relevance ranking, union coverage
+  100%) with a 4-call probe, then collapsed the adapter to one combined query per region and
+  spent the freed budget on pagination (pages count as calls). 780 tests passing.
 - 2026-10-16: Daily workflow can clean the production DB: `reprocess_since` + new
   `reprocess_scope` inputs drive `job-match reprocess` before the digest, counts only in the
   log (`--limit 0`). 772 tests passing.

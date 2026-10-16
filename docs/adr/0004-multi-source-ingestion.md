@@ -26,11 +26,18 @@ France Travail's `"NN - City"` prefix — rejected outright.
    (`adapters/jobs/jooble.py`, `adapters/jobs/adzuna.py`). No change to the domain model: every
    source-specific field name stays inside its adapter, as in `france_travail.py`.
 
-2. **Keyword × region, never keyword × department, for the quota-light sources.** Regions live
-   in `settings.yaml` (`sources.regions`); keywords stay in the private profile
-   (`ft_search.keywords`) because they are personal and regions are not. Page 1 only — with a
-   few hundred calls a day, breadth beats depth. Adzuna spends one call per region instead of
-   one per keyword × region, because `what_or` is OR semantics.
+2. **One query per region, never keyword × department, for the quota-light sources.** Regions
+   live in `settings.yaml` (`sources.regions`); keywords stay in the private profile
+   (`ft_search.keywords`) because they are personal and regions are not. Adzuna fits all keywords
+   into one call per region with `what_or`; **Jooble does the same with a space-joined `keywords`
+   string**, which a probe justified rather than an assumption: on 2026-10-16
+   `scripts/jooble_probe.py` spent 4 real calls on Île-de-France and found "devops" = 21 offers,
+   "kubernetes" = 3, and "devops kubernetes sre" = exactly their union of 21 ids. Jooble ORs the
+   words and ranks by relevance; it does not AND them, and a literal "OR" between them changes
+   nothing. So 7 keywords × 7 regions = 49 calls become 7, and the freed budget buys depth
+   instead: pages are followed while the budget lasts, **every page counting as one call**, with
+   `max_calls_per_run // len(regions)` pages per region so page 1 of every region stays
+   affordable.
 
 3. **A hard per-source call budget**, `sources.<name>.max_calls_per_run` (Jooble 15, Adzuna 20),
    checked before every request. Hitting it logs a WARNING and ends that source's run; calls

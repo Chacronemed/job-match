@@ -165,4 +165,42 @@ def test_without_limit_sources_keep_their_own_defaults(monkeypatch):
     _with_keys(monkeypatch, "france_travail", "jooble")
     ft, jooble = build_sources(_profile(), _settings(["france_travail", "jooble"]))
     assert ft._max_results > 10  # France Travail's MAX_RESULTS
-    assert jooble._max_results > 10
+    assert jooble._max_results is None  # no per-region cap: the call budget is the ceiling
+
+
+# ---------------------------------------------------------------------------
+# location_scope drives the quota-light sources too
+# ---------------------------------------------------------------------------
+
+def _national_profile() -> Profile:
+    """`location_scope: france` reaches the factory as an empty department list."""
+    return Profile(
+        candidate=Candidate(experience_years=2),
+        skills=Skills(),
+        filters=Filters(),
+        ft_search=FTSearch(keywords=["devops"], departments=[]),
+        scoring=ScoringConfig(),
+    )
+
+
+def test_a_national_scope_makes_jooble_query_the_whole_index(monkeypatch):
+    """No location at all: Jooble's location is a literal filter, and "France" matches ~16."""
+    _with_keys(monkeypatch, "jooble")
+    (jooble,) = build_sources(_national_profile(), _settings(["jooble"]))
+
+    assert jooble._regions == [""]        # not the 7 configured regions, and not "France"
+    assert jooble.pages_per_region == 10  # the whole call budget goes into depth
+
+
+def test_a_restricted_scope_keeps_the_configured_regions(monkeypatch):
+    _with_keys(monkeypatch, "jooble")
+    (jooble,) = build_sources(
+        _profile(), _settings(["jooble"], regions=["Lyon", "Toulouse"])
+    )
+    assert jooble._regions == ["Lyon", "Toulouse"]
+
+
+def test_a_national_scope_leaves_france_travail_without_departments(monkeypatch):
+    _with_keys(monkeypatch, "france_travail")
+    (ft,) = build_sources(_national_profile(), _settings(["france_travail"]))
+    assert ft._profile.ft_search.national is True
