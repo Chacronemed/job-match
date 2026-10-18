@@ -45,12 +45,15 @@ frontend framework.
 
 ## Workflow
 - Each milestone is small, tested with pytest and committed independently (Conventional Commits: feat/fix/test/docs/refactor).
-- Run `pytest -q` before each commit.
+- Before each commit run exactly what `ci.yml` runs: `.venv\Scripts\ruff check .` then
+  `.venv\Scripts\pytest -q`. Never `python -m pytest`: it adds the repo root to `sys.path` and
+  hides import bugs that CI's plain `pytest` catches. Test helpers are conftest fixtures,
+  never imports from a `tests` package.
 - Record significant decisions as ADRs in `docs/adr/NNNN-title.md`.
 - Tests use fixtures and mocks and never hit real APIs. Keep fixtures small.
 - Never run git add/commit/push. At the end of a task, list changed files and suggest a one-line Conventional Commit message (~60 chars). Read-only git (status, diff, log) is fine.
 - Never prefix commands with cd: the working directory is already the project root.
-- Always use the virtual env: `.venv\Scripts\python` (pip, pytest, ruff).
+- Always use the virtual env: `.venv\Scripts\python`, `.venv\Scripts\pip`, `.venv\Scripts\pytest`, `.venv\Scripts\ruff`.
 
 ## Token hygiene
 - Don't read `data/`, `*.sqlite`, large fixtures, `node_modules/` or `.venv/`.

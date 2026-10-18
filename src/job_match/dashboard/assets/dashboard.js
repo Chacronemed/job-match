@@ -368,7 +368,7 @@
       row.appendChild(cell("col-title", "Title", btn));
       row.appendChild(cell("col-company", "Company", j.company || "—"));
       row.appendChild(cell("col-dept", "Dept", j.department || "?"));
-      row.appendChild(cell("col-contract", "Contract", (j.contract || "UNKNOWN").toLowerCase()));
+      row.appendChild(cell("col-contract", "Contract", j.contract || "UNKNOWN"));
       row.appendChild(cell("num col-score", "Score", scoreCell(j)));
       var years = fmtYears(j.required_years);
       row.appendChild(cell("num col-years", "Years", el("span", { class: years === null ? "unknown years" : "years", text: years === null ? "—" : years + "y" })));

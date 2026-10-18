@@ -2,34 +2,26 @@
 import json
 import re
 
-from tests.unit.dashboard._seed import NOW, XSS_TITLE, seed
-
-from job_match.config.schema import Settings
-from job_match.dashboard.data import build_dashboard_data
 from job_match.dashboard.render import embed_json, render_index, write_site
-from job_match.persistence.db import Database
 
 _DATA_BLOCK = re.compile(
     r'<script type="application/json" id="data">(.*?)</script>', re.S
 )
+_EMPTY = {"generated_at": "2026-10-18T07:00:00+00:00", "thresholds": {}, "jobs": [],
+          "leads": [], "runs": []}
 
 
-def _seeded_data():
-    with Database(path=":memory:") as db:
-        seed(db)
-        return build_dashboard_data(db, Settings(), NOW)
-
-
-def test_embed_json_escapes_every_angle_bracket_and_round_trips():
-    data = {"t": XSS_TITLE, "c": "Beta <b>Corp</b>", "n": 1, "u": "é"}
+def test_embed_json_escapes_every_angle_bracket_and_round_trips(dashboard_data):
+    _, seed = dashboard_data
+    data = {"t": seed.xss_title, "c": "Beta <b>Corp</b>", "n": 1, "u": "é"}
     out = embed_json(data)
     assert "<" not in out
     assert "\\u003c" in out
     assert json.loads(out) == data
 
 
-def test_index_contains_no_job_text_and_the_data_block_parses_back():
-    data = _seeded_data()
+def test_index_contains_no_job_text_and_the_data_block_parses_back(dashboard_data):
+    data, seed = dashboard_data
     html = render_index(data)
 
     assert "alert(1)" not in html.replace("\\u003c", "<").split('id="data">')[0]
@@ -41,14 +33,15 @@ def test_index_contains_no_job_text_and_the_data_block_parses_back():
     assert len(blocks) == 1
     parsed = json.loads(blocks[0])
     assert parsed == json.loads(json.dumps(data))
-    titles = [j["title"] for j in parsed["jobs"]]
-    assert XSS_TITLE in titles
+    assert seed.xss_title in [j["title"] for j in parsed["jobs"]]
     assert "Beta <b>Corp</b>" in [j["company"] for j in parsed["jobs"]]
 
 
-def test_index_is_self_contained_with_no_external_resources():
-    html = render_index(_seeded_data())
+def test_index_is_self_contained_with_no_external_resources(dashboard_data):
+    data, _ = dashboard_data
+    html = render_index(data)
     assert html.startswith("<!doctype html>")
+    assert '<html lang="fr">' in html  # native date inputs render dd/mm/yyyy
     assert 'http-equiv="Content-Security-Policy"' in html
     assert "default-src 'none'" in html
     assert 'rel="stylesheet"' not in html
@@ -60,8 +53,8 @@ def test_index_is_self_contained_with_no_external_resources():
         assert marker not in html
 
 
-def test_write_site_writes_both_files(tmp_path):
-    data = _seeded_data()
+def test_write_site_writes_both_files(tmp_path, dashboard_data):
+    data, _ = dashboard_data
     index, data_file = write_site(data, tmp_path / "site")
     assert index == tmp_path / "site" / "index.html" and index.exists()
     assert data_file == tmp_path / "site" / "data.json" and data_file.exists()
@@ -71,8 +64,7 @@ def test_write_site_writes_both_files(tmp_path):
 
 
 def test_light_and_dark_tokens_are_both_defined():
-    html = render_index({"generated_at": NOW.isoformat(), "thresholds": {}, "jobs": [],
-                         "leads": [], "runs": []})
+    html = render_index(_EMPTY)
     assert '[data-theme="light"]' in html
     assert "prefers-color-scheme: light" in html
     assert "prefers-reduced-motion" in html

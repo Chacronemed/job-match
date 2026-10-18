@@ -1,6 +1,14 @@
-"""Seed a small DB for the dashboard tests: three tiers, a duplicate, a rejected job, a lead
-and a few runs. Titles carry markup on purpose: they come from external sources in production."""
+"""Shared fixtures for tests/unit.
+
+`seed_dashboard` populates a database the way the dashboard tests need it: three tiers, a
+duplicate, a rejected job, one notified lead and a few runs. Titles carry markup on purpose,
+because in production they come from external sources, and a private keyword is planted in
+every place the generator must never read from.
+"""
+from dataclasses import dataclass
 from datetime import UTC, datetime
+
+import pytest
 
 from job_match.domain.models import (
     Article,
@@ -28,9 +36,25 @@ from job_match.persistence.repositories import (
     RunRepository,
 )
 
-NOW = datetime(2026, 10, 18, 7, 0, 0, tzinfo=UTC)
-XSS_TITLE = '</script><script>alert(1)</script><img src=x onerror=alert(2)> <!-- x -->'
-SECRET_KEYWORD = "my private search keyword"
+_NOW = datetime(2026, 10, 18, 7, 0, 0, tzinfo=UTC)
+_XSS_TITLE = '</script><script>alert(1)</script><img src=x onerror=alert(2)> <!-- x -->'
+_SECRET_KEYWORD = "my private search keyword"
+
+
+@dataclass(frozen=True)
+class DashboardSeed:
+    """What `seed_dashboard` wrote: the ids to assert on and the constants it used."""
+
+    now: datetime
+    xss_title: str
+    secret_keyword: str
+    strong: int
+    eligible: int
+    stretch: int
+    duplicate: int
+    rejected: int
+    lead: int
+    company: int
 
 
 def _breakdown(score, explanations=(), positive=(), negative=(), missing=()):
@@ -46,7 +70,7 @@ def _breakdown(score, explanations=(), positive=(), negative=(), missing=()):
 
 
 def _job(sid, title, company_name, *, score, eligibility, location="75 - Paris",
-         experience=None, breakdown=None, url=None, collected_at=NOW, rejection_reason=None,
+         experience=None, breakdown=None, url=None, collected_at=_NOW, rejection_reason=None,
          company_id=None):
     return Job(
         source="france_travail",
@@ -65,26 +89,24 @@ def _job(sid, title, company_name, *, score, eligibility, location="75 - Paris",
         experience=experience,
         score=score,
         scoring_breakdown=breakdown,
-        search_query=SECRET_KEYWORD,
+        search_query=_SECRET_KEYWORD,
     )
 
 
-def seed(db: Database) -> dict:
-    """Populate `db`; returns the ids the tests assert on."""
+def _seed(db: Database) -> DashboardSeed:
     conn = db.conn
     jobs = JobRepository(conn)
-    companies = CompanyRepository(conn)
-
-    acme = companies.upsert(Company(name="Acme", normalized_name=normalize_company("Acme")))
+    acme = CompanyRepository(conn).upsert(
+        Company(name="Acme", normalized_name=normalize_company("Acme"))
+    )
 
     strong = jobs.save(_job(
-        "strong", XSS_TITLE, "Acme", score=85, eligibility=Eligibility.ELIGIBLE,
+        "strong", _XSS_TITLE, "Acme", score=85, eligibility=Eligibility.ELIGIBLE,
         company_id=acme.id,
         experience=ExperienceRequirement(ExperienceStatus.ELIGIBLE, 2, None, "2 ans"),
         breakdown=_breakdown(85, ["+15 kubernetes (title)", "+10 terraform"],
                              positive=["kubernetes", "terraform"], missing=["aws"]),
     ))
-
     eligible = jobs.save(_job(
         "eligible", "Ingénieur DevOps", "Beta <b>Corp</b>", score=65,
         eligibility=Eligibility.ELIGIBLE, location="Télétravail",
@@ -109,11 +131,11 @@ def seed(db: Database) -> dict:
 
     article = ArticleRepository(conn).save(Article(
         source="maddyness", url="https://www.maddyness.com/acme-leve",
-        title="Acme lève 11 millions", collected_at=NOW, published_at=NOW,
+        title="Acme lève 11 millions", collected_at=_NOW, published_at=_NOW,
     ))
     event = FundingEventRepository(conn).upsert(FundingEvent(
         company_id=acme.id, source="maddyness", article_url=article.url,
-        article_id=article.id, collected_at=NOW, amount=1.1e7, currency="EUR",
+        article_id=article.id, collected_at=_NOW, amount=1.1e7, currency="EUR",
         round="series a", date="2026-10-17", investors=("Shift4Good",),
         recruiting_signal="recruter 30 personnes",
         evidence={"amount": "Acme lève 11 millions d'euros.",
@@ -122,33 +144,38 @@ def seed(db: Database) -> dict:
     ))
     lead = LeadRepository(conn).upsert(Lead(
         company_id=acme.id, funding_event_id=event.id, reason="funding 11 M€ series a; hiring",
-        created_at=NOW, priority="high", notified_at=NOW,
+        created_at=_NOW, priority="high", notified_at=_NOW,
     ))
 
     runs = RunRepository(conn)
-    run_ids = []
     for i in range(32):
-        run_ids.append(runs.save(
+        started = (datetime(2026, 9, 1 + i, 7, 0, tzinfo=UTC) if i < 28
+                   else datetime(2026, 10, 1 + i - 28, 7, 0, tzinfo=UTC))
+        runs.save(
             RunSummary(
                 pipeline="jobs", fetched=100 + i, duplicates=5, eligible=20, strong=8,
                 stretch=3, errors=1 if i == 0 else 0, api_calls=13,
                 rejected_by_reason={"EXPERIENCE": 50, "CONTRACT": 30, "NOT_RELEVANT": 10},
                 by_source={"france_travail": {"fetched": 100 + i, "eligible": 20, "calls": 13}},
-                by_keyword={SECRET_KEYWORD: 40},
+                by_keyword={_SECRET_KEYWORD: 40},
             ),
-            started_at=datetime(2026, 9, 1 + i % 28, 7, 0, tzinfo=UTC) if i < 28
-            else datetime(2026, 10, 1 + i - 28, 7, 0, tzinfo=UTC),
-        ))
-    runs.save(RunSummary(pipeline="funding", fetched=9, articles=9), started_at=NOW)
+            started_at=started,
+        )
+    runs.save(RunSummary(pipeline="funding", fetched=9, articles=9), started_at=_NOW)
     runs.save(
         RunSummary(pipeline="jobs_reprocess", fetched=533, duplicates=2, eligible=85,
                    strong=28, stretch=43, rejected_by_reason={"EXPERIENCE": 197}),
         started_at=datetime(2026, 10, 18, 9, 0, tzinfo=UTC),
     )
 
-    return {
-        "strong": strong.id, "eligible": eligible.id, "stretch": stretch.id,
-        "duplicate": duplicate.id, "rejected": rejected.id, "lead": lead.id,
-        "company": acme.id,
-    }
+    return DashboardSeed(
+        now=_NOW, xss_title=_XSS_TITLE, secret_keyword=_SECRET_KEYWORD,
+        strong=strong.id, eligible=eligible.id, stretch=stretch.id,
+        duplicate=duplicate.id, rejected=rejected.id, lead=lead.id, company=acme.id,
+    )
 
+
+@pytest.fixture
+def seed_dashboard():
+    """A factory: `seed_dashboard(db)` populates `db` and returns a `DashboardSeed`."""
+    return _seed

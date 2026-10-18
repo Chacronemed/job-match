@@ -1,8 +1,8 @@
 """`build_dashboard_data`: shape, tiers, what is kept out, what is never invented."""
 import json
+from datetime import UTC, datetime
 
 import pytest
-from tests.unit.dashboard._seed import NOW, SECRET_KEYWORD, XSS_TITLE, seed
 
 from job_match.config.schema import Settings
 from job_match.dashboard.data import (
@@ -25,81 +25,73 @@ RUN_KEYS = {
 }
 
 
-@pytest.fixture
-def seeded():
-    with Database(path=":memory:") as db:
-        ids = seed(db)
-        data = build_dashboard_data(db, Settings(), NOW)
-    return data, ids
-
-
 def _by_id(data, job_id):
     return next(j for j in data["jobs"] if j["id"] == job_id)
 
 
-def test_top_level_shape_and_thresholds(seeded):
-    data, _ = seeded
+def test_top_level_shape_and_thresholds(dashboard_data):
+    data, seed = dashboard_data
     assert set(data) == {"generated_at", "thresholds", "jobs", "leads", "runs"}
     assert data["thresholds"] == {"strong": 70, "min_score": 60}
-    assert data["generated_at"] == NOW.isoformat()
+    assert data["generated_at"] == seed.now.isoformat()
     json.dumps(data)  # serialisable as-is
 
 
-def test_jobs_are_canonical_eligible_or_stretch_only(seeded):
-    data, ids = seeded
+def test_jobs_are_canonical_eligible_or_stretch_only(dashboard_data):
+    data, seed = dashboard_data
     listed = {j["id"] for j in data["jobs"]}
-    assert listed == {ids["strong"], ids["eligible"], ids["stretch"]}
-    assert ids["duplicate"] not in listed and ids["rejected"] not in listed
+    assert listed == {seed.strong, seed.eligible, seed.stretch}
+    assert seed.duplicate not in listed and seed.rejected not in listed
     # best score first, like the digest
     assert [j["score"] for j in data["jobs"]] == [85, 72, 65]
 
 
-def test_sections_follow_the_digest_split(seeded):
-    data, ids = seeded
-    assert _by_id(data, ids["strong"])["section"] == "strong"
-    assert _by_id(data, ids["eligible"])["section"] == "eligible"
+def test_sections_follow_the_digest_split(dashboard_data):
+    data, seed = dashboard_data
+    assert _by_id(data, seed.strong)["section"] == "strong"
+    assert _by_id(data, seed.eligible)["section"] == "eligible"
     # a stretch job scores above the strong threshold and is still never strong
-    assert _by_id(data, ids["stretch"])["section"] == "stretch"
+    assert _by_id(data, seed.stretch)["section"] == "stretch"
 
 
-def test_job_entry_keys_and_fields(seeded):
-    data, ids = seeded
-    strong = _by_id(data, ids["strong"])
+def test_job_entry_keys_and_fields(dashboard_data):
+    data, seed = dashboard_data
+    strong = _by_id(data, seed.strong)
     assert set(strong) == JOB_KEYS
-    assert strong["title"] == XSS_TITLE  # kept verbatim: the page escapes, the data does not
+    assert strong["title"] == seed.xss_title  # verbatim: the page escapes, the data does not
     assert strong["department"] == "75"
     assert strong["contract"] == "CDI"
     assert strong["url"] == "https://example.test/strong"
     assert strong["explanations"] == ["+15 kubernetes (title)", "+10 terraform"]
     assert strong["positive"] == ["kubernetes", "terraform"]
     assert strong["missing"] == ["aws"]
-    assert strong["collected_at"] == NOW.isoformat()
+    assert strong["collected_at"] == seed.now.isoformat()
 
 
-def test_required_years_is_the_stored_number_or_the_stretch_note_or_null(seeded):
-    data, ids = seeded
-    assert _by_id(data, ids["strong"])["required_years"] == 2
-    assert _by_id(data, ids["stretch"])["required_years"] == 3.0
-    assert _by_id(data, ids["eligible"])["required_years"] is None
-    assert _by_id(data, ids["stretch"])["experience_status"] == "UNKNOWN"
+def test_required_years_is_the_stored_number_or_the_stretch_note_or_null(dashboard_data):
+    data, seed = dashboard_data
+    assert _by_id(data, seed.strong)["required_years"] == 2
+    assert _by_id(data, seed.stretch)["required_years"] == 3.0
+    assert _by_id(data, seed.eligible)["required_years"] is None
+    assert _by_id(data, seed.stretch)["experience_status"] == "UNKNOWN"
 
 
-def test_unreadable_department_is_null(seeded):
-    data, ids = seeded
-    assert _by_id(data, ids["eligible"])["department"] is None
+def test_unreadable_department_is_null(dashboard_data):
+    data, seed = dashboard_data
+    assert _by_id(data, seed.eligible)["department"] is None
 
 
-def test_descriptions_and_search_keywords_never_leave_the_db(seeded):
-    data, _ = seeded
+def test_descriptions_and_search_keywords_never_leave_the_db(dashboard_data):
+    data, seed = dashboard_data
     blob = json.dumps(data, ensure_ascii=False)
     assert "Secret description" not in blob
-    assert SECRET_KEYWORD not in blob
+    assert seed.secret_keyword not in blob
     assert "by_keyword" not in blob and "queries" not in blob and "search_query" not in blob
 
 
-def test_javascript_urls_are_dropped(seeded):
-    data, ids = seeded
-    assert _by_id(data, ids["eligible"])["url"] is None
+def test_javascript_urls_are_dropped(dashboard_data):
+    data, seed = dashboard_data
+    assert _by_id(data, seed.eligible)["url"] is None
 
 
 @pytest.mark.parametrize(
@@ -126,16 +118,17 @@ def test_required_years_without_breakdown_is_none():
     job = Job(
         source="x", source_job_id="1", title="t", company="c", location="l",
         workplace_type=WorkplaceType.UNKNOWN, contract_type=ContractType.UNKNOWN,
-        description="", url="", collected_at=NOW, eligibility=Eligibility.STRETCH,
+        description="", url="", collected_at=datetime(2026, 10, 18, tzinfo=UTC),
+        eligibility=Eligibility.STRETCH,
     )
     assert required_years(job) is None
 
 
-def test_leads_include_notified_ones_with_evidence(seeded):
-    data, ids = seeded
+def test_leads_include_notified_ones_with_evidence(dashboard_data):
+    data, seed = dashboard_data
     assert len(data["leads"]) == 1
     lead = data["leads"][0]
-    assert lead["id"] == ids["lead"]
+    assert lead["id"] == seed.lead
     assert lead["company"] == "Acme" and lead["priority"] == "high"
     assert lead["evidence"]["hiring"] == "Acme veut recruter 30 personnes."
     assert lead["amount"] == 1.1e7 and lead["round"] == "series a"
@@ -144,8 +137,8 @@ def test_leads_include_notified_ones_with_evidence(seeded):
     assert lead["open_jobs"] == 1  # the strong Acme job; the duplicate is not counted
 
 
-def test_runs_are_the_last_thirty_job_runs_newest_first(seeded):
-    data, _ = seeded
+def test_runs_are_the_last_thirty_job_runs_newest_first(dashboard_data):
+    data, _ = dashboard_data
     runs = data["runs"]
     assert len(runs) == RUN_LIMIT
     assert {r["pipeline"] for r in runs} <= {"jobs", "jobs_reprocess"}
@@ -155,8 +148,8 @@ def test_runs_are_the_last_thirty_job_runs_newest_first(seeded):
     assert set(runs[1]) == RUN_KEYS
 
 
-def test_run_funnel_counts(seeded):
-    data, _ = seeded
+def test_run_funnel_counts(dashboard_data):
+    data, _ = dashboard_data
     run = next(r for r in data["runs"] if r["pipeline"] == "jobs")
     # 100+ fetched = rejected + 5 duplicates + 20 eligible + 3 stretch
     assert run["rejected"] == run["fetched"] - 5 - 20 - 3
@@ -167,5 +160,5 @@ def test_run_funnel_counts(seeded):
 
 def test_empty_database_gives_empty_lists():
     with Database(path=":memory:") as db:
-        data = build_dashboard_data(db, Settings(), NOW)
+        data = build_dashboard_data(db, Settings(), datetime(2026, 10, 18, tzinfo=UTC))
     assert data["jobs"] == [] and data["leads"] == [] and data["runs"] == []

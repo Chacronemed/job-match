@@ -45,6 +45,14 @@ Next step). M9 manual GitHub setup still pending, `PROFILE_YAML` secret still ne
     virtualisation (125 rows).
   - 36 new tests (1123 total), ruff clean. Local snapshot: 125 jobs (26 strong, 57
     eligible, 42 stretch), 0 leads (the local DB has none), 7 runs.
+  - **CI fix (2026-10-19):** the three dashboard test files imported
+    `tests.unit.dashboard._seed`, which only resolves under `python -m pytest` (cwd on
+    `sys.path`); CI's plain `pytest -q` failed at collection. The seed is now the
+    `seed_dashboard` factory fixture in `tests/unit/conftest.py` (returns a `DashboardSeed`
+    with ids and constants) plus `dashboard_data` in `tests/unit/dashboard/conftest.py`; no
+    test imports the `tests` package. CLAUDE.md now names the CI commands
+    (`.venv\Scripts\ruff check .`, `.venv\Scripts\pytest -q`). Polish: `<html lang="fr">`
+    (date inputs show dd/mm/yyyy), contract values uppercase.
 - **Experience stretch tier** (2026-10-18, M18):
   - **Measured first** (local DB, read-only, 533 jobs, candidate 2 years): 145 jobs rejected
     *only* on EXPERIENCE. Required years: exactly 3 → 25 (21 would score ≥ 60, 13 strong);
@@ -582,6 +590,9 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
   use fixtures.
 
 ## Session log
+- 2026-10-19 (2): CI collection fix. Dashboard seed helpers became conftest fixtures (no
+  `tests` package imports), local test command aligned with `ci.yml` (`.venv\Scripts\pytest -q`),
+  `lang="fr"` and uppercase contracts on the dashboard. 1123 tests passing under plain `pytest`.
 - 2026-10-19: Private web dashboard (M19). Static generator (`job-match dashboard`), allow-listed
   data, XSS-safe embedding, three tabs with filters/sort/details and a run funnel, DESIGN.md
   tokens in dark and light, Cloudflare Worker static-assets deploy after the DB push in
