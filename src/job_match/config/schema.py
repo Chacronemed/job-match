@@ -52,9 +52,13 @@ class FTSearch:
 
 @dataclass
 class SourceLimits:
-    """Per-source hard caps. Jooble and Adzuna have small free quotas."""
+    """Per-source knobs. `max_calls_per_run` caps the quota-light sources (Jooble, Adzuna);
+    `published_since_days` is France Travail's publication window (1, 3, 7, 14 or 31, None =
+    no window); `radius_km` widens a Jooble place query to the area around it."""
 
     max_calls_per_run: int = 10
+    published_since_days: int | None = None
+    radius_km: int | None = None
 
 
 @dataclass
@@ -76,6 +80,14 @@ class SourcesConfig:
     def max_calls(self, name: str, default: int = 10) -> int:
         limit = self.limits.get(name)
         return limit.max_calls_per_run if limit else default
+
+    def published_since_days(self, name: str) -> int | None:
+        limit = self.limits.get(name)
+        return limit.published_since_days if limit else None
+
+    def radius_km(self, name: str) -> int | None:
+        limit = self.limits.get(name)
+        return limit.radius_km if limit else None
 
 
 @dataclass

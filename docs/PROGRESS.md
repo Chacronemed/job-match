@@ -3,14 +3,44 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**Milestone 16: a location must be positively French** — **DONE** (2026-10-18). The digest was
-full of US jobs from Jooble: an empty Jooble location is the whole world, and the gate kept any
-location it could not prove was abroad. Jooble now queries one French region at a time, and under
-the national scope a Jooble/Adzuna job must name a French place (official communes list) or it is
-rejected on LOCATION. France Travail stays French unless it says 99. M9 manual GitHub setup still
-pending, `PROFILE_YAML` secret still needs re-encoding.
+**Milestone 17: three fixes from the production log** — **DONE** (2026-10-18). France Travail
+now asks newest first with a 3-day publication window, and its pagination works for the first
+time (`range` is a query parameter; the `Range` header was silently ignored, every page was
+page 1). Jooble city + radius was measured: 0 offers for every variant, decision on keeping
+Jooble is open. `SMTP_PORT` moves from a secret to a repository variable. M9 manual GitHub
+setup still pending, `PROFILE_YAML` secret still needs re-encoding.
 
 ## Done
+- **Three fixes from the production log** (2026-10-18, M17):
+  - **France Travail pagination never worked.** The adapter sent the page as an HTTP `Range`
+    header; the API ignores it (even out of window, no 400) and answers page 1 every time.
+    Measured on the largest keyword: 7 pages, 1050 "fetched", **150 distinct**. The page is
+    the `range` **query parameter** (`range=150-299` answers `offres 150-299/3836`). Fixed,
+    with a regression test. Every national run so far saw only the newest-by-relevance 150
+    offers per keyword; the upsert hid the repeats, so the DB did not balloon.
+  - **Newest first + publication window:** `sort=1` on every query, `publieeDepuis` from
+    `sources.france_travail.published_since_days` (3; the loader accepts only 1, 3, 7, 14,
+    31). Dry run, France Travail only, same day:
+
+    | run | calls | fetched | distinct | eligible | strong | truncation warnings |
+    |---|---|---|---|---|---|---|
+    | before (header paging, no window) | 25 | 3275 | ~575 | 491 | 149 | 3 |
+    | after (query paging, 3-day window) | 13 | 1236 | 1236 | 188 | 58 | 0 |
+
+    The "before" eligible count is inflated by the same 150 offers scored 7 times. A range of
+    3000-3149 was also served, so the documented 1050 ceiling may be gone; the clamp and the
+    truncation WARNING stay as a guard.
+  - **Jooble city + radius, measured** (`scripts/jooble_city_probe.py`, 6 calls, real
+    pipeline, dry run): Lyon, Lyon r50, Occitanie, Toulouse r50, Nantes r50 all returned
+    `totalCount=0`, 0 eligible (the Auvergne-Rhône-Alpes line printed but was lost to an
+    output-encoding quirk; the production log already had it at 0). `JoobleSource` gained an
+    optional `radius_km` (settings `sources.jooble.radius_km`, dormant, tested).
+    `settings.yaml` regions unchanged. See Open decisions.
+  - **`SMTP_PORT` is a repository variable** (`vars.SMTP_PORT` in daily.yml): a secret's value
+    is masked everywhere in the log, so "465" hid every count equal to it. An unset variable
+    expands to "", and `EmailNotifier.from_env` now reads "" as the 465 default instead of
+    crashing on `int("")`.
+  - 24 new tests (1061 total), ruff clean.
 - **Positive French location gate + Jooble per region** (2026-10-18, M16):
   - **Measured first** (`scripts/jooble_location_probe.py`, 4 calls): jooble.org with an
     empty location = 18 669 offers, **0% French** on page 1 (46/50 US); `location="France"` =
@@ -287,6 +317,18 @@ pending, `PROFILE_YAML` secret still needs re-encoding.
   - 26 tests green, `ruff check .` clean
 
 ## Next step
+- **Create the `SMTP_PORT` repository variable:** job-match repo → Settings → Secrets and
+  variables → Actions → **Variables** tab → New repository variable, name `SMTP_PORT`, value
+  `465` (or `587` for STARTTLS). Then delete the `SMTP_PORT` *secret*. Until the variable
+  exists the digest uses 465.
+- **Decide on Jooble** (Open decisions): one control call with `Île-de-France` (it returned 21
+  offers on 2026-10-16) tells whether the key was throttled on 2026-10-18 or whether cities
+  really match nothing. If cities match nothing, Jooble is 4 non-empty regions per run.
+- Watch the first windowed France Travail run: `fetched` per keyword should equal `available`
+  and the log should carry no `truncated by the API window` line. If a keyword's 3-day volume
+  ever exceeds 1050, the WARNING says so; `published_since_days: 1` is the lever.
+- After a gap longer than 3 days (a failed run, a paused schedule), raise
+  `published_since_days` to 7 for one run, or the missed offers are never fetched.
 - **Clean the production DB of the US rows:** trigger "Daily run" with `reprocess_since` =
   the first Jooble collection date and `reprocess_scope` = `jobs`. The log's reason breakdown
   should now show `LOCATION`, and the per-department block should have no "?" bucket worth
@@ -302,8 +344,6 @@ pending, `PROFILE_YAML` secret still needs re-encoding.
 - **Re-encode the `PROFILE_YAML` secret** from the updated `config/profile.yaml`, or CI keeps
   searching the old 14 departments (the deprecated `departments` alias still loads):
   `base64 -w0 config/profile.yaml`.
-- Watch the first national runs for the `truncated by the API window` WARNING. If a keyword
-  hits it daily, the fix is one query per keyword × region, or passing `since`.
 - Clean the production DB: trigger "Daily run" manually with `reprocess_since` = the first
   collection date to re-check (e.g. 2026-10-11) and `reprocess_scope` = `jobs`. Then re-check
   the digest: it should carry ~40 jobs, not 1.
@@ -367,7 +407,6 @@ Add each of the following:
 | `FT_CLIENT_ID` | Your France Travail API client ID |
 | `FT_CLIENT_SECRET` | Your France Travail API client secret |
 | `SMTP_HOST` | e.g. `smtp.gmail.com` |
-| `SMTP_PORT` | `465` (SSL) or `587` (STARTTLS) |
 | `SMTP_USER` | Your Gmail address |
 | `SMTP_PASSWORD` | Gmail App Password (not your Google password) |
 | `DIGEST_TO` | Email address to send the digest to |
@@ -376,6 +415,13 @@ Add each of the following:
 | `JOOBLE_API_KEY` | Jooble API key (jooble.org/api/keys) — optional; without it Jooble is skipped |
 | `ADZUNA_APP_ID` | Adzuna app id — optional, and Adzuna is off in `sources.enabled` anyway |
 | `ADZUNA_APP_KEY` | Adzuna app key — optional, same |
+
+And one repository **variable** (same page, "Variables" tab), not a secret, because a secret's
+value is masked in the log and `465` would hide every count equal to it:
+
+| Variable name | Value |
+|-------------|-------|
+| `SMTP_PORT` | `465` (SSL) or `587` (STARTTLS); unset = 465 |
 
 **Gmail App Password:** Google Account → Security → 2-Step Verification → App passwords → create one named "job-match".
 
@@ -387,6 +433,12 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
 ---
 
 ## Open decisions
+- **Keep Jooble?** (2026-10-18) The per-region run returned 0 for 9/13 regions, and the city +
+  radius probe returned 0 for Lyon (with and without radius 50), Toulouse and Nantes:
+  0 eligible per call. Jooble's `location` looks like an exact match on the posting's own
+  location string. Either drop Jooble from `sources.enabled`, keep only the regions that
+  return offers, or try the literal strings Jooble postings carry ("Paris, France"?). A
+  control call on `Île-de-France` first, to rule out a throttled key.
 - ~~Hiring window~~ **Resolved 2026-10-05:** strict window + narrow exception for single-topic
   articles (sentence must refer back to the raise or the company). Measured 1 → 10 high-priority leads.
 - ~~Lead ranking~~ **Resolved 2026-10-05:** hiring first, then pre-seed/seed/series A/B, then most recent
@@ -416,8 +468,13 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
   scoring. If that proves noisy, add a scoring penalty — not a gate rejection.
 - Cross-source dedup is fuzzy on title+description within one company. A reposting agency that
   renames the company still yields two canonical rows (same limitation as before).
-- A national France Travail query reaches 1050 offers (`Range` start <= 1000, end <= 1149, 150
-  per page). A keyword with more live offers than that is truncated, with a WARNING per query.
+- A national France Travail query is clamped at 1050 offers (`range` start <= 1000, end <= 1149,
+  150 per page, per the docs). A keyword with more offers than that in its window is truncated,
+  with a WARNING per query. On 2026-10-18 the API served `range=3000-3149`, so the ceiling may be
+  gone; the clamp stays until measured again.
+- France Travail offers older than `published_since_days` are never fetched. A gap longer than
+  the window (failed runs, paused schedule) loses them unless the window is raised for one run.
+- `JoobleSource.radius_km` is dormant: every city probed returned 0 with or without it.
 - `FOREIGN_PLACES` is a marker list: an unlisted foreign city from France Travail (no 99
   prefix) resolves to unknown and is kept. From Jooble/Adzuna it is rejected anyway.
 - A French employer whose location field names a foreign HQ is rejected on LOCATION.
@@ -447,6 +504,11 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
   use fixtures.
 
 ## Session log
+- 2026-10-18 (2): Production log fixes. Found that France Travail pagination never worked
+  (`Range` header ignored; `range` query param fixed it: 150 → 738 distinct on one keyword).
+  Added `sort=1` and `publieeDepuis` from settings (3 days): 25 → 13 calls, 0 truncation.
+  Jooble city + radius probe: 0 everywhere, decision left open. `SMTP_PORT` to a repository
+  variable, empty port = default. 1061 tests passing.
 - 2026-10-18: US jobs in the digest. Measured Jooble (empty location = worldwide, 0% French;
   "France" = 16 offers; fr.jooble.org 403) and switched to one query per French region.
   Gate now needs a positively French location from Jooble/Adzuna, backed by the official

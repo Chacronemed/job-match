@@ -147,6 +147,28 @@ def test_quota_cap_comes_from_settings(monkeypatch):
     assert jooble._max_calls == 3
 
 
+def test_publication_window_comes_from_settings(monkeypatch):
+    _with_keys(monkeypatch, "france_travail")
+    settings = _settings(
+        ["france_travail"], limits={"france_travail": SourceLimits(published_since_days=3)}
+    )
+    (ft,) = build_sources(_profile(), settings)
+    assert ft._published_since_days == 3
+
+
+def test_no_publication_window_unless_configured(monkeypatch):
+    _with_keys(monkeypatch, "france_travail")
+    (ft,) = build_sources(_profile(), _settings(["france_travail"]))
+    assert ft._published_since_days is None
+
+
+def test_jooble_radius_comes_from_settings(monkeypatch):
+    _with_keys(monkeypatch, "jooble")
+    settings = _settings(["jooble"], limits={"jooble": SourceLimits(radius_km=50)})
+    (jooble,) = build_sources(_profile(), settings)
+    assert jooble._radius_km == 50
+
+
 def test_regions_come_from_settings(monkeypatch):
     _with_keys(monkeypatch, "jooble")
     settings = _settings(["jooble"], regions=["Lyon", "Rennes"])

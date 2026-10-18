@@ -36,6 +36,41 @@ def test_sources_parsed(tmp_path):
     assert s.sources.max_calls("adzuna") == 20
 
 
+def test_published_since_days_is_parsed_per_source(tmp_path):
+    s = load_settings(
+        _write(tmp_path, "sources:\n  france_travail:\n    published_since_days: 7\n")
+    )
+    assert s.sources.published_since_days("france_travail") == 7
+    assert s.sources.published_since_days("jooble") is None
+
+
+def test_published_since_days_defaults_to_no_window(tmp_path):
+    s = load_settings(_write(tmp_path, "sources:\n  france_travail:\n    x: 1\n"))
+    assert s.sources.published_since_days("france_travail") is None
+    assert s.sources.max_calls("france_travail") == 10
+
+
+@pytest.mark.parametrize("value", ["5", "'3'", "true", "0", "2.5"])
+def test_published_since_days_must_be_a_window_the_api_accepts(tmp_path, value):
+    """France Travail's publieeDepuis takes 1, 3, 7, 14 or 31; anything else is a typo."""
+    with pytest.raises(ConfigError, match="sources.france_travail.published_since_days"):
+        load_settings(
+            _write(tmp_path, f"sources:\n  france_travail:\n    published_since_days: {value}\n")
+        )
+
+
+def test_radius_km_is_parsed_per_source(tmp_path):
+    s = load_settings(_write(tmp_path, "sources:\n  jooble:\n    radius_km: 50\n"))
+    assert s.sources.radius_km("jooble") == 50
+    assert s.sources.radius_km("adzuna") is None
+
+
+@pytest.mark.parametrize("value", ["0", "-5", "'50'", "true"])
+def test_radius_km_must_be_a_positive_integer(tmp_path, value):
+    with pytest.raises(ConfigError, match="sources.jooble.radius_km"):
+        load_settings(_write(tmp_path, f"sources:\n  jooble:\n    radius_km: {value}\n"))
+
+
 def test_limits_can_be_declared_for_a_disabled_source(tmp_path):
     """Adzuna's cap is configured before it is switched on."""
     s = load_settings(
@@ -75,6 +110,12 @@ def test_committed_settings_enable_jooble_and_keep_adzuna_off():
     assert s.sources.max_calls("jooble") == 26
     assert s.sources.max_calls("adzuna") == 20
     assert "Île-de-France" in s.sources.regions
+
+
+def test_committed_settings_window_france_travail_to_three_days():
+    """The run is daily: 3 days covers a missed run without refetching the whole index."""
+    s = load_settings(Path("config/settings.yaml"))
+    assert s.sources.published_since_days("france_travail") == 3
 
 
 def test_committed_regions_are_french_regions_and_afford_two_jooble_pages_each():

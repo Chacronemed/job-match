@@ -155,6 +155,10 @@ def _parse_lead_filters(value: object, path: Path) -> LeadFilterConfig:
     )
 
 
+# The only windows France Travail's `publieeDepuis` accepts.
+PUBLISHED_SINCE_DAYS = (1, 3, 7, 14, 31)
+
+
 def _parse_sources(value: object, path: Path) -> SourcesConfig:
     """Parse the `sources` block.
 
@@ -173,13 +177,39 @@ def _parse_sources(value: object, path: Path) -> SourcesConfig:
         limits[str(key)] = SourceLimits(
             max_calls_per_run=int(
                 sub_raw.get("max_calls_per_run", SourceLimits().max_calls_per_run)
-            )
+            ),
+            published_since_days=_published_since_days(
+                sub_raw.get("published_since_days"), f"sources.{key}", path
+            ),
+            radius_km=_optional_positive_int(
+                sub_raw.get("radius_km"), f"sources.{key}.radius_km", path
+            ),
         )
     return SourcesConfig(
         enabled=_str_list(raw.get("enabled", d.enabled), "sources.enabled", path),
         regions=_str_list(raw.get("regions"), "sources.regions", path),
         limits=limits,
     )
+
+
+def _published_since_days(value: object, key: str, path: Path) -> int | None:
+    """None, or one of the windows the API accepts; a typo must not silently widen the run."""
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value not in PUBLISHED_SINCE_DAYS:
+        allowed = ", ".join(str(d) for d in PUBLISHED_SINCE_DAYS)
+        raise ConfigError(
+            f"{key}.published_since_days must be one of {allowed} (in {path})"
+        )
+    return value
+
+
+def _optional_positive_int(value: object, key: str, path: Path) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ConfigError(f"{key} must be a positive integer (in {path})")
+    return value
 
 
 def _parse_relevance(value: object, path: Path) -> RelevanceConfig:

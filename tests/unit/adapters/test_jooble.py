@@ -130,6 +130,21 @@ def test_request_body_carries_the_keyword_and_region():
 
 
 @respx.mock
+def test_a_radius_widens_the_place_query():
+    """`radius` goes into the body only when configured; the API reads it in km."""
+    respx.post(URL).mock(return_value=httpx.Response(200, json=_body([])))
+    list(_source(regions=["Lyon"], radius_km=50).fetch())
+    assert json.loads(respx.calls.last.request.content)["radius"] == "50"
+
+
+@respx.mock
+def test_no_radius_key_unless_configured():
+    respx.post(URL).mock(return_value=httpx.Response(200, json=_body([])))
+    list(_source(regions=["Lyon"]).fetch())
+    assert "radius" not in json.loads(respx.calls.last.request.content)
+
+
+@respx.mock
 def test_every_keyword_goes_into_the_same_query():
     route = respx.post(URL).mock(return_value=httpx.Response(200, json=_body([])))
     list(_source(_profile(["devops", "sre", "kubernetes"]), regions=["Lyon"]).fetch())

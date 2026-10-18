@@ -77,6 +77,7 @@ def build_sources(
                 FranceTravailSource(
                     profile,
                     requests_per_second=settings.ft_requests_per_second,
+                    published_since_days=settings.sources.published_since_days(name),
                     **kwargs,
                 )
             )
@@ -87,6 +88,7 @@ def build_sources(
                     api_key=os.environ["JOOBLE_API_KEY"],
                     regions=areas,
                     max_calls_per_run=max_calls,
+                    radius_km=settings.sources.radius_km(name),
                     **({} if limit is None else {"max_results": limit}),
                 )
             )

@@ -54,6 +54,16 @@ def test_from_env_default_port_465(monkeypatch):
     assert n._port == 465
 
 
+def test_from_env_empty_port_means_the_default(monkeypatch):
+    """`${{ vars.SMTP_PORT }}` expands to "" when the variable is not set in GitHub."""
+    monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
+    monkeypatch.setenv("SMTP_USER", "u@e.com")
+    monkeypatch.setenv("SMTP_PASSWORD", "pw")
+    monkeypatch.setenv("DIGEST_TO", "me@e.com")
+    monkeypatch.setenv("SMTP_PORT", "")
+    assert EmailNotifier.from_env()._port == 465
+
+
 # ---------------------------------------------------------------------------
 # send — SMTP_SSL (port 465)
 # ---------------------------------------------------------------------------

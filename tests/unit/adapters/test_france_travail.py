@@ -146,19 +146,30 @@ def test_parse_dt_invalid():
 
 def test_build_params_single_keyword():
     params = _build_params(_profile(), None, "75", keyword="devops")
-    assert params == {"motsCles": "devops", "departement": "75"}
+    assert params == {"motsCles": "devops", "departement": "75", "sort": "1"}
     assert "codeROME" not in params
 
 
 def test_build_params_rome_only():
     params = _build_params(_profile(), None, "75", rome_code="M1809")
-    assert params == {"codeROME": "M1809", "departement": "75"}
+    assert params == {"codeROME": "M1809", "departement": "75", "sort": "1"}
     assert "motsCles" not in params
 
 
 def test_build_params_no_keyword_no_rome():
     params = _build_params(_profile(), None, "75")
-    assert params == {"departement": "75"}
+    assert params == {"departement": "75", "sort": "1"}
+
+
+def test_build_params_always_asks_newest_first():
+    """The API window keeps 1050 offers per query; newest-first means it drops the oldest."""
+    assert _build_params(_profile(), None, None, keyword="devops")["sort"] == "1"
+
+
+def test_build_params_publication_window_only_when_configured():
+    assert "publieeDepuis" not in _build_params(_profile(), None, "75", keyword="devops")
+    params = _build_params(_profile(), None, "75", keyword="devops", published_since_days=3)
+    assert params["publieeDepuis"] == "3"
 
 
 def test_build_params_keyword_and_rome_gives_keyword_only():
@@ -348,7 +359,7 @@ def test_fetch_paginates():
     assert [r["id"] for r in results] == ["167DFDB", "167DFDC", "167DFDD"]
     assert search_route.call_count == 2
     # Second request should start after the 2 items fetched on page 1
-    assert search_route.calls[1].request.headers["Range"] == "2-151"
+    assert search_route.calls[1].request.url.params["range"] == "2-151"
 
 
 def test_fetch_respects_max_results():
@@ -754,6 +765,27 @@ def test_a_national_scope_sends_no_departement_param():
     assert params["motsCles"] == "devops"
 
 
+def test_the_request_carries_sort_and_the_publication_window():
+    """What the daily run sends: newest first, offers published in the last N days."""
+    with respx.mock:
+        _token_route()
+        route = respx.get(SEARCH_URL).mock(return_value=_offers(2, 0, 2))
+        list(_source(_national(), published_since_days=3).fetch())
+
+    params = route.calls[0].request.url.params
+    assert params["sort"] == "1"
+    assert params["publieeDepuis"] == "3"
+
+
+def test_no_publication_window_by_default():
+    with respx.mock:
+        _token_route()
+        route = respx.get(SEARCH_URL).mock(return_value=_offers(2, 0, 2))
+        list(_source(_national()).fetch())
+
+    assert "publieeDepuis" not in route.calls[0].request.url.params
+
+
 def test_a_national_scope_runs_one_query_per_keyword():
     with respx.mock:
         _token_route()
@@ -773,13 +805,24 @@ def test_paging_stops_at_the_api_window_and_clamps_the_last_range():
         route = respx.get(SEARCH_URL).mock(side_effect=_window_pages(total=5000))
         items = list(_source(_national()).fetch())
 
-    ranges = [c.request.headers["Range"] for c in route.calls]
+    ranges = [c.request.url.params["range"] for c in route.calls]
     assert ranges[0] == "0-149"
     assert ranges == [f"{n}-{n + PAGE_SIZE - 1}" for n in range(0, 1050, PAGE_SIZE)]
     # start <= 1000 and end <= 1149: 7 pages, then no page is addressable any more
     assert all(int(r.split("-")[0]) <= MAX_RANGE_START for r in ranges)
     assert all(int(r.split("-")[1]) <= MAX_RANGE_END for r in ranges)
     assert len(items) == 1050
+
+
+def test_the_page_is_the_range_query_parameter_not_a_header():
+    """The API ignores an HTTP Range header and answers page 1 again (measured 2026-10-18)."""
+    with respx.mock:
+        _token_route()
+        route = respx.get(SEARCH_URL).mock(side_effect=_window_pages(total=300))
+        list(_source(_national()).fetch())
+
+    assert [c.request.url.params["range"] for c in route.calls] == ["0-149", "150-299"]
+    assert all("range" not in c.request.headers for c in route.calls)
 
 
 def test_truncation_by_the_window_is_logged(caplog):

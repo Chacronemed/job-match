@@ -15,13 +15,20 @@ logger = logging.getLogger(__name__)
 TOKEN_URL = "https://entreprise.francetravail.fr/connexion/oauth2/access_token"
 SEARCH_URL = "https://api.francetravail.io/partenaire/offresdemploi/v2/offres/search"
 PAGE_SIZE = 150
-# The endpoint only exposes a window: the Range start may not exceed 1000 and its end may
-# not exceed 1149, so with 150-offer pages a single query reaches 1050 offers over 7 pages
-# and no more. Per department that ceiling was out of reach; a national query hits it, so
-# we clamp the range, stop, and say so instead of being refused.
+# Pagination is the `range` QUERY PARAMETER ("0-149"), not an HTTP Range header: the API
+# silently ignores the header and answers page 1 every time (measured 2026-10-18, 7 pages
+# of the same 150 offers). The documented window: the range start may not exceed 1000 and
+# its end may not exceed 1149, so with 150-offer pages a single query reaches 1050 offers
+# over 7 pages and no more. Per department that ceiling was out of reach; a national query
+# hits it, so we clamp the range, stop, and say so instead of being refused (on 2026-10-18 a
+# range of 3000-3149 was served, so the ceiling may be gone; the guard stays). Results are
+# asked newest first (`sort=1`), so what the window drops is the oldest offers, and the
+# daily run adds `publieeDepuis` (settings: sources.france_travail.published_since_days)
+# so the window holds only recent offers in the first place.
 MAX_RANGE_START = 1000
 MAX_RANGE_END = 1149
 MAX_RESULTS = MAX_RANGE_END + 1
+SORT_NEWEST_FIRST = "1"  # 0 = relevance, 1 = creation date descending, 2 = distance
 SCOPE = "api_offresdemploiv2 o2dsoffre"
 QUERY_KEY = "_jm_query"  # set on raw items by _fetch_query, mapped to Job.search_query
 
@@ -48,10 +55,12 @@ class FranceTravailSource:
         http: HttpClient | None = None,
         max_results: int = MAX_RESULTS,
         requests_per_second: float = 3.0,
+        published_since_days: int | None = None,
     ) -> None:
         self._profile = profile
         self._http = http or HttpClient()
         self._max_results = max_results
+        self._published_since_days = published_since_days
         self._token: str | None = None
         self._token_expires_at: float = 0.0
         self._min_interval: float = 1.0 / requests_per_second if requests_per_second > 0 else 0.0
@@ -119,7 +128,10 @@ class FranceTravailSource:
         keyword: str | None = None,
         rome_code: str | None = None,
     ) -> Iterator[RawItem]:
-        params = _build_params(self._profile, since, dept, keyword=keyword, rome_code=rome_code)
+        params = _build_params(
+            self._profile, since, dept, keyword=keyword, rome_code=rome_code,
+            published_since_days=self._published_since_days,
+        )
         label = keyword or rome_code or "no-filter"
         dept_label = dept or "all"
         start = 0
@@ -139,11 +151,8 @@ class FranceTravailSource:
                 self._throttle()
                 resp = self._http.get(
                     SEARCH_URL,
-                    headers={
-                        "Authorization": f"Bearer {token}",
-                        "Range": f"{start}-{end}",
-                    },
-                    params=params,
+                    headers={"Authorization": f"Bearer {token}"},
+                    params={**params, "range": f"{start}-{end}"},
                 )
                 self._api_calls += 1
 
@@ -221,8 +230,11 @@ def _build_params(
     *,
     keyword: str | None = None,
     rome_code: str | None = None,
+    published_since_days: int | None = None,
 ) -> dict[str, str]:
-    params: dict[str, str] = {}
+    # Newest first, always: the API window caps a query at 1050 offers, and newest-first
+    # means the cut falls on the oldest ones.
+    params: dict[str, str] = {"sort": SORT_NEWEST_FIRST}
     if keyword:
         params["motsCles"] = keyword  # single keyword — never combined with ROME
     elif rome_code:
@@ -231,6 +243,8 @@ def _build_params(
         params["departement"] = dept
     if since:
         params["minCreationDate"] = since.strftime("%Y-%m-%dT%H:%M:%SZ")
+    if published_since_days is not None:
+        params["publieeDepuis"] = str(published_since_days)
     return params
 
 

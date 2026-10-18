@@ -11,7 +11,11 @@ rejected anything whose department was not in the list even when the offer did a
 which queries regions).
 
 One external constraint shapes the France Travail side. The search endpoint exposes a **window**,
-not a cursor: the `Range` start may not exceed 1000 and its end may not exceed 1149. With 150-offer
+not a cursor: the `Range` start may not exceed 1000 and its end may not exceed 1149.
+(**Correction 2026-10-18:** the page is the `range` *query parameter*; the HTTP `Range` header
+this ADR's measurements went through is silently ignored by the API, so every page was page 1.
+The daily run now also sorts newest first and passes `publieeDepuis`, the "pass `since`"
+alternative below, from `sources.france_travail.published_since_days`.) With 150-offer
 pages a single query therefore reaches **1050 offers over 7 pages** and no more. Per department
 that ceiling was unreachable; a nationwide `motsCles=devops` hits it.
 

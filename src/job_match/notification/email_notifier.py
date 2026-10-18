@@ -40,7 +40,8 @@ class EmailNotifier:
             raise SmtpConfigError(f"Missing env vars: {', '.join(missing)}")
         return cls(
             host=os.environ["SMTP_HOST"],
-            port=int(os.environ.get("SMTP_PORT", "465")),
+            # "" happens when the CI variable is not set: default, never int("").
+            port=int(os.environ.get("SMTP_PORT") or "465"),
             user=os.environ["SMTP_USER"],
             password=os.environ["SMTP_PASSWORD"],
             recipient=os.environ["DIGEST_TO"],

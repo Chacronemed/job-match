@@ -130,11 +130,14 @@ jobs:
 
       # Digest failure (bad config or SMTP error) turns the step red but does not
       # prevent the DB push below — see the always() guard on that step.
+      # SMTP_PORT is a repository *variable*: a port is not a secret, and a secret's value
+      # is masked everywhere in the log, so "465" would hide every count that equals it.
+      # Unset, it expands to "" and the notifier falls back to 465.
       - name: Send digest
         run: job-match digest
         env:
           SMTP_HOST:     ${{ secrets.SMTP_HOST }}
-          SMTP_PORT:     ${{ secrets.SMTP_PORT }}
+          SMTP_PORT:     ${{ vars.SMTP_PORT }}
           SMTP_USER:     ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           DIGEST_TO:     ${{ secrets.DIGEST_TO }}

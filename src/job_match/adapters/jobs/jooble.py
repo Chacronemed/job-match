@@ -52,10 +52,12 @@ class JoobleSource:
         max_results: int | None = None,
         max_calls_per_run: int = 15,
         requests_per_second: float = 1.0,
+        radius_km: int | None = None,
     ) -> None:
         self._profile = profile
         self._api_key = api_key
-        self._regions = regions or [""]  # "" = whole country, still one call
+        self._regions = regions or [""]  # "" = the whole index (worldwide), still one call
+        self._radius_km = radius_km  # None = the place itself, as the index matches it
         self._http = http or HttpClient()
         self._max_results = max_results
         self._max_calls = max_calls_per_run
@@ -113,16 +115,16 @@ class JoobleSource:
             for page in range(1, max_pages + 1):
                 if self._out_of_budget():
                     return
+                body_out = {
+                    "keywords": keywords,
+                    "location": region,
+                    "page": str(page),
+                    "ResultOnPage": str(page_size),
+                }
+                if self._radius_km is not None:
+                    body_out["radius"] = str(self._radius_km)
                 self._throttle()
-                resp = self._http.post(
-                    f"{API_ROOT}/{self._api_key}",
-                    json={
-                        "keywords": keywords,
-                        "location": region,
-                        "page": str(page),
-                        "ResultOnPage": str(page_size),
-                    },
-                )
+                resp = self._http.post(f"{API_ROOT}/{self._api_key}", json=body_out)
                 self._api_calls += 1
                 pages += 1
                 resp.raise_for_status()
