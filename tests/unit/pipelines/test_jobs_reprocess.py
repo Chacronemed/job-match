@@ -246,6 +246,27 @@ def test_reprocess_rejects_a_stored_jooble_job_outside_france(db):
     ]
 
 
+def test_reprocess_moves_a_stored_rejection_into_the_stretch_tier(db):
+    """The rule changed: a job rejected for one year too many becomes STRETCH on replay."""
+    from job_match.config.schema import ExperienceConfig
+
+    job = _job("FT-1", description="Kubernetes. 4 ans d'expérience minimum.")
+    run_jobs(FakeSource([job]), _profile(), _settings(), db, {})
+    assert db.conn.execute("SELECT eligibility FROM jobs").fetchone()[0] == "REJECTED"
+
+    settings = _settings()
+    settings.experience = ExperienceConfig(stretch_years=1)
+    summary = reprocess_jobs(_profile(), settings, db, {})
+
+    assert summary.stretch == 1
+    assert summary.eligible == 0
+    assert summary.strong == 0
+    row = db.conn.execute("SELECT eligibility, score, rejection_reason FROM jobs").fetchone()
+    assert row[0] == "STRETCH"
+    assert row[1] is not None
+    assert row[2] is None
+
+
 def test_reprocess_makes_no_api_calls(db):
     run_jobs(FakeSource([_job("FT-001")]), _profile(), _settings(), db, {})
     summary = reprocess_jobs(_profile(), _settings(), db, {})

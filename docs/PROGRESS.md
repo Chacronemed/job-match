@@ -3,14 +3,34 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**Milestone 17: three fixes from the production log** — **DONE** (2026-10-18). France Travail
-now asks newest first with a 3-day publication window, and its pagination works for the first
-time (`range` is a query parameter; the `Range` header was silently ignored, every page was
-page 1). Jooble city + radius was measured: 0 offers for every variant, decision on keeping
-Jooble is open. `SMTP_PORT` moves from a secret to a repository variable. M9 manual GitHub
-setup still pending, `PROFILE_YAML` secret still needs re-encoding.
+**Milestone 18: experience stretch tier** — **DONE** (2026-10-18). A job that asks for at most
+`experience.stretch_years` (1) more than the candidate has is STRETCH instead of rejected: every
+other gate still applies, it is scored normally, listed in its own digest section ("À tenter"),
+never a strong match. Measured first on the local DB. ADR 0008. M9 manual GitHub setup still
+pending, `PROFILE_YAML` secret still needs re-encoding, `SMTP_PORT` variable to create.
 
 ## Done
+- **Experience stretch tier** (2026-10-18, M18):
+  - **Measured first** (local DB, read-only, 533 jobs, candidate 2 years): 145 jobs rejected
+    *only* on EXPERIENCE. Required years: exactly 3 → 25 (21 would score ≥ 60, 13 strong);
+    4 → 8; 5+ → 68; seniority keyword with no number → 44 (18 at the "confirmé" level).
+  - `settings.yaml` `experience.stretch_years: 1` (`ExperienceConfig`; 0 = off). Gate:
+    `candidate < required <= candidate + stretch_years` → `EligibilityResult.stretch=True`,
+    no reason; `required_years` is the explicit number, else the seniority-keyword minimum.
+    Above the band: EXPERIENCE as before. A job in the band that fails another gate is
+    rejected, not stretch.
+  - `Eligibility.STRETCH`, third value of the same column. Run and reprocess store it,
+    dedup and score it like an eligible job, and count `RunSummary.stretch` on its own
+    (never in `eligible` or `strong`). The scoring engine puts the gate's words first in the
+    explanations: `stretch: requires 3y, you have 2`.
+  - Digest: `DigestData.stretch`, section "À tenter (stretch)" after Other Eligible, by score,
+    same `min_score`, each card carrying the stretch line. Subtitle and email subject count it.
+    `list_unnotified` / `reset_notified_since` read both tiers; `list_eligible` (top strong
+    titles) and the leads' open-jobs count stay on ELIGIBLE.
+  - **Reprocess on the local DB:** see the counts in the session log line below.
+  - ADR 0008 (the user asked for 0007; that number was taken by the location gate).
+    26 new tests (1087 total), ruff clean. Also updated the committed-settings test: Jooble
+    was switched off in `sources.enabled` after M17's probe.
 - **Three fixes from the production log** (2026-10-18, M17):
   - **France Travail pagination never worked.** The adapter sent the page as an HTTP `Range`
     header; the API ignores it (even out of window, no 400) and answers page 1 every time.
@@ -317,6 +337,11 @@ setup still pending, `PROFILE_YAML` secret still needs re-encoding.
   - 26 tests green, `ruff check .` clean
 
 ## Next step
+- **Clean the production DB with the stretch tier:** trigger "Daily run" with
+  `reprocess_since` = the first collection date and `reprocess_scope` = `jobs`; the log's
+  `stretch:` line should be non-zero and the next digest should carry the "À tenter" section.
+  Then judge the section on real cards: if the stretch jobs are worth the read, consider
+  `stretch_years: 2` (8 more jobs locally, all above the threshold); if not, set it to 0.
 - **Create the `SMTP_PORT` repository variable:** job-match repo → Settings → Secrets and
   variables → Actions → **Variables** tab → New repository variable, name `SMTP_PORT`, value
   `465` (or `587` for STARTTLS). Then delete the `SMTP_PORT` *secret*. Until the variable
@@ -451,6 +476,12 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
 - ~~**M9 — WAL flush before data-repo push:**~~ **Resolved in M9.** `PRAGMA wal_checkpoint(TRUNCATE)` + `VACUUM` run in daily.yml before DB push. `*.sqlite-wal` and `*.sqlite-shm` added to `.gitignore`.
 
 ## Known issues
+- A stretch job is decided by the parsed minimum or the seniority keyword map. "confirmé" = 3
+  comes from `seniority_min_years`; a posting that says "confirmé" and means 5 lands in the
+  stretch tier. The map is the fix, never the gate.
+- Rows already notified before M18 are not re-sent when they move from REJECTED to STRETCH
+  (they were never notified, so they will be sent once, in the stretch section, after the
+  production reprocess).
 - The title veto keeps a dev title that also names a role_title: "Développeur FullStack -
   Java/Angular/DevOps" survives the veto by design (it was rejected on CONTRACT anyway).
   Tighten `role_titles` if those turn out to be noise.
@@ -504,6 +535,11 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
   use fixtures.
 
 ## Session log
+- 2026-10-18 (3): Experience stretch tier (M18). Measured 145 EXPERIENCE-only rejections on
+  the local DB (25 at exactly +1 year, 21 of them scoring ≥ 60), then built the tier:
+  `experience.stretch_years`, `Eligibility.STRETCH`, stretch line in the explanations, digest
+  section "À tenter", separate counts in run and reprocess. Local reprocess: 533 read, EXPERIENCE rejections 286 to 197, eligible 85, strong 28, stretch 43 (25 explicit + 18 "confirme"), 1 new duplicate link; digest preview: 31 stretch cards above 60.
+  ADR 0008. 1087 tests passing.
 - 2026-10-18 (2): Production log fixes. Found that France Travail pagination never worked
   (`Range` header ignored; `range` query param fixed it: 150 → 738 distinct on one keyword).
   Added `sort=1` and `publieeDepuis` from settings (3 days): 25 → 13 calls, 0 truncation.

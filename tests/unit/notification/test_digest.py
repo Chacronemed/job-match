@@ -3,6 +3,7 @@ from datetime import datetime
 
 from job_match.domain.models import (
     ContractType,
+    Eligibility,
     ExperienceStatus,
     Job,
     ScoringBreakdown,
@@ -43,8 +44,66 @@ def _job(
     )
 
 
-def _data(strong=(), eligible=()) -> DigestData:
-    return DigestData(strong=tuple(strong), eligible=tuple(eligible), generated_at=_TS)
+def _data(strong=(), eligible=(), stretch=()) -> DigestData:
+    return DigestData(
+        strong=tuple(strong), eligible=tuple(eligible), stretch=tuple(stretch), generated_at=_TS
+    )
+
+
+def _stretch_job(job_id: int, score: int = 68, required: int = 3) -> Job:
+    """A stretch row as the pipeline stores it: the note is the first explanation."""
+    job = _job(job_id, title=f"DevOps {job_id}", score=score)
+    bd = ScoringBreakdown(
+        eligible=True,
+        experience=ExperienceStatus.ELIGIBLE,
+        score=score,
+        positive_matches=("kubernetes",),
+        explanations=(f"stretch: requires {required}y, you have 2",),
+    )
+    return Job(**{**{f: getattr(job, f) for f in Job.__dataclass_fields__},
+                  "scoring_breakdown": bd, "eligibility": Eligibility.STRETCH})
+
+
+# ---------------------------------------------------------------------------
+# Stretch section
+# ---------------------------------------------------------------------------
+
+def test_html_stretch_section_comes_after_other_eligible_and_shows_required_years():
+    out = render_html(_data(strong=[_job(1)], eligible=[_job(2, score=65)],
+                            stretch=[_stretch_job(3, score=68, required=3)]))
+    assert out.index("Strong Matches (1)") < out.index("Other Eligible (1)") \
+        < out.index("À tenter (stretch) (1)") < out.index("Funding Leads")
+    assert "stretch: requires 3y, you have 2" in out
+    # The stretch job sits in its own section, after the heading, never under Strong.
+    assert out.index("DevOps 3") > out.index("À tenter (stretch) (1)")
+
+
+def test_text_stretch_section_lists_the_note():
+    out = render_text(_data(stretch=[_stretch_job(3, required=3)]))
+    assert "=== À tenter (stretch) (1) ===" in out
+    assert "~ stretch: requires 3y, you have 2" in out
+    assert out.index("Other Eligible") < out.index("À tenter (stretch)")
+
+
+def test_empty_stretch_section_says_so():
+    assert "No stretch jobs." in render_html(_data())
+    assert "=== À tenter (stretch) (0) ===" in render_text(_data())
+
+
+def test_subtitle_counts_stretch_jobs():
+    data = _data(strong=[_job(1)], stretch=[_stretch_job(2)])
+    assert "2 unnotified jobs (1 strong, 1 stretch)" in render_text(data)
+    assert "(1 strong)" in render_text(_data(strong=[_job(1)]))
+
+
+def test_stretch_note_falls_back_to_the_parsed_minimum():
+    from job_match.domain.models import ExperienceRequirement
+    from job_match.notification.digest import stretch_note_of
+
+    job = _job(9)
+    job = Job(**{**{f: getattr(job, f) for f in Job.__dataclass_fields__},
+                  "experience": ExperienceRequirement(ExperienceStatus.ELIGIBLE, min_years=3.0)})
+    assert stretch_note_of(job) == "stretch: requires 3y"
 
 
 # ---------------------------------------------------------------------------

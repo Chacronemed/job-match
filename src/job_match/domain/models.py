@@ -13,6 +13,26 @@ class ExperienceStatus(StrEnum):
 class Eligibility(StrEnum):
     ELIGIBLE = "ELIGIBLE"
     REJECTED = "REJECTED"
+    # Passed every gate but asks for more experience than the candidate has, within
+    # `settings.experience.stretch_years`. Scored like any eligible job, its own digest
+    # section, never a strong match.
+    STRETCH = "STRETCH"
+
+
+STRETCH_NOTE_PREFIX = "stretch:"
+
+
+def format_years(years: float) -> str:
+    """3.0 -> "3", 2.5 -> "2.5"."""
+    return str(int(years)) if float(years).is_integer() else str(years)
+
+
+def stretch_note(required_years: float, candidate_years: float) -> str:
+    """The explanation line a stretch job carries, e.g. "stretch: requires 3y, you have 2"."""
+    return (
+        f"{STRETCH_NOTE_PREFIX} requires {format_years(required_years)}y, "
+        f"you have {format_years(candidate_years)}"
+    )
 
 
 class RejectionReason(StrEnum):
@@ -52,6 +72,11 @@ class ExperienceRequirement:
 class EligibilityResult:
     eligible: bool
     reasons: tuple[RejectionReason, ...] = ()
+    # `stretch`: eligible, but only thanks to the stretch band (see Eligibility.STRETCH).
+    # `required_years`: the minimum the gate compared against (explicit number, else the
+    # seniority-keyword minimum), None when the text says nothing usable.
+    stretch: bool = False
+    required_years: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,6 +241,7 @@ class RunSummary:
     duplicates: int = 0
     eligible: int = 0
     strong: int = 0
+    stretch: int = 0  # jobs kept by the experience stretch band; not in eligible or strong
     articles: int = 0
     leads: int = 0
     errors: int = 0

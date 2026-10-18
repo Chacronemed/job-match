@@ -83,8 +83,16 @@ def evaluate(
     else:
         effective_min = seniority_min  # keyword fallback (may be 0 = no restriction)
 
-    if effective_min is not None and effective_min > profile.candidate.experience_years:
-        reasons.append(RejectionReason.EXPERIENCE)
+    # Stretch band: candidate < required <= candidate + stretch_years is kept as STRETCH,
+    # not rejected. Above the band the hard gate holds. 0 disables the band.
+    stretch = False
+    have = profile.candidate.experience_years
+    if effective_min is not None and effective_min > have:
+        band = settings.experience.stretch_years if settings else 0
+        if band > 0 and effective_min <= have + band:
+            stretch = True
+        else:
+            reasons.append(RejectionReason.EXPERIENCE)
 
     # 2. Contract type. UNKNOWN is "not stated", not "wrong": Jooble and Adzuna often
     # ship no usable contract field, and we never reject on something we could not read.
@@ -99,7 +107,13 @@ def evaluate(
     if not location_allowed(job.location, profile, source=job.source):
         reasons.append(RejectionReason.LOCATION)
 
-    return EligibilityResult(eligible=not reasons, reasons=tuple(reasons))
+    # A job in the band that fails another gate is rejected, not stretch.
+    return EligibilityResult(
+        eligible=not reasons,
+        reasons=tuple(reasons),
+        stretch=stretch and not reasons,
+        required_years=effective_min,
+    )
 
 
 FRANCE_TRAVAIL = "france_travail"  # the one source whose index is French by construction

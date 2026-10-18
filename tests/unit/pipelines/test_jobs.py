@@ -8,6 +8,7 @@ import pytest
 from job_match.adapters.jobs.base import QueryStat
 from job_match.config.schema import (
     Candidate,
+    ExperienceConfig,
     Filters,
     FTSearch,
     Profile,
@@ -15,7 +16,7 @@ from job_match.config.schema import (
     Skills,
     SkillWeight,
 )
-from job_match.domain.models import ContractType, Job, WorkplaceType
+from job_match.domain.models import ContractType, Eligibility, Job, WorkplaceType
 from job_match.persistence.db import Database
 from job_match.pipelines.jobs import run_jobs
 
@@ -499,3 +500,71 @@ def test_by_department_counts_rejected_offers_too(db):
 
     assert summary.eligible == 0
     assert summary.by_department == {"92": 1, "99": 1}
+
+
+# ---------------------------------------------------------------------------
+# Experience stretch tier
+# ---------------------------------------------------------------------------
+
+def _stretch_settings(years: float = 1) -> Settings:
+    s = _settings()
+    s.experience = ExperienceConfig(stretch_years=years)
+    return s
+
+
+class _Src:
+    name = "france_travail"
+
+    def __init__(self, jobs: list[Job]) -> None:
+        self._jobs = jobs
+
+    def fetch(self, since):
+        return iter(self._jobs)
+
+    def to_job(self, raw: Job) -> Job:
+        return raw
+
+
+def test_a_stretch_job_is_stored_as_stretch_and_counted_apart():
+    """Candidate has 3 years; the job asks 4 (in the band) and scores like any eligible job."""
+    jobs = [
+        _job("FT-STRETCH", company="Acme", title="DevOps Engineer",
+             description="Kubernetes. 4 ans d'expérience minimum."),
+        _job("FT-OK", company="Beta", title="SRE",
+             description="Kubernetes. 2 ans d'expérience."),
+        _job("FT-NO", company="Gamma", title="Platform Engineer",
+             description="Kubernetes. 5 ans d'expérience minimum."),
+    ]
+    with Database(migrations_dir=MIGRATIONS) as db:
+        summary = run_jobs(_Src(jobs), _profile(3.0), _stretch_settings(1), db, {})
+        rows = {
+            r["source_job_id"]: (r["eligibility"], r["score"], r["rejection_reason"])
+            for r in db.conn.execute(
+                "SELECT source_job_id, eligibility, score, rejection_reason FROM jobs"
+            )
+        }
+
+    assert summary.stretch == 1
+    assert summary.eligible == 1
+    assert summary.strong == 1  # FT-OK only: a stretch job is never strong
+    assert summary.rejected_by_reason == {"EXPERIENCE": 1}
+    assert rows["FT-STRETCH"][0] == str(Eligibility.STRETCH)
+    assert rows["FT-STRETCH"][1] == rows["FT-OK"][1]  # same scorer, same text
+    assert rows["FT-STRETCH"][2] is None
+    assert rows["FT-NO"][0] == "REJECTED"
+
+
+def test_the_stretch_tier_is_off_by_default():
+    jobs = [_job("FT-STRETCH", description="Kubernetes. 4 ans d'expérience minimum.")]
+    with Database(migrations_dir=MIGRATIONS) as db:
+        summary = run_jobs(_Src(jobs), _profile(3.0), _settings(), db, {})
+    assert summary.stretch == 0
+    assert summary.rejected_by_reason == {"EXPERIENCE": 1}
+
+
+def test_a_stretch_job_carries_its_note_in_the_breakdown():
+    jobs = [_job("FT-STRETCH", description="Kubernetes. 4 ans d'expérience minimum.")]
+    with Database(migrations_dir=MIGRATIONS) as db:
+        run_jobs(_Src(jobs), _profile(3.0), _stretch_settings(1), db, {})
+        raw = db.conn.execute("SELECT scoring_breakdown FROM jobs").fetchone()[0]
+    assert "stretch: requires 4y, you have 3" in json.loads(raw)["explanations"]

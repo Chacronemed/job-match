@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from job_match.config.schema import Settings
+from job_match.domain.models import Eligibility
 from job_match.notification.digest import DigestData
 from job_match.notification.lead_filter import select_leads
 from job_match.persistence.db import Database
@@ -35,10 +36,14 @@ def build_digest(db: Database, settings: Settings, now: datetime) -> DigestBatch
     unnotified = JobRepository(db.conn).list_unnotified()
     min_score = settings.digest.min_score
     jobs = [j for j in unnotified if j.score is not None and j.score >= min_score]
+    # Stretch jobs have their own section, same min_score, never strong. `list_unnotified`
+    # orders by score, so every section is already sorted.
+    stretch = tuple(j for j in jobs if j.eligibility is Eligibility.STRETCH)
+    firm = [j for j in jobs if j.eligibility is not Eligibility.STRETCH]
     strong = tuple(
-        j for j in jobs if j.score is not None and j.score >= settings.strong_threshold
+        j for j in firm if j.score is not None and j.score >= settings.strong_threshold
     )
-    eligible = tuple(j for j in jobs if j not in strong)
+    eligible = tuple(j for j in firm if j not in strong)
 
     # Job -> company -> recent funding. Same `companies.id`, i.e. same normalized name.
     funding_since = (now - timedelta(days=settings.funding.job_link_days)).date()
@@ -55,6 +60,7 @@ def build_digest(db: Database, settings: Settings, now: datetime) -> DigestBatch
     data = DigestData(
         strong=strong,
         eligible=eligible,
+        stretch=stretch,
         leads=selection.selected,
         company_funding=company_funding,
         generated_at=now,

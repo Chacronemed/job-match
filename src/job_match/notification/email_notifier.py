@@ -48,7 +48,7 @@ class EmailNotifier:
         )
 
     def send(self, data: DigestData) -> bool:
-        total = len(data.strong) + len(data.eligible)
+        total = len(data.strong) + len(data.eligible) + len(data.stretch)
         subject = (
             f"[job-match] {total} new job{'s' if total != 1 else ''} "
             f"({len(data.strong)} strong)"

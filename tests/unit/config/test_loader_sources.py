@@ -71,6 +71,27 @@ def test_radius_km_must_be_a_positive_integer(tmp_path, value):
         load_settings(_write(tmp_path, f"sources:\n  jooble:\n    radius_km: {value}\n"))
 
 
+def test_experience_stretch_years_defaults_to_zero(tmp_path):
+    s = load_settings(_write(tmp_path, "strong_threshold: 70\n"))
+    assert s.experience.stretch_years == 0
+
+
+def test_experience_stretch_years_is_parsed(tmp_path):
+    s = load_settings(_write(tmp_path, "experience:\n  stretch_years: 1\n"))
+    assert s.experience.stretch_years == 1.0
+
+
+@pytest.mark.parametrize("value", ["-1", "'1'", "true"])
+def test_experience_stretch_years_must_be_a_non_negative_number(tmp_path, value):
+    with pytest.raises(ConfigError, match="experience.stretch_years"):
+        load_settings(_write(tmp_path, f"experience:\n  stretch_years: {value}\n"))
+
+
+def test_committed_settings_stretch_one_year():
+    s = load_settings(Path("config/settings.yaml"))
+    assert s.experience.stretch_years == 1
+
+
 def test_limits_can_be_declared_for_a_disabled_source(tmp_path):
     """Adzuna's cap is configured before it is switched on."""
     s = load_settings(
@@ -102,10 +123,12 @@ def test_sources_must_be_a_mapping(tmp_path):
         load_settings(_write(tmp_path, "sources: [jooble]\n"))
 
 
-def test_committed_settings_enable_jooble_and_keep_adzuna_off():
-    """The real config: Adzuna stays out of `enabled` until the plan is paid."""
+def test_committed_settings_run_france_travail_alone():
+    """The real config: Jooble is off since its city/region probes returned 0 (2026-10-18),
+    Adzuna stays out until the plan is paid. Their limits stay configured for a switch-on."""
     s = load_settings(Path("config/settings.yaml"))
-    assert s.sources.enabled == ["france_travail", "jooble"]
+    assert s.sources.enabled == ["france_travail"]
+    assert s.sources.is_enabled("jooble") is False
     assert s.sources.is_enabled("adzuna") is False
     assert s.sources.max_calls("jooble") == 26
     assert s.sources.max_calls("adzuna") == 20

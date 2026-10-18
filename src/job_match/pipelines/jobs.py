@@ -59,6 +59,7 @@ def run_jobs(
     duplicates = 0
     eligible = 0
     strong = 0
+    stretch = 0
     errors = 0
     by_source: dict[str, dict[str, int]] = {}
     by_department: dict[str, int] = {}
@@ -119,6 +120,9 @@ def run_jobs(
                     _save(job, company_repo, job_repo)
                 continue
 
+            # Stretch is a tier of eligible, not a rejection: same dedup, same scoring.
+            tier = Eligibility.STRETCH if elig.stretch else Eligibility.ELIGIBLE
+
             # Dedup
             exact, fuzzy = _candidate_blocks(job, job_repo, window)
             dedup_result = dedup_engine.check(job, exact, fuzzy)
@@ -126,7 +130,7 @@ def run_jobs(
             if dedup_result.is_duplicate:
                 duplicates += 1
                 counts["duplicates"] += 1
-                job = replace(job, eligibility=Eligibility.ELIGIBLE)
+                job = replace(job, eligibility=tier)
                 if not dry_run:
                     saved = _save(job, company_repo, job_repo)
                     if saved.id is not None and dedup_result.canonical_id is not None:
@@ -144,15 +148,18 @@ def run_jobs(
             breakdown = scoring_engine.score(job, profile, settings, elig, exp)
             job = replace(
                 job,
-                eligibility=Eligibility.ELIGIBLE,
+                eligibility=tier,
                 score=breakdown.score,
                 scoring_breakdown=breakdown,
             )
 
-            eligible += 1
-            counts["eligible"] += 1
-            if breakdown.score is not None and breakdown.score >= settings.strong_threshold:
-                strong += 1
+            if elig.stretch:
+                stretch += 1  # counted on its own: never eligible, never strong
+            else:
+                eligible += 1
+                counts["eligible"] += 1
+                if breakdown.score is not None and breakdown.score >= settings.strong_threshold:
+                    strong += 1
 
             if not dry_run:
                 _save(job, company_repo, job_repo)
@@ -178,6 +185,7 @@ def run_jobs(
         duplicates=duplicates,
         eligible=eligible,
         strong=strong,
+        stretch=stretch,
         errors=errors,
         api_calls=api_calls,
         by_area=by_area,
@@ -233,6 +241,7 @@ def reprocess_jobs(
     rejected_by_reason: dict[str, int] = {}
     eligible = 0
     strong = 0
+    stretch = 0
     errors = 0
     new_links = 0
     removed_links = 0
@@ -263,14 +272,20 @@ def reprocess_jobs(
                 breakdown = scoring_engine.score(job, profile, settings, elig, exp)
                 job = replace(
                     job,
-                    eligibility=Eligibility.ELIGIBLE,
+                    eligibility=Eligibility.STRETCH if elig.stretch else Eligibility.ELIGIBLE,
                     rejection_reason=None,
                     score=breakdown.score,
                     scoring_breakdown=breakdown,
                 )
-                eligible += 1
-                if breakdown.score is not None and breakdown.score >= settings.strong_threshold:
-                    strong += 1
+                if elig.stretch:
+                    stretch += 1
+                else:
+                    eligible += 1
+                    if (
+                        breakdown.score is not None
+                        and breakdown.score >= settings.strong_threshold
+                    ):
+                        strong += 1
 
             if not dry_run:
                 _save(job, company_repo, job_repo)
@@ -306,6 +321,7 @@ def reprocess_jobs(
         stale_links_dropped=removed_links,
         eligible=eligible,
         strong=strong,
+        stretch=stretch,
         errors=errors,
         by_department=by_department,
     )

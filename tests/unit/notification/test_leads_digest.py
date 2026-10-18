@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from job_match.config.schema import FundingConfig, Settings
+from job_match.config.schema import DigestConfig, FundingConfig, Settings
 from job_match.domain.models import Eligibility
 from job_match.notification.assemble import build_digest
 from job_match.notification.digest import DigestData, evidence_lines, render_html, render_text
@@ -29,6 +29,26 @@ def db():
 def _settings(job_link_days: int = 180) -> Settings:
     return Settings(strong_threshold=70, dedup_window_days=30,
                     funding=FundingConfig(job_link_days=job_link_days))
+
+
+# ---------------------------------------------------------------------------
+# Stretch rows in the digest
+# ---------------------------------------------------------------------------
+
+def test_build_digest_puts_stretch_rows_in_their_own_section_by_score(db):
+    job(db.conn, "S1", "Acme", score=80, eligibility=Eligibility.STRETCH)  # never strong
+    job(db.conn, "S2", "Acme", score=65, eligibility=Eligibility.STRETCH)
+    job(db.conn, "S3", "Acme", score=40, eligibility=Eligibility.STRETCH)  # below min_score
+    job(db.conn, "E1", "Beta", score=75)
+
+    batch = build_digest(db, Settings(strong_threshold=70, digest=DigestConfig(min_score=60)),
+                         NOW)
+
+    assert [j.source_job_id for j in batch.data.strong] == ["E1"]
+    assert batch.data.eligible == ()
+    assert [j.source_job_id for j in batch.data.stretch] == ["S1", "S2"]
+    assert len(batch.job_ids) == 3  # S3 stays unnotified
+    assert batch.jobs_below_min_score == 1
 
 
 # ---------------------------------------------------------------------------

@@ -5,6 +5,7 @@ from job_match.domain.models import (
     Job,
     ScoreResult,
     ScoringBreakdown,
+    stretch_note,
 )
 from job_match.scoring.base import Scorer
 
@@ -48,6 +49,14 @@ class ScoringEngine:
             divergence is not None and divergence >= settings.divergence_threshold
         )
 
+        # A stretch job says so first: the score is the same as for any eligible job, the
+        # explanation is what tells the reader why it is in its own section.
+        notes: tuple[str, ...] = ()
+        if eligibility.stretch and eligibility.required_years is not None:
+            notes = (
+                stretch_note(eligibility.required_years, profile.candidate.experience_years),
+            )
+
         if primary is not None:
             return ScoringBreakdown(
                 eligible=eligibility.eligible,
@@ -56,7 +65,7 @@ class ScoringEngine:
                 positive_matches=primary.positive_matches,
                 negative_matches=primary.negative_matches,
                 missing_preferences=primary.missing_preferences,
-                explanations=primary.explanations,
+                explanations=notes + tuple(primary.explanations),
                 engines=engines,
                 divergence=divergence,
                 needs_review=needs_review,
@@ -65,6 +74,7 @@ class ScoringEngine:
         return ScoringBreakdown(
             eligible=eligibility.eligible,
             experience=experience.status,
+            explanations=notes,
             engines=engines,
             divergence=divergence,
             needs_review=needs_review,

@@ -120,6 +120,15 @@ class RelevanceConfig:
 
 
 @dataclass
+class ExperienceConfig:
+    """`stretch_years`: a job whose required years exceed the candidate's by at most this
+    much is STRETCH instead of rejected (every other gate still applies). 0 = no stretch
+    tier. Above the band the experience gate rejects as it always did."""
+
+    stretch_years: float = 0
+
+
+@dataclass
 class DigestConfig:
     min_score: int = 60  # eligible jobs below this stay in the DB but are not emailed
     max_leads: int = 10  # leads beyond this roll over to the next digest
@@ -160,3 +169,4 @@ class Settings:
     funding: FundingConfig = field(default_factory=FundingConfig)
     relevance: RelevanceConfig = field(default_factory=RelevanceConfig)
     digest: DigestConfig = field(default_factory=DigestConfig)
+    experience: ExperienceConfig = field(default_factory=ExperienceConfig)

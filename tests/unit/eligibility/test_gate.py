@@ -4,9 +4,11 @@ import pytest
 
 from job_match.config.schema import (
     Candidate,
+    ExperienceConfig,
     Filters,
     FTSearch,
     Profile,
+    RelevanceConfig,
     ScoringConfig,
     Settings,
     Skills,
@@ -349,6 +351,94 @@ def test_seniority_not_applied_without_settings():
     req = _req(status=ExperienceStatus.NOT_MENTIONED)
     result = evaluate(job, req, _make_profile(experience_years=2.0))
     assert result.eligible
+
+
+# ---------------------------------------------------------------------------
+# Experience stretch tier: candidate < required <= candidate + stretch_years
+# ---------------------------------------------------------------------------
+
+def _stretch_settings(years: float = 1, **kwargs) -> Settings:
+    return Settings(
+        experience=ExperienceConfig(stretch_years=years), seniority_min_years=_SMAP, **kwargs
+    )
+
+
+def test_one_year_over_is_stretch_not_rejected():
+    result = evaluate(
+        _make_job(), _req(min_years=3.0), _make_profile(experience_years=2.0),
+        _stretch_settings(1),
+    )
+    assert result.eligible is True
+    assert result.stretch is True
+    assert result.reasons == ()
+    assert result.required_years == 3.0
+
+
+def test_a_seniority_keyword_without_a_number_can_be_stretch():
+    """"confirmé" implies 3 years (settings map); candidate has 2, band is 1."""
+    job = _make_job(title="Ingénieur DevOps confirmé", description="Kubernetes.")
+    result = evaluate(
+        job, _req(status=ExperienceStatus.NOT_MENTIONED), _make_profile(experience_years=2.0),
+        _stretch_settings(1),
+    )
+    assert result.stretch is True
+    assert result.required_years == 3.0
+
+
+def test_beyond_the_band_is_rejected_as_before():
+    result = evaluate(
+        _make_job(), _req(min_years=4.0), _make_profile(experience_years=2.0),
+        _stretch_settings(1),
+    )
+    assert result.eligible is False
+    assert result.stretch is False
+    assert RejectionReason.EXPERIENCE in result.reasons
+
+
+def test_stretch_needs_every_other_gate_to_pass():
+    """A dev title in the band is rejected (NOT_RELEVANT), not stretch."""
+    settings = _stretch_settings(
+        1,
+        relevance=RelevanceConfig(
+            target_title_keywords=["devops"], role_titles=["devops"], dev_titles=["développeur"],
+        ),
+    )
+    job = _make_job(title="Développeur Java", description="Kubernetes. 3 ans d'expérience.")
+    result = evaluate(job, _req(min_years=3.0), _make_profile(experience_years=2.0), settings)
+    assert result.eligible is False
+    assert result.stretch is False
+    assert RejectionReason.NOT_RELEVANT in result.reasons
+    assert RejectionReason.EXPERIENCE not in result.reasons  # it was within the band
+
+
+def test_stretch_years_zero_disables_the_tier():
+    result = evaluate(
+        _make_job(), _req(min_years=3.0), _make_profile(experience_years=2.0),
+        _stretch_settings(0),
+    )
+    assert result.eligible is False
+    assert RejectionReason.EXPERIENCE in result.reasons
+
+
+def test_no_stretch_without_settings():
+    result = evaluate(_make_job(), _req(min_years=3.0), _make_profile(experience_years=2.0))
+    assert result.eligible is False
+
+
+def test_meeting_the_requirement_is_eligible_not_stretch():
+    result = evaluate(
+        _make_job(), _req(min_years=2.0), _make_profile(experience_years=2.0),
+        _stretch_settings(1),
+    )
+    assert result.eligible is True
+    assert result.stretch is False
+
+
+def test_the_band_edge_is_inclusive_and_fractional_years_count():
+    settings = _stretch_settings(1)
+    assert evaluate(_make_job(), _req(min_years=3.0), _make_profile(2.0), settings).stretch
+    assert evaluate(_make_job(), _req(min_years=2.5), _make_profile(2.0), settings).stretch
+    assert not evaluate(_make_job(), _req(min_years=3.5), _make_profile(2.0), settings).eligible
 
 
 def test_seniority_junior_never_rejects():

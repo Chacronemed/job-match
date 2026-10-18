@@ -166,6 +166,7 @@ def _print_reprocess_summary(
             print(f"    {reason}: {count}")
     print(f"  eligible:   {summary.eligible}")
     print(f"  strong:     {summary.strong}")
+    print(f"  stretch:    {summary.stretch}  (experience within stretch_years; never strong)")
     print(f"  new duplicate links: {summary.duplicates}")
     print(f"  links removed:       {summary.stale_links_dropped}  (rules no longer match)")
     if summary.self_links_dropped:
@@ -219,7 +220,8 @@ def _cmd_digest(args: argparse.Namespace) -> None:
 
     print(
         f"Digest: {len(batch.job_ids)} unnotified jobs ({len(data.strong)} strong, "
-        f"{len(data.eligible)} eligible), {len(batch.lead_ids)} funding leads"
+        f"{len(data.eligible)} eligible, {len(data.stretch)} stretch), "
+        f"{len(batch.lead_ids)} funding leads"
     )
     print(
         f"  held back (stay unnotified): {batch.jobs_below_min_score} jobs below "
@@ -429,6 +431,7 @@ def _print_summary(summary: RunSummary, *, dry_run: bool = False) -> None:
     print(f"  duplicates: {summary.duplicates}")
     print(f"  eligible:   {summary.eligible}")
     print(f"  strong:     {summary.strong}")
+    print(f"  stretch:    {summary.stretch}  (experience within stretch_years; never strong)")
     if summary.api_calls:
         print(f"  api_calls:  {summary.api_calls}")
     if summary.errors:

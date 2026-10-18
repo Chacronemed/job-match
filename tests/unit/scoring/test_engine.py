@@ -24,6 +24,27 @@ from job_match.scoring.native import NativeRuleScorer
 SETTINGS = Settings(base_score=50, title_bonus=10)
 
 
+def test_a_stretch_job_carries_the_stretch_note_first():
+    engine = ScoringEngine([NativeRuleScorer({})])
+    profile = _make_profile()
+    elig = EligibilityResult(eligible=True, stretch=True, required_years=3.0)
+    bd = engine.score(
+        _make_job(), profile, SETTINGS, elig, ExperienceRequirement(ExperienceStatus.ELIGIBLE)
+    )
+    have = int(profile.candidate.experience_years)
+    assert bd.explanations[0] == f"stretch: requires 3y, you have {have}"
+    assert bd.score is not None  # scored like any eligible job
+
+
+def test_a_plain_eligible_job_has_no_stretch_note():
+    engine = ScoringEngine([NativeRuleScorer({})])
+    bd = engine.score(
+        _make_job(), _make_profile(), SETTINGS, EligibilityResult(eligible=True),
+        ExperienceRequirement(ExperienceStatus.ELIGIBLE),
+    )
+    assert not any(line.startswith("stretch:") for line in bd.explanations)
+
+
 def _make_job() -> Job:
     return Job(
         source="test",

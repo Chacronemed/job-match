@@ -9,7 +9,13 @@ import html
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from job_match.domain.models import CompanyFunding, Job, LeadDetail
+from job_match.domain.models import (
+    STRETCH_NOTE_PREFIX,
+    CompanyFunding,
+    Job,
+    LeadDetail,
+    format_years,
+)
 from job_match.funding.extractor import format_amount
 
 _EVIDENCE_ORDER = ("amount", "round", "investors", "hiring", "company", "funding", "location")
@@ -21,6 +27,9 @@ class DigestData:
     strong: tuple[Job, ...]
     eligible: tuple[Job, ...]  # non-strong eligible, unnotified
     run_stats: dict[str, int] = field(default_factory=dict)
+    # Eligibility.STRETCH rows above min_score, by score: asks for a little more experience
+    # than the candidate has. Its own section, after Other Eligible, never in Strong.
+    stretch: tuple[Job, ...] = ()
     generated_at: datetime = field(default_factory=datetime.now)
     leads: tuple[LeadDetail, ...] = ()  # unnotified, high priority first
     company_funding: dict[int, CompanyFunding] = field(default_factory=dict)  # by company_id
@@ -35,6 +44,20 @@ def _top_matches(job: Job, n: int = 3) -> str:
     if job.scoring_breakdown and job.scoring_breakdown.positive_matches:
         return ", ".join(job.scoring_breakdown.positive_matches[:n])
     return "—"
+
+
+def stretch_note_of(job: Job) -> str:
+    """The gate's own words ("stretch: requires 3y, you have 2"), stored with the score.
+
+    Falls back to the parsed minimum when the breakdown is missing (older rows).
+    """
+    if job.scoring_breakdown:
+        for line in job.scoring_breakdown.explanations:
+            if line.startswith(STRETCH_NOTE_PREFIX):
+                return line
+    if job.experience and job.experience.min_years is not None:
+        return f"{STRETCH_NOTE_PREFIX} requires {format_years(job.experience.min_years)}y"
+    return f"{STRETCH_NOTE_PREFIX} requires more experience"
 
 
 def _funding_of(job: Job, data: DigestData) -> CompanyFunding | None:
@@ -72,8 +95,11 @@ def evidence_lines(evidence: dict[str, str]) -> list[tuple[str, str]]:
 
 
 def _subtitle(data: DigestData) -> str:
-    total = len(data.strong) + len(data.eligible)
-    text = f"{total} unnotified job{'s' if total != 1 else ''} ({len(data.strong)} strong)"
+    total = len(data.strong) + len(data.eligible) + len(data.stretch)
+    tiers = f"{len(data.strong)} strong"
+    if data.stretch:
+        tiers += f", {len(data.stretch)} stretch"
+    text = f"{total} unnotified job{'s' if total != 1 else ''} ({tiers})"
     if data.leads:
         n = len(data.leads)
         text += f", {n} funding lead{'s' if n != 1 else ''}"
@@ -104,6 +130,7 @@ def render_html(data: DigestData) -> str:
         ".score-strong{background:#bbf7d0;color:#14532d}"
         ".matches{font-size:.82rem;color:#444;margin-top:5px}"
         ".funded{font-size:.82rem;color:#92400e;margin-top:5px}"
+        ".stretch{font-size:.82rem;color:#6b21a8;margin-top:5px}"
         ".funded a{color:#92400e}"
         ".prio{display:inline-block;font-weight:700;font-size:.75rem;padding:2px 7px;"
         "border-radius:4px;margin-right:6px;background:#e5e7eb;color:#374151}"
@@ -129,7 +156,7 @@ def render_html(data: DigestData) -> str:
             parts.append(f"<b>{_e(str(k))}</b>: {v}<br>")
         parts.append("</div>")
 
-    def _job_card(job: Job, strong: bool) -> str:
+    def _job_card(job: Job, strong: bool, stretch: bool = False) -> str:
         score_cls = "score score-strong" if strong else "score"
         score_str = str(job.score) if job.score is not None else "?"
         matches = _top_matches(job)
@@ -143,6 +170,9 @@ def render_html(data: DigestData) -> str:
             if funded.article_url:
                 label = f"<a href='{_e(funded.article_url)}'>{label}</a>"
             funded_html = f"<div class='funded'>Company funding: {label}</div>"
+        stretch_html = (
+            f"<div class='stretch'>{_e(stretch_note_of(job))}</div>" if stretch else ""
+        )
         return (
             f"<div class='job'>"
             f"<div class='job-title'>"
@@ -153,6 +183,7 @@ def render_html(data: DigestData) -> str:
             f"{_e(job.company)} · {_e(loc)} · {contract}"
             f"</div>"
             f"<div class='matches'>+ {_e(matches)}{via}</div>"
+            f"{stretch_html}"
             f"{funded_html}"
             f"</div>"
         )
@@ -204,6 +235,13 @@ def render_html(data: DigestData) -> str:
     else:
         parts.append("<p class='empty'>No other eligible jobs.</p>")
 
+    parts.append(f"<h2>À tenter (stretch) ({len(data.stretch)})</h2>")
+    if data.stretch:
+        for job in data.stretch:
+            parts.append(_job_card(job, strong=False, stretch=True))
+    else:
+        parts.append("<p class='empty'>No stretch jobs.</p>")
+
     parts.append(f"<h2>Funding Leads ({len(data.leads)})</h2>")
     if data.leads:
         for lead in data.leads:
@@ -228,12 +266,14 @@ def render_text(data: DigestData) -> str:
             lines.append(f"  {k}: {v}")
         lines.append("")
 
-    def _job_lines(job: Job) -> None:
+    def _job_lines(job: Job, stretch: bool = False) -> None:
         score = str(job.score) if job.score is not None else "?"
         lines.append(f"  [{score:>3}] {job.title}")
         lines.append(f"         {job.company} · {job.location}")
         via = f'  (via "{job.search_query}")' if job.search_query else ""
         lines.append(f"         + {_top_matches(job)}{via}")
+        if stretch:
+            lines.append(f"         ~ {stretch_note_of(job)}")
         funded = _funding_of(job, data)
         if funded is not None:
             lines.append(f"         $ Company funding: {_funding_label(funded)}")
@@ -251,6 +291,14 @@ def render_text(data: DigestData) -> str:
     if data.eligible:
         for job in data.eligible:
             _job_lines(job)
+    else:
+        lines.append("  (none)")
+    lines.append("")
+
+    lines.append(f"=== À tenter (stretch) ({len(data.stretch)}) ===")
+    if data.stretch:
+        for job in data.stretch:
+            _job_lines(job, stretch=True)
     else:
         lines.append("  (none)")
     lines.append("")

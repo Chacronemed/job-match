@@ -337,7 +337,7 @@ class JobRepository:
             SELECT j.*
             FROM jobs j
             LEFT JOIN job_duplicates d ON d.duplicate_job_id = j.id
-            WHERE j.eligibility = 'ELIGIBLE'
+            WHERE j.eligibility IN ('ELIGIBLE', 'STRETCH')
               AND j.notified_at IS NULL
               AND d.duplicate_job_id IS NULL
             ORDER BY j.score DESC, j.collected_at DESC
@@ -365,7 +365,7 @@ class JobRepository:
             """
             UPDATE jobs
             SET notified_at = NULL
-            WHERE eligibility = 'ELIGIBLE'
+            WHERE eligibility IN ('ELIGIBLE', 'STRETCH')
               AND notified_at >= ?
               AND id NOT IN (SELECT duplicate_job_id FROM job_duplicates)
             """,
@@ -588,6 +588,7 @@ class RunRepository:
                         "stale_links_dropped": summary.stale_links_dropped,
                         "eligible": summary.eligible,
                         "strong": summary.strong,
+                        "stretch": summary.stretch,
                         "articles": summary.articles,
                         "leads": summary.leads,
                         "errors": summary.errors,

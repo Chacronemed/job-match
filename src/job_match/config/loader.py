@@ -9,6 +9,7 @@ from job_match.config.schema import (
     Candidate,
     ConfigError,
     DigestConfig,
+    ExperienceConfig,
     Filters,
     FTSearch,
     FundingConfig,
@@ -95,6 +96,7 @@ def load_settings(path: Path) -> Settings:
             str(k): int(v) for k, v in (raw.get("seniority_min_years") or {}).items()
         },
         sources=_parse_sources(raw.get("sources"), path),
+        experience=_parse_experience(raw.get("experience"), path),
         scoring=ScoringConfig(
             jms=JMSConfig(
                 enabled=bool(jms_raw.get("enabled", False)),
@@ -221,6 +223,15 @@ def _parse_relevance(value: object, path: Path) -> RelevanceConfig:
         role_titles=_str_list(raw.get("role_titles"), "relevance.role_titles", path),
         dev_titles=_str_list(raw.get("dev_titles"), "relevance.dev_titles", path),
     )
+
+
+def _parse_experience(value: object, path: Path) -> ExperienceConfig:
+    raw = _mapping(value, "experience", path)
+    d = ExperienceConfig()
+    years = raw.get("stretch_years", d.stretch_years)
+    if isinstance(years, bool) or not isinstance(years, int | float) or years < 0:
+        raise ConfigError(f"experience.stretch_years must be a number >= 0 (in {path})")
+    return ExperienceConfig(stretch_years=float(years))
 
 
 def _parse_digest(value: object, path: Path) -> DigestConfig:

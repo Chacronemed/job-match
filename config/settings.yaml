@@ -132,6 +132,15 @@ relevance:
     - administrateur
     - linux
 
+# Experience stretch tier. A job whose required years (explicit number, or the minimum a
+# seniority keyword implies) exceed the candidate's by at most stretch_years is STRETCH:
+# every other gate still applies, it is scored normally, it gets its own digest section
+# ("A tenter"), and it is never a strong match. 0 disables the tier; above the band the
+# hard gate rejects as before. Measured 2026-10-18 on 533 local jobs (candidate 2 years):
+# 25 jobs asked exactly 3, 21 of them scored >= digest.min_score.
+experience:
+  stretch_years: 1
+
 digest:
   min_score: 60   # eligible jobs below this stay in the DB, not emailed
   max_leads: 10   # hiring first, then pre-seed..series B, then most recent; the rest roll over
