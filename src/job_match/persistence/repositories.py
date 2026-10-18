@@ -16,6 +16,7 @@ from job_match.domain.models import (
     Lead,
     LeadDetail,
     RawPayload,
+    RunRecord,
     RunSummary,
     ScoreResult,
     ScoringBreakdown,
@@ -345,6 +346,24 @@ class JobRepository:
         ).fetchall()
         return [_row_to_job(r) for r in rows]
 
+    def list_canonical_scored(self) -> list[Job]:
+        """Every canonical ELIGIBLE or STRETCH job, notified or not, best score first.
+
+        The dashboard's view: the same rows `list_unnotified` sees, without the digest's
+        notified filter. Duplicates and rejected jobs are never listed.
+        """
+        rows = self._conn.execute(
+            """
+            SELECT j.*
+            FROM jobs j
+            LEFT JOIN job_duplicates d ON d.duplicate_job_id = j.id
+            WHERE j.eligibility IN ('ELIGIBLE', 'STRETCH')
+              AND d.duplicate_job_id IS NULL
+            ORDER BY j.score DESC, j.collected_at DESC
+            """
+        ).fetchall()
+        return [_row_to_job(r) for r in rows]
+
     def mark_notified(self, job_ids: list[int], notified_at: datetime) -> None:
         if not job_ids:
             return
@@ -565,6 +584,32 @@ class JobDuplicateRepository:
 class RunRepository:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
+
+    def list_recent(self, pipelines: tuple[str, ...], limit: int = 30) -> list[RunRecord]:
+        """The last `limit` runs of the given pipelines, newest first."""
+        if not pipelines:
+            return []
+        placeholders = ",".join("?" * len(pipelines))
+        rows = self._conn.execute(
+            f"""
+            SELECT id, pipeline, started_at, finished_at, summary_json
+            FROM runs
+            WHERE pipeline IN ({placeholders})
+            ORDER BY started_at DESC, id DESC
+            LIMIT ?
+            """,
+            (*pipelines, limit),
+        ).fetchall()
+        return [
+            RunRecord(
+                id=r["id"],
+                pipeline=r["pipeline"],
+                started_at=_dt(r["started_at"]),  # type: ignore[arg-type]
+                finished_at=_dt(r["finished_at"]),
+                summary=json.loads(r["summary_json"]) if r["summary_json"] else {},
+            )
+            for r in rows
+        ]
 
     def save(
         self,
@@ -933,8 +978,15 @@ class LeadRepository:
         `open_jobs` counts eligible, canonical jobs of the same company collected since
         `jobs_since`. The link is the shared `companies.id`; a Lead never becomes a Job.
         """
+        return self._details("l.notified_at IS NULL", jobs_since)
+
+    def list_details(self, jobs_since: datetime) -> list[LeadDetail]:
+        """Every lead, notified or not, in the digest's order (the dashboard's view)."""
+        return self._details("1 = 1", jobs_since)
+
+    def _details(self, where: str, jobs_since: datetime) -> list[LeadDetail]:
         rows = self._conn.execute(
-            """
+            f"""
             SELECT l.id AS lead_id, l.company_id, c.name AS company, l.priority, l.reason,
                    l.created_at, a.source_id AS source, a.url AS a_url, a.title AS a_title,
                    a.published_at, fe.amount, fe.currency, fe.round, fe.investors_json,
@@ -949,7 +1001,7 @@ class LeadRepository:
             JOIN companies c ON c.id = l.company_id
             LEFT JOIN funding_events fe ON fe.id = l.funding_event_id
             LEFT JOIN articles a ON a.id = fe.article_id
-            WHERE l.notified_at IS NULL
+            WHERE {where}
             ORDER BY CASE l.priority WHEN 'high' THEN 0 ELSE 1 END,
                      l.created_at DESC, l.id DESC
             """,

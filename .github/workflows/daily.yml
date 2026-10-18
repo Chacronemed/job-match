@@ -157,3 +157,35 @@ jobs:
             git commit -m "chore: daily sync $(date -u +%Y-%m-%d)"
             git push
           fi
+
+      # The dashboard is a static snapshot of the DB served by a Cloudflare Worker behind
+      # Cloudflare Access (ADR 0009). These steps run even when the digest failed and can
+      # never block the DB push above. The repo is public: site/ is never an Actions
+      # artifact, nothing in it is printed, and wrangler's stdout (which carries the
+      # Worker URL) is discarded; stderr stays so a failed deploy is diagnosable.
+      - name: Build dashboard
+        if: always() && steps.wal.outcome == 'success'
+        continue-on-error: true
+        run: job-match dashboard --out site
+
+      - name: Set up Node
+        if: always() && steps.wal.outcome == 'success'
+        continue-on-error: true
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Deploy dashboard
+        if: always() && steps.wal.outcome == 'success'
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+        run: |
+          if [ ! -f site/index.html ]; then
+            echo "No dashboard build to deploy"
+            exit 1
+          fi
+          npx --yes wrangler@4 deploy > /dev/null
+          echo "Dashboard deployed"

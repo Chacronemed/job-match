@@ -39,3 +39,10 @@ htmlcov/
 .idea/
 *.swp
 *.swo
+# Playwright CLI output (may contain credentials)
+.playwright-cli/
+
+# Generated dashboard (deployed to Cloudflare, never committed) and deploy tooling
+/site/
+.wrangler/
+.taste-skill/

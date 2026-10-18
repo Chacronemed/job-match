@@ -125,6 +125,16 @@ job-match funding run                # ingest articles, funding events and leads
 
 `job-match reprocess --since YYYY-MM-DD` re-applies the gate, the scorer and dedup to jobs already in the database (no API calls) and reports the duplicate links it added and removed, and `job-match funding reprocess --since YYYY-MM-DD` re-runs extraction on stored articles. The daily workflow exposes both on a manual trigger, through the `reprocess_since` date and the `reprocess_scope` choice (`jobs` / `funding` / `both`). Sending real email needs the `SMTP_*` and `DIGEST_TO` variables from `.env.example`.
 
+## Dashboard
+
+`job-match dashboard --out site` writes a private, static dashboard from the database: `site/index.html` (one self-contained page, no framework, no build step, opens from the file system) and `site/data.json`. Three tabs:
+
+- **Jobs:** every canonical strong, eligible and stretch job with title, company, department, contract, score, required years, collection date and link; search, filters (section, department, minimum score, dates), sort on any column, and a details row with the scorer's explanations.
+- **Leads:** funding leads with amount, round, investors, hiring signal and the evidence sentence behind each field.
+- **Runs:** the last 30 runs as a funnel, fetched → rejected by reason → eligible / strong / stretch.
+
+The generator is an allow-list: no job description, no search keyword, no profile value leaves the database, links are kept only with an `http(s)` scheme, and every string is rendered as text (external titles are tested with script tags in them). The daily workflow deploys `site/` as a Cloudflare Worker with static assets (`wrangler.jsonc`, no Worker code) behind Cloudflare Access, using the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets; a failed deploy never fails the digest or the DB sync. `site/` is gitignored, never an Actions artifact, and the URL is not published. ADR 0009.
+
 ## Configuration
 
 Personal values live in `config/profile.yaml` (gitignored; in CI it comes from a secret). Tunable thresholds live in the committed `config/settings.yaml`.
@@ -160,7 +170,8 @@ Skill aliases (`k8s` ↔ `kubernetes`, `CI/CD` ↔ `CI CD`) are centralized in `
 - **Experience parser:** table-driven FR/EN cases covering minimums, ranges, maxima, written numbers ("trois ans"), ambiguous wording that must stay `UNKNOWN`, and founding-year false positives ("fondée en 2018").
 - **Funding extractor:** a 50-case FR/EN matrix plus targeted scoping tests, with tricky negatives: revenue mistaken for a raise, valuations, "lève le voile", past raises mentioned in passing, VC fund closes, multi-topic news briefs, and a person's "recrutement" that is not a hiring plan.
 - **Dedup:** exact and fuzzy links, legal-suffix and accent normalization, and the rule that nothing is deleted.
-- **Workflow guards:** a test checks the step order of `daily.yml` and that the manual input is never interpolated into a shell script.
+- **Workflow guards:** a test checks the step order of `daily.yml`, that the manual input is never interpolated into a shell script, and that the dashboard deploy never uploads or prints `site/`.
+- **Dashboard:** output shape, allow-listed fields (no description, no keyword), `javascript:` links dropped, and script tags in a job title that stay text in the rendered page.
 - **Ruff** for linting. **CI** runs lint and tests on every push.
 
 ## Security & privacy
@@ -177,7 +188,7 @@ Skill aliases (`k8s` ↔ `kubernetes`, `CI/CD` ↔ `CI CD`) are centralized in `
 - **Roundup articles** (M11b): one funding event per explicit deal line in weekly roundups, once single-deal precision is validated on more live data.
 - **Fuzzy company matching** between France Travail employer names and funding news (today the link is an exact normalized name).
 - **Score calibration** on a few hundred real jobs.
-- **A small web UI**, only if the email digest stops being enough.
+- **Dashboard follow-ups:** a rejected-jobs view with reasons, once the current tabs prove useful.
 
 ## Built with Claude Code
 

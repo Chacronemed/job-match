@@ -70,6 +70,12 @@ def main() -> None:
         help="Reset notified flag for jobs notified on or after this date, then send normally",
     )
 
+    dash_p = sub.add_parser(
+        "dashboard", help="Write the static dashboard (index.html + data.json) from the DB",
+    )
+    dash_p.add_argument("--out", default="site", metavar="DIR",
+                        help="Output directory (default: site)")
+
     funding_p = sub.add_parser("funding", help="Funding / news pipeline")
     funding_sub = funding_p.add_subparsers(dest="funding_command", metavar="SUBCOMMAND")
     frun_p = funding_sub.add_parser("run", help="Ingest articles from RSS feeds")
@@ -96,6 +102,8 @@ def main() -> None:
         _cmd_reprocess(args)
     elif args.command == "digest":
         _cmd_digest(args)
+    elif args.command == "dashboard":
+        _cmd_dashboard(args)
     elif args.command == "funding":
         if args.funding_command == "run":
             _cmd_funding_run(args)
@@ -313,6 +321,37 @@ def _build_funding_sources(names: list[str]) -> list:
             sys.exit(1)
         sources.append(cls())
     return sources
+
+
+def _cmd_dashboard(args: argparse.Namespace) -> None:
+    """Write the static dashboard. Prints counts only: the CI log is public."""
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+
+    from datetime import UTC, datetime
+
+    from job_match.config.loader import load_settings
+    from job_match.dashboard.data import build_dashboard_data
+    from job_match.dashboard.render import write_site
+    from job_match.persistence.db import Database
+
+    settings = load_settings(_config_dir() / "settings.yaml")
+    db_path = _data_dir() / "jobs.sqlite"
+    if not db_path.exists():
+        print(f"No database at {db_path}: run `job-match run` first.", file=sys.stderr)
+        sys.exit(1)
+
+    with Database(path=str(db_path)) as db:
+        data = build_dashboard_data(db, settings, datetime.now(UTC))
+    write_site(data, Path(args.out))
+
+    by_section = {s: 0 for s in ("strong", "eligible", "stretch")}
+    for job in data["jobs"]:
+        by_section[job["section"]] += 1
+    print(
+        f"Dashboard: {len(data['jobs'])} jobs ({by_section['strong']} strong, "
+        f"{by_section['eligible']} eligible, {by_section['stretch']} stretch), "
+        f"{len(data['leads'])} leads, {len(data['runs'])} runs -> {args.out}"
+    )
 
 
 def _cmd_funding_run(args: argparse.Namespace) -> None:

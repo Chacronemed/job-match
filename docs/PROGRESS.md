@@ -3,13 +3,48 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**Milestone 18: experience stretch tier** — **DONE** (2026-10-18). A job that asks for at most
-`experience.stretch_years` (1) more than the candidate has is STRETCH instead of rejected: every
-other gate still applies, it is scored normally, listed in its own digest section ("À tenter"),
-never a strong match. Measured first on the local DB. ADR 0008. M9 manual GitHub setup still
-pending, `PROFILE_YAML` secret still needs re-encoding, `SMTP_PORT` variable to create.
+**Milestone 19: private web dashboard** — **DONE** (2026-10-19). `job-match dashboard --out site`
+writes a static, self-contained `index.html` + `data.json` (Jobs / Leads / Runs tabs) from the
+DB; `daily.yml` deploys `site/` as the Cloudflare Worker `job-match` (static assets, no code)
+behind Cloudflare Access. ADR 0009. The two Cloudflare secrets still have to be created (see
+Next step). M9 manual GitHub setup still pending, `PROFILE_YAML` secret still needs re-encoding,
+`SMTP_PORT` variable to create.
 
 ## Done
+- **Private web dashboard** (2026-10-19, M19):
+  - `dashboard/data.py` is the allow-list of what leaves the DB: canonical ELIGIBLE/STRETCH
+    jobs (`JobRepository.list_canonical_scored`, notified or not), every lead
+    (`LeadRepository.list_details`, shares the SQL of `list_unnotified_details`), the last 30
+    `jobs`/`jobs_reprocess` runs (`RunRepository.list_recent` → new `RunRecord` read model).
+    No description, no `search_query`, no `by_keyword`/`queries` (profile keywords), no
+    profile loaded at all. Links kept only with an http(s) scheme. `required_years` =
+    `experience.min_years`, else the stretch note's number, else null; the gate is never
+    re-run. Funnel `rejected` = fetched − duplicates − eligible − stretch (unique rejected
+    jobs are not stored; the per-reason map is labelled "may fail several gates").
+  - `dashboard/render.py` + `assets/index.template.html|dashboard.css|dashboard.js`:
+    one file, CSS/JS inlined, data in a `<script type="application/json">` block with every
+    `<` as `<`, DOM built with `textContent`, CSP meta (`default-src 'none'`, inline
+    only), `noindex`. Works from `file://` (checked with Python Playwright). Tabs, KPI strip,
+    search / section chips / department / min score / dates, sort on every column, details
+    row with explanations and skill pills, leads with evidence sentences, CSS-bar funnel per
+    run. Filter state lives in the hash (`#jobs?q=…&hide=…&min=…&sort=…`), validated
+    against allow-lists. Dark first (DESIGN.md tokens), light via the inverse tokens
+    (`prefers-color-scheme` + toggle in `localStorage`), 390px card layout, reduced motion.
+  - `wrangler.jsonc` (name `job-match`, `assets.directory ./site`, no `main`); `daily.yml`
+    steps "Build dashboard" / "Set up Node" / "Deploy dashboard" after the DB push, all
+    `continue-on-error` and `if: always() && steps.wal.outcome == 'success'`; wrangler's
+    stdout (the Worker URL) discarded. `/site/`, `.wrangler/`, `.taste-skill/` gitignored.
+  - `docs/design/DESIGN.md` adapted (job-match, no Linear wording, `semantic-stretch`,
+    Light Mode and Dashboard Components sections). README "Dashboard" section (no URL),
+    ARCHITECTURE §13 rows 13–19, ADR 0009.
+  - Verified in Playwright at 1440 and 390, dark and light, every tab; search, chips,
+    department, min score, dates, every sort both ways, click/Enter expand; 0 console
+    errors; no horizontal overflow at 390. web-design-guidelines review applied
+    (theme-color, h1/h2, input names, touch-action, URL state, select colours).
+    Deviation kept on purpose: sentence case on labels (DESIGN.md), no list
+    virtualisation (125 rows).
+  - 36 new tests (1123 total), ruff clean. Local snapshot: 125 jobs (26 strong, 57
+    eligible, 42 stretch), 0 leads (the local DB has none), 7 runs.
 - **Experience stretch tier** (2026-10-18, M18):
   - **Measured first** (local DB, read-only, 533 jobs, candidate 2 years): 145 jobs rejected
     *only* on EXPERIENCE. Required years: exactly 3 → 25 (21 would score ≥ 60, 13 strong);
@@ -337,6 +372,14 @@ pending, `PROFILE_YAML` secret still needs re-encoding, `SMTP_PORT` variable to 
   - 26 tests green, `ruff check .` clean
 
 ## Next step
+- **Wire the dashboard deploy:** check in the Cloudflare dashboard that Workers → `job-match`
+  has Access enabled on its workers.dev and preview URLs (a first deploy without it would be
+  public until Access is switched on). Then add two repository secrets:
+  `CLOUDFLARE_ACCOUNT_ID` (Workers overview, right column) and `CLOUDFLARE_API_TOKEN` (My
+  Profile → API Tokens → Create → "Edit Cloudflare Workers" template, scoped to the account).
+  Until they exist the deploy step fails quietly (`continue-on-error`). The log must show
+  "Dashboard deployed" and never a URL; if wrangler ever needs the Node step first, it is
+  already there. First real check: the Leads tab (the local DB has no leads).
 - **Clean the production DB with the stretch tier:** trigger "Daily run" with
   `reprocess_since` = the first collection date and `reprocess_scope` = `jobs`; the log's
   `stretch:` line should be non-zero and the next digest should carry the "À tenter" section.
@@ -476,6 +519,10 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
 - ~~**M9 — WAL flush before data-repo push:**~~ **Resolved in M9.** `PRAGMA wal_checkpoint(TRUNCATE)` + `VACUUM` run in daily.yml before DB push. `*.sqlite-wal` and `*.sqlite-shm` added to `.gitignore`.
 
 ## Known issues
+- Dashboard: an ELIGIBLE job gated by a seniority keyword alone shows "—" for required years
+  (only the parser's number or the stretch note is stored; the gate is never re-run). The
+  Leads tab's "open jobs" counts ELIGIBLE only, like the digest. `playwright-cli` blocks
+  `file:` URLs: serve `site/` with `python -m http.server` to look at it in that tool.
 - A stretch job is decided by the parsed minimum or the seniority keyword map. "confirmé" = 3
   comes from `seniority_min_years`; a posting that says "confirmé" and means 5 lands in the
   stretch tier. The map is the fix, never the gate.
@@ -535,6 +582,11 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
   use fixtures.
 
 ## Session log
+- 2026-10-19: Private web dashboard (M19). Static generator (`job-match dashboard`), allow-listed
+  data, XSS-safe embedding, three tabs with filters/sort/details and a run funnel, DESIGN.md
+  tokens in dark and light, Cloudflare Worker static-assets deploy after the DB push in
+  `daily.yml`, ADR 0009. Verified with playwright-cli at 1440/390 in both themes and from
+  `file://`. 1123 tests passing.
 - 2026-10-18 (3): Experience stretch tier (M18). Measured 145 EXPERIENCE-only rejections on
   the local DB (25 at exactly +1 year, 21 of them scoring ≥ 60), then built the tier:
   `experience.stretch_years`, `Eligibility.STRETCH`, stretch line in the explanations, digest

@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#010102">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
+<meta name="robots" content="noindex, nofollow">
+<title>job-match</title>
+<style>
+__CSS__
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="topbar">
+  <div class="brand">
+    <h1 class="wordmark" translate="no">job-match</h1>
+    <span class="generated" id="generated-at"></span>
+  </div>
+  <nav class="tabs" role="tablist" aria-label="Sections">
+    <button class="tab" role="tab" id="tab-jobs" aria-controls="panel-jobs" aria-selected="true" data-tab="jobs">Jobs <span class="tab-count" id="count-jobs"></span></button>
+    <button class="tab" role="tab" id="tab-leads" aria-controls="panel-leads" aria-selected="false" tabindex="-1" data-tab="leads">Leads <span class="tab-count" id="count-leads"></span></button>
+    <button class="tab" role="tab" id="tab-runs" aria-controls="panel-runs" aria-selected="false" tabindex="-1" data-tab="runs">Runs <span class="tab-count" id="count-runs"></span></button>
+  </nav>
+  <button class="theme-toggle" id="theme-toggle" type="button" aria-pressed="false">Light mode</button>
+</header>
+
+<main id="main">
+<section class="panel" id="panel-jobs" role="tabpanel" aria-labelledby="tab-jobs">
+  <h2 class="sr-only">Jobs</h2>
+  <div class="kpis" aria-live="polite">
+    <div class="kpi kpi-strong"><span class="kpi-label">Strong</span><span class="kpi-value" id="kpi-strong">0</span></div>
+    <div class="kpi kpi-eligible"><span class="kpi-label">Eligible</span><span class="kpi-value" id="kpi-eligible">0</span></div>
+    <div class="kpi kpi-stretch"><span class="kpi-label">Stretch</span><span class="kpi-value" id="kpi-stretch">0</span></div>
+    <div class="kpi kpi-total"><span class="kpi-label">Shown</span><span class="kpi-value"><span id="kpi-shown">0</span><span class="kpi-of"> / <span id="kpi-total">0</span></span></span></div>
+  </div>
+
+  <details class="controls" id="jobs-controls" open>
+    <summary class="controls-summary">Filters</summary>
+    <div class="controls-grid">
+      <label class="field field-search">
+        <span class="field-label">Search</span>
+        <input type="search" id="f-search" name="q" placeholder="Title or company…" autocomplete="off" spellcheck="false">
+      </label>
+      <div class="field field-sections" role="group" aria-label="Sections">
+        <span class="field-label">Section</span>
+        <div class="chips">
+          <button type="button" class="chip chip-strong" data-section="strong" aria-pressed="true">Strong</button>
+          <button type="button" class="chip chip-eligible" data-section="eligible" aria-pressed="true">Eligible</button>
+          <button type="button" class="chip chip-stretch" data-section="stretch" aria-pressed="true">Stretch</button>
+        </div>
+      </div>
+      <label class="field">
+        <span class="field-label">Department</span>
+        <select id="f-department" name="department"><option value="">All</option></select>
+      </label>
+      <div class="field field-score">
+        <label class="field-label" for="f-min-score">Min score <span class="field-hint" id="min-score-hint"></span></label>
+        <div class="score-row">
+          <input type="range" id="f-min-score" name="min_score" min="0" max="100" step="5" value="0">
+          <output for="f-min-score" id="f-min-score-out" class="mono">0</output>
+        </div>
+      </div>
+      <label class="field">
+        <span class="field-label">Collected from</span>
+        <input type="date" id="f-from" name="from" autocomplete="off">
+      </label>
+      <label class="field">
+        <span class="field-label">Collected to</span>
+        <input type="date" id="f-to" name="to" autocomplete="off">
+      </label>
+      <button type="button" class="btn btn-secondary field-reset" id="f-reset">Reset</button>
+    </div>
+  </details>
+
+  <p class="rowcount" id="jobs-rowcount" aria-live="polite"></p>
+  <div class="table-wrap">
+    <table class="data jobs" id="jobs-table">
+      <thead>
+        <tr>
+          <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="title">Title</button></th>
+          <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="company">Company</button></th>
+          <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="department">Dept</button></th>
+          <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="contract">Contract</button></th>
+          <th scope="col" class="num" aria-sort="descending"><button type="button" class="sort" data-key="score">Score</button></th>
+          <th scope="col" class="num" aria-sort="none"><button type="button" class="sort" data-key="required_years">Years</button></th>
+          <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="collected_at">Collected</button></th>
+          <th scope="col" class="link-col"><span class="sort-static">Link</span></th>
+        </tr>
+      </thead>
+      <tbody id="jobs-body"></tbody>
+    </table>
+    <p class="empty" id="jobs-empty" hidden>No job matches these filters.</p>
+  </div>
+</section>
+
+<section class="panel" id="panel-leads" role="tabpanel" aria-labelledby="tab-leads" hidden>
+  <h2 class="sr-only">Funding leads</h2>
+  <p class="rowcount" id="leads-rowcount"></p>
+  <div class="table-wrap">
+    <table class="data leads" id="leads-table">
+      <thead>
+        <tr>
+          <th scope="col">Company</th>
+          <th scope="col">Priority</th>
+          <th scope="col">Raise</th>
+          <th scope="col">Hiring</th>
+          <th scope="col" class="num">Open jobs</th>
+          <th scope="col">Published</th>
+          <th scope="col" class="link-col">Article</th>
+        </tr>
+      </thead>
+      <tbody id="leads-body"></tbody>
+    </table>
+    <p class="empty" id="leads-empty" hidden>No funding leads yet.</p>
+  </div>
+</section>
+
+<section class="panel" id="panel-runs" role="tabpanel" aria-labelledby="tab-runs" hidden>
+  <h2 class="sr-only">Runs</h2>
+  <p class="rowcount" id="runs-rowcount"></p>
+  <div class="legend" aria-hidden="true">
+    <span class="legend-item"><i class="swatch sw-rejected"></i>Rejected</span>
+    <span class="legend-item"><i class="swatch sw-duplicates"></i>Duplicates</span>
+    <span class="legend-item"><i class="swatch sw-eligible"></i>Eligible</span>
+    <span class="legend-item"><i class="swatch sw-strong"></i>of which strong</span>
+    <span class="legend-item"><i class="swatch sw-stretch"></i>Stretch</span>
+  </div>
+  <div class="runs" id="runs-list"></div>
+  <p class="empty" id="runs-empty" hidden>No runs recorded yet.</p>
+</section>
+</main>
+
+<script type="application/json" id="data">__DATA__</script>
+<script>
+__JS__
+</script>
+</body>
+</html>

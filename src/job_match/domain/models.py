@@ -233,6 +233,17 @@ class LeadDetail:
 
 
 @dataclass(frozen=True, slots=True)
+class RunRecord:
+    """Read model: one stored run, with its summary as the dict `RunRepository.save` wrote."""
+
+    id: int
+    pipeline: str
+    started_at: datetime
+    finished_at: datetime | None
+    summary: dict
+
+
+@dataclass(frozen=True, slots=True)
 class RunSummary:
     pipeline: str
     fetched: int = 0
