@@ -8,9 +8,13 @@ One combined query is enough because Jooble ORs the words in `keywords` and rank
 relevance, it does not AND them: probing Ile-de-France (scripts/jooble_probe.py) returned
 21 offers for "devops", 3 for "kubernetes", and exactly their union -- the same 21 ids --
 for "devops kubernetes sre". The combined query covered 100% of both single-keyword result
-sets, so 7 keywords x 7 regions = 49 calls collapse to 7. The budget freed up pays for
+sets, so 7 keywords x N regions collapse to N calls. The budget freed up pays for
 pagination instead: each page is one call, and a region gets at most
 `max_calls_per_run // len(regions)` of them, so page 1 of every region is always affordable.
+
+The regions are how "France" is said to Jooble: jooble.org is a worldwide index whose
+`location` is a literal filter, so an empty location is the whole planet and "France" only
+the offers that literally say "France" (scripts/jooble_location_probe.py, 2026-10-18).
 
 The API key is a path segment (`POST /api/<key>`), so it must never reach a log line.
 `_SAFE_URL` is what this module logs, and `cli.py` keeps httpx's own request log — which

@@ -1,4 +1,4 @@
-# ADR 0006 — Dedup when the employer is hidden
+# ADR 0006 — Dedup blocks: the employer, and the place
 
 **Status:** accepted (2026-10-16)
 
@@ -29,11 +29,21 @@ name. France Travail publishes some offers without an employer, and the fuzzy de
    Two *named* employers are never compared on title and department alone — only a hidden employer
    justifies crossing company boundaries.
 
-3. **The department is the blocking key, via `normalization.block_location`**
+3. **The department is part of every block, via `normalization.block_location`**
    (`department_of(location)`, falling back to the normalized text for "France", "Télétravail" or a
-   town `fr_geo` does not list). Two departments are two offers. It also makes the key
-   source-independent: France Travail's `"35 - Rennes"` and Jooble's `"Rennes, France"` both give
-   `"35"`.
+   town `fr_geo` does not list). It makes the key source-independent: France Travail's
+   `"35 - Rennes"` and Jooble's `"Rennes, France"` both give `"35"`.
+
+   **The company block takes the same key** (`list_by_company(company, location_key, since)`): one
+   employer hiring in two departments is two offers, however identical the two ads read. It used to
+   ignore the location entirely, which hid a posting in Lille behind the same employer's posting in
+   Yvelines — and the candidate is mobile across France, so those are two real opportunities.
+
+   `same_block_location` decides when two keys may be one place: two real department codes are two
+   places, but a key that is *not* a department code means "we cannot tell" and matches anything.
+   Unknown never splits a block, exactly as it never rejects a job in the gate — Jooble often says
+   only "France" where France Travail says "92 - Nanterre", and those two postings must stay
+   comparable.
 
 4. **A rejected posting is never a dedup candidate** (`pipelines.jobs._usable_candidates`).
    `list_unnotified` hides every duplicate, so an eligible job linked to a rejected canonical would
@@ -50,9 +60,15 @@ name. France Travail publishes some offers without an employer, and the fuzzy de
    measured from each job's own `collected_at`, not from today, so the replay asks what the current
    rules would have said when the posting arrived, and candidates are restricted to rows strictly
    earlier in `(collected_at, id)` so the older posting stays canonical.
-   `RunSummary.duplicates` now means "new links found" in a reprocess too; self-links removed moved
-   to `RunSummary.self_links_dropped`. Each new link is logged with ids only — the daily workflow
-   runs this step in a public Actions log.
+   **A stored link the current rules no longer make is removed** (`_sync_dedup`,
+   `JobDuplicateRepository.delete_link`), and the job goes back to the digest. Keeping it would be
+   the original bug upside down: a job hidden by a rule that no longer exists. Where the rules now
+   name a different canonical, the stale link is removed and the new one written in the same pass.
+
+   `RunSummary.duplicates` now means "new links found" in a reprocess too; links removed are
+   `self_links_dropped` (corrupt self-references) and `stale_links_dropped` (rules no longer match).
+   Every change is logged with ids only — the daily workflow runs this step in a public Actions
+   log.
 
 ## Alternatives considered
 
@@ -70,18 +86,27 @@ name. France Travail publishes some offers without an employer, and the fuzzy de
   plumbing.
 - **A one-off cleanup script instead of the reprocess replay.** `reprocess` already exists to
   re-apply current rules to stored data, and the daily workflow can trigger it.
+- **Leaving stale links in place, and only ever adding.** Then every future blocking change needs a
+  manual DELETE, and until it runs the digest silently hides jobs the rules say are distinct.
+- **Keeping the company block location-blind and filtering reposts at digest time.** It would move a
+  dedup decision into the notifier, where nothing is recorded and nothing is auditable.
 
 ## Consequences
 
-- On the real DB the replay found **2** new links (160 → 155 and 200 → 155, the latter missed because
-  both arrived in one run), taking the digest pool from 83 to 81 canonical eligible jobs. The one
-  remaining same-title/same-department pair is two *named* employers whose descriptions are 57%
-  similar: two genuinely different offers, correctly kept.
+- On the real DB (533 jobs), in two passes: the hidden-employer block **added 2** links (160 → 155,
+  and 200 → 155 which the original run missed because both arrived in one run), then the
+  department-aware company block **removed 2** (200 and 217, THALES postings in Lambersart (59) and
+  Rennes (35) that were hidden behind the Yvelines one). The digest pool went 83 → 81 → 83, and both
+  surviving links are inside a single department. The remaining same-title/same-department pair in
+  the pool is two *named* employers whose descriptions are 57% similar: two different offers,
+  correctly kept.
 - Employer-hidden postings whose normalized titles differ slightly (one says "Senior") are no longer
   compared, where the old `""` block would have caught them. The exact title is the price of a block
   that respects location; `block_location` tightened the far bigger hole.
 - Linking a hidden posting to a named one records a canonical whose employer is known — which is the
   better row to keep: it is the one you can apply to.
+- An employer who reposts one ad in six departments now gives six digest entries. That is the point
+  (six places to work), and the alternative hid five of them.
 - Running `reprocess` writes duplicate links to the production DB (the daily workflow's
   `reprocess_scope: jobs` step included). That is the point: the DB is cleaned where the digest reads
   it.

@@ -10,7 +10,9 @@ from job_match.experience.parser import infer_seniority_min
 from job_match.normalization.location import (
     departments_for,
     french_location,
+    is_french_department,
     normalize_location,
+    parse_department,
 )
 from job_match.normalization.skills import matches_skill, title_keyword, title_term
 
@@ -91,28 +93,37 @@ def evaluate(
         if job.contract_type not in allowed:
             reasons.append(RejectionReason.CONTRACT)
 
-    # 3. Location. Always checked now: with a national scope there is no department list
-    # to opt in with, and a foreign offer would otherwise sail through.
-    if not location_allowed(job.location, profile):
+    # 3. Location. Always checked: with a national scope there is no department list to
+    # opt in with, and a foreign offer would otherwise sail through. The source matters,
+    # because what "unreadable" means depends on who sent the job.
+    if not location_allowed(job.location, profile, source=job.source):
         reasons.append(RejectionReason.LOCATION)
 
     return EligibilityResult(eligible=not reasons, reasons=tuple(reasons))
 
 
-def location_allowed(location: str, profile: Profile) -> bool:
+FRANCE_TRAVAIL = "france_travail"  # the one source whose index is French by construction
+
+
+def location_allowed(location: str, profile: Profile, *, source: str = "") -> bool:
     """Accept remote, a configured city name, and whatever the search scope covers.
 
     The scope is `profile.ft_search.departments`, the parsed form of the profile's single
     `location_scope` key, so there is no second location list to keep in sync:
 
-    * national scope (empty list) -> every French location passes and only a location we
-      can see is abroad is rejected ("Bruxelles, Belgique", "99 - ALLEMAGNE", "London");
-    * restricted scope -> the location must resolve to one of those departments.
+    * national scope (empty list) -> the location must be **positively** French: a French
+      department prefix, a commune, department or region name, a postal code, or "France"
+      (`french_location`). Jooble and Adzuna index the whole world, so a location we cannot
+      read there ("Bethpage", "") is far more often abroad than a French town nobody lists,
+      and it is rejected. France Travail is the exception: its offers are French unless
+      filed under the abroad code 99 or naming a foreign place, so an unreadable France
+      Travail location is kept;
+    * restricted scope -> the location must resolve to one of those departments, and a
+      location we cannot read is kept (it was fetched for one of them). A clearly foreign
+      location is rejected in both modes.
 
     Source-independent by design: France Travail sends "92 - Nanterre", Jooble and Adzuna
-    send "Nanterre" or "Ile-de-France", and `departments_for` resolves all three. In both
-    modes a location that resolves to nothing is kept: we never reject on a location we
-    could not read.
+    send "Nanterre" or "Ile-de-France", and `departments_for` resolves all three.
     """
     job_loc = normalize_location(location)
     if "remote" in job_loc or "teletravail" in job_loc:
@@ -120,9 +131,19 @@ def location_allowed(location: str, profile: Profile) -> bool:
     if any(normalize_location(loc) in job_loc for loc in profile.filters.locations):
         return True
 
-    if profile.ft_search.national:
-        return french_location(location) is not False
+    if source == FRANCE_TRAVAIL:
+        code = parse_department(location)
+        if code and not is_french_department(code):
+            return False  # "99 - ALLEMAGNE"
+        if profile.ft_search.national:
+            # French by construction, prefix or not; a foreign marker still says no.
+            return french_location(location) is not False
 
+    if profile.ft_search.national:
+        return french_location(location) is True
+
+    if french_location(location) is False:
+        return False
     candidates = departments_for(location)
     if not candidates:
         return True  # unknown / unparseable -> keep the job

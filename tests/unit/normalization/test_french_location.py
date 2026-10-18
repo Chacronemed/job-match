@@ -52,6 +52,16 @@ def test_the_table_covers_metropolitan_france_and_the_dom():
         "Paris 15e",
         "France",
         "Toulouse, France",
+        "Rennes, France",
+        "Châteauneuf-d'Ille-et-Vilaine",   # any commune, not a hand-made list
+        "Lyon 1er Arrondissement",
+        "Vierzon",
+        "Porto-Vecchio",                   # "porto" inside a Corsican town is not Portugal
+        "75008 Paris",                     # postal code
+        "20200 Bastia",                    # Corsica, 2B
+        "Paris, LA DEFENSE",               # not Louisiana: the code must end the string
+        "Angers, Maine-et-Loire",          # the department name, not the US state
+        "Courtabœuf",                      # ligature folded
     ],
 )
 def test_clearly_in_france(location):
@@ -77,6 +87,16 @@ def test_clearly_in_france(location):
         "Montréal, Canada",
         "New York",
         "Lille, Belgique",        # the country wins over the French city name
+        "Suisse",                 # the country, not the village in the Moselle
+        "Bethpage, NY",           # US "City, ST"
+        "Arlington, VA",
+        "Austin, TX, USA",
+        "Montreal, QC",
+        "Saint-Louis, MO",        # a commune name, but the state code ends the string
+        "Washington DC",
+        "Washington, D.C.",
+        "Boston, Massachusetts",
+        "Berlin",
     ],
 )
 def test_clearly_abroad(location):
@@ -90,10 +110,17 @@ def test_clearly_abroad(location):
 
 @pytest.mark.parametrize(
     "location",
-    ["", "   ", "Télétravail", "Remote", "Saint-Machin-sur-Glane", "Siège social"],
+    ["", "   ", "Télétravail", "Remote", "Saint-Machin-sur-Glane", "Siège social",
+     "Bethpage", "Home Office", "Remote - Y"],  # "Y" (80) only counts as the whole string
 )
 def test_unknown_stays_unknown(location):
     assert french_location(location) is None
+
+
+def test_a_two_letter_commune_counts_only_as_the_whole_location():
+    assert french_location("Y") is True
+    assert french_location("Eu") is True
+    assert french_location("Remote - Y") is None
 
 
 def test_a_foreign_marker_must_be_a_whole_word():
@@ -115,6 +142,7 @@ def test_a_foreign_marker_must_be_a_whole_word():
         ("2A - Ajaccio", "2A"),
         ("Lyon", "69"),
         ("Paris 15e", "75"),
+        ("Saint-Denis", None),     # 93, 974 and two villages: no single department
         ("Bretagne", None),        # a region is several departments, so no single one
         ("Île-de-France", None),
         ("France", None),

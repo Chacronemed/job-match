@@ -211,6 +211,7 @@ def _reprocess_summary() -> RunSummary:
         strong=28,
         duplicates=2,
         self_links_dropped=85,
+        stale_links_dropped=3,
     )
 
 
@@ -230,7 +231,8 @@ def test_reprocess_summary_with_limit_zero_prints_counts_without_titles(capsys):
     assert "eligible:   85" in out
     assert "strong:     28" in out
     assert "new duplicate links: 2" in out
-    assert "self-links dropped: 85" in out
+    assert "links removed:       3" in out
+    assert "self-links dropped:  85" in out
     assert "EXPERIENCE: 286" in out
     assert "strong titles" not in out
     assert "Externatic" not in out and "Collective.work" not in out

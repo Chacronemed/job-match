@@ -167,10 +167,13 @@ def _print_reprocess_summary(
     print(f"  eligible:   {summary.eligible}")
     print(f"  strong:     {summary.strong}")
     print(f"  new duplicate links: {summary.duplicates}")
+    print(f"  links removed:       {summary.stale_links_dropped}  (rules no longer match)")
     if summary.self_links_dropped:
-        print(f"  self-links dropped: {summary.self_links_dropped}")
+        print(f"  self-links dropped:  {summary.self_links_dropped}")
     if summary.errors:
         print(f"  errors:     {summary.errors}")
+    if summary.by_department:
+        _print_top_departments(summary.by_department)
 
     n = 10 if limit is None else limit
     if top and n > 0:

@@ -392,7 +392,7 @@ def test_seniority_confirme_in_title():
         ("Île-de-France", "region overlaps the departments we query"),
         ("Melun", "77 is queried even though no city name is configured"),
         ("Télétravail", "remote in French"),
-        ("Zurich", "unknown place is kept, never rejected"),
+        ("Saint-Machin-sur-Glane", "unknown place is kept under a restricted scope"),
         ("France", "country-wide posting is kept"),
     ],
 )

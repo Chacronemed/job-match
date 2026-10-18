@@ -228,3 +228,74 @@ def test_the_dedup_window_still_applies(db):
     summary = _run(db, [_job("FT-2", description=DESC_REWORDED)])
 
     assert summary.duplicates == 0
+
+
+# ---------------------------------------------------------------------------
+# One employer, two departments
+# ---------------------------------------------------------------------------
+
+def test_one_employer_in_two_departments_is_two_offers(db):
+    """THALES hiring in Lille and near Paris: two jobs, however identical the ads read.
+
+    The company block used to ignore the location entirely, so the Lille posting was hidden
+    behind the one in Yvelines and never reached the digest.
+    """
+    summary = _run(
+        db,
+        [
+            _job("FT-59", company="THALES", location="59 - Lambersart"),
+            _job("FT-78", company="THALES", location="78 - Velizy-Villacoublay"),
+        ],
+    )
+
+    assert summary.duplicates == 0
+    assert summary.eligible == 2
+    assert _links(db) == []
+    assert len(JobRepository(db.conn).list_unnotified()) == 2
+
+
+def test_one_employer_twice_in_one_department_is_a_duplicate(db):
+    summary = _run(
+        db,
+        [
+            _job("FT-78a", company="THALES", location="78 - Velizy-Villacoublay"),
+            _job(
+                "FT-78b",
+                company="THALES",
+                location="78 - Velizy-Villacoublay",
+                description=DESC_REWORDED,
+            ),
+        ],
+    )
+
+    assert summary.duplicates == 1
+    (canonical, duplicate), = _links(db)
+    assert canonical != duplicate
+
+
+def test_an_unreadable_location_does_not_split_a_company_block(db):
+    """Jooble often says only "France": unknown must not pass for a different place."""
+    jooble = type("JoobleSource", (FakeSource,), {"name": "jooble"})
+    summary = run_jobs(
+        [
+            FakeSource([_job("FT-1", company="THALES", location="78 - Velizy-Villacoublay")]),
+            jooble(
+                [
+                    _job(
+                        "JB-1",
+                        source="jooble",
+                        company="THALES",
+                        location="France",
+                        description=DESC_REWORDED,
+                        url="https://jooble.org/jdp/2",
+                    )
+                ]
+            ),
+        ],
+        _profile(),
+        _settings(),
+        db,
+        {},
+    )
+
+    assert summary.duplicates == 1

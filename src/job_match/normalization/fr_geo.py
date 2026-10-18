@@ -2,16 +2,13 @@
 
 Reference data, not configuration: France Travail returns `"NN - City"`, but Jooble and
 Adzuna return bare city or region names ("Nanterre", "Île-de-France"). The location gate
-needs a department code to compare against `ft_search.departments`, so these tables map a
-name back to one.
+needs a department code, so these tables map a name back to one.
 
-Deliberately incomplete. A name that is not here resolves to no department, and the gate
-keeps the job rather than rejecting it (see `departments_for`). Entries exist for two
-reasons: so suburbs of the departments we query are *accepted* (the IdF ring, Lyon,
-Toulouse, Lille, Bordeaux, Rennes, Sophia Antipolis), and so clearly out-of-area cities
-can be *rejected* instead of silently kept.
-
-Keys are matched after `normalize_text`, so accents, case and hyphens do not matter here.
+Towns come from the official communes list (`fr_communes.tsv`, built by
+`scripts/build_fr_communes.py` from geo.api.gouv.fr), loaded by `location.py`. What lives
+here is the rest: regions, department names, a few business districts that are not communes,
+and the foreign markers. Keys are matched after `normalize_text`, so accents, case and hyphens
+do not matter.
 """
 
 # Metropolitan regions (2016 borders) plus the overseas ones, exhaustive.
@@ -42,107 +39,33 @@ REGION_DEPARTMENTS: dict[str, tuple[str, ...]] = {
     "Mayotte": ("976",),
 }
 
-# Department names, only for the ones worth naming: single-word names ("Nord", "Rhône")
-# are left out on purpose — they appear inside unrelated strings like "Paris Nord".
+# Department names. The multi-word ones are all here; single-word names ("Nord", "Loire",
+# "Vienne") are left out on purpose: they collide with towns and with unrelated words ("Paris
+# Nord"), and a town name resolves them better anyway. Essonne and Yvelines are the exception,
+# job boards use them as the place.
 DEPARTMENT_NAMES: dict[str, str] = {
-    "Hauts-de-Seine": "92",
-    "Seine-Saint-Denis": "93",
-    "Val-de-Marne": "94",
-    "Val-d'Oise": "95",
-    "Seine-et-Marne": "77",
-    "Haute-Garonne": "31",
-    "Ille-et-Vilaine": "35",
-    "Alpes-Maritimes": "06",
-    "Loire-Atlantique": "44",
-    "Bas-Rhin": "67",
-    "Haut-Rhin": "68",
-    "Bouches-du-Rhône": "13",
-    "Pas-de-Calais": "62",
-    "Haute-Savoie": "74",
-    "Puy-de-Dôme": "63",
+    "Alpes-de-Haute-Provence": "04", "Hautes-Alpes": "05", "Alpes-Maritimes": "06",
+    "Bouches-du-Rhône": "13", "Corse-du-Sud": "2A", "Haute-Corse": "2B", "Côte-d'Or": "21",
+    "Côtes-d'Armor": "22", "Eure-et-Loir": "28", "Haute-Garonne": "31", "Ille-et-Vilaine": "35",
+    "Indre-et-Loire": "37", "Loir-et-Cher": "41", "Haute-Loire": "43", "Loire-Atlantique": "44",
+    "Lot-et-Garonne": "47", "Maine-et-Loire": "49", "Haute-Marne": "52",
+    "Meurthe-et-Moselle": "54", "Pas-de-Calais": "62", "Puy-de-Dôme": "63",
+    "Pyrénées-Atlantiques": "64", "Hautes-Pyrénées": "65", "Pyrénées-Orientales": "66",
+    "Bas-Rhin": "67", "Haut-Rhin": "68", "Haute-Saône": "70", "Saône-et-Loire": "71",
+    "Haute-Savoie": "74", "Seine-Maritime": "76", "Seine-et-Marne": "77", "Yvelines": "78",
+    "Deux-Sèvres": "79", "Tarn-et-Garonne": "82", "Haute-Vienne": "87",
+    "Territoire de Belfort": "90", "Essonne": "91", "Hauts-de-Seine": "92",
+    "Seine-Saint-Denis": "93", "Val-de-Marne": "94", "Val-d'Oise": "95", "La Réunion": "974",
 }
 
-# Cities. Dense for the departments we query, a prefecture-level sample elsewhere.
-CITY_DEPARTMENT: dict[str, str] = {
-    # 75
-    "Paris": "75",
-    # 92 — Hauts-de-Seine
-    "Nanterre": "92", "Boulogne-Billancourt": "92", "Courbevoie": "92", "Puteaux": "92",
-    "La Défense": "92", "Levallois-Perret": "92", "Issy-les-Moulineaux": "92",
-    "Clichy": "92", "Asnières-sur-Seine": "92", "Colombes": "92", "Gennevilliers": "92",
-    "Rueil-Malmaison": "92", "Neuilly-sur-Seine": "92", "Montrouge": "92", "Antony": "92",
-    "Clamart": "92", "Suresnes": "92", "Châtillon": "92", "Malakoff": "92", "Vanves": "92",
-    "Meudon": "92", "Sèvres": "92", "Bagneux": "92", "Garches": "92", "Nanterre-Préfecture": "92",
-    # 93 — Seine-Saint-Denis
-    "Saint-Denis": "93", "Montreuil": "93", "Aubervilliers": "93", "Pantin": "93",
-    "Bobigny": "93", "Noisy-le-Grand": "93", "Rosny-sous-Bois": "93", "Bagnolet": "93",
-    "Saint-Ouen": "93", "Romainville": "93", "Villepinte": "93", "Aulnay-sous-Bois": "93",
-    "Le Bourget": "93", "La Plaine Saint-Denis": "93", "Épinay-sur-Seine": "93",
-    # 94 — Val-de-Marne
-    "Créteil": "94", "Vitry-sur-Seine": "94", "Ivry-sur-Seine": "94", "Villejuif": "94",
-    "Charenton-le-Pont": "94", "Saint-Maur-des-Fossés": "94", "Fontenay-sous-Bois": "94",
-    "Vincennes": "94", "Alfortville": "94", "Rungis": "94", "Orly": "94",
-    "Maisons-Alfort": "94", "Choisy-le-Roi": "94", "Thiais": "94", "Arcueil": "94",
-    "Cachan": "94", "Nogent-sur-Marne": "94",
-    # 91 — Essonne
-    "Évry": "91", "Évry-Courcouronnes": "91", "Massy": "91", "Palaiseau": "91",
-    "Saclay": "91", "Orsay": "91", "Les Ulis": "91", "Corbeil-Essonnes": "91",
-    "Villebon-sur-Yvette": "91", "Bondoufle": "91", "Courtabœuf": "91", "Longjumeau": "91",
-    "Essonne": "91",
-    # 78 — Yvelines
-    "Versailles": "78", "Saint-Quentin-en-Yvelines": "78", "Montigny-le-Bretonneux": "78",
-    "Guyancourt": "78", "Vélizy-Villacoublay": "78", "Poissy": "78", "Mantes-la-Jolie": "78",
-    "Les Mureaux": "78", "Rambouillet": "78", "Trappes": "78", "Plaisir": "78",
-    "Élancourt": "78", "Yvelines": "78",
-    # 77 — Seine-et-Marne
-    "Melun": "77", "Chessy": "77", "Marne-la-Vallée": "77", "Serris": "77", "Torcy": "77",
-    "Meaux": "77", "Fontainebleau": "77", "Lognes": "77", "Noisiel": "77",
-    "Bussy-Saint-Georges": "77", "Croissy-Beaubourg": "77", "Chelles": "77",
-    # 95 — Val-d'Oise
-    "Cergy": "95", "Cergy-Pontoise": "95", "Pontoise": "95", "Roissy-en-France": "95",
-    "Argenteuil": "95", "Sarcelles": "95", "Osny": "95", "Gonesse": "95",
-    "Saint-Ouen-l'Aumône": "95", "Villiers-le-Bel": "95", "Eaubonne": "95",
-    # 69 — Rhône / Lyon
-    "Lyon": "69", "Villeurbanne": "69", "Vénissieux": "69", "Écully": "69", "Bron": "69",
-    "Dardilly": "69", "Limonest": "69", "Oullins": "69", "Saint-Priest": "69",
-    "Caluire-et-Cuire": "69", "Rillieux-la-Pape": "69", "Lyon-Part-Dieu": "69",
-    # 31 — Toulouse
-    "Toulouse": "31", "Blagnac": "31", "Labège": "31", "Colomiers": "31", "Balma": "31",
-    "Ramonville-Saint-Agne": "31", "Tournefeuille": "31", "Castanet-Tolosan": "31",
-    # 59 — Lille
-    "Lille": "59", "Villeneuve-d'Ascq": "59", "Roubaix": "59", "Tourcoing": "59",
-    "Marcq-en-Barœul": "59", "Valenciennes": "59", "Douai": "59", "Dunkerque": "59",
-    "Seclin": "59", "Lesquin": "59", "Wasquehal": "59",
-    # 33 — Bordeaux
-    "Bordeaux": "33", "Mérignac": "33", "Pessac": "33", "Talence": "33", "Bègles": "33",
-    "Le Haillan": "33", "Bruges": "33", "Gradignan": "33", "Artigues-près-Bordeaux": "33",
-    "Canéjan": "33",
-    # 35 — Rennes
-    "Rennes": "35", "Cesson-Sévigné": "35", "Saint-Grégoire": "35", "Bruz": "35",
-    "Chantepie": "35", "Saint-Malo": "35", "Pacé": "35",
-    # 06 — Alpes-Maritimes
-    "Nice": "06", "Sophia Antipolis": "06", "Antibes": "06", "Cannes": "06",
-    "Valbonne": "06", "Mougins": "06", "Biot": "06", "Grasse": "06",
-    "Mandelieu-la-Napoule": "06",
-    # Elsewhere — enough to reject an out-of-area city instead of keeping it
-    "Marseille": "13", "Aix-en-Provence": "13", "Aubagne": "13", "Vitrolles": "13",
-    "Nantes": "44", "Saint-Herblain": "44", "Saint-Nazaire": "44", "Carquefou": "44",
-    "Strasbourg": "67", "Illkirch-Graffenstaden": "67", "Schiltigheim": "67",
-    "Montpellier": "34", "Béziers": "34",
-    "Grenoble": "38", "Échirolles": "38", "Meylan": "38",
-    "Saint-Étienne": "42", "Rouen": "76", "Le Havre": "76", "Caen": "14", "Dijon": "21",
-    "Clermont-Ferrand": "63", "Angers": "49", "Le Mans": "72", "Tours": "37",
-    "Orléans": "45", "Reims": "51", "Nancy": "54", "Metz": "57", "Mulhouse": "68",
-    "Brest": "29", "Quimper": "29", "Lorient": "56", "Vannes": "56", "Saint-Brieuc": "22",
-    "Pau": "64", "Bayonne": "64", "Anglet": "64", "La Rochelle": "17", "Poitiers": "86",
-    "Limoges": "87", "Besançon": "25", "Perpignan": "66", "Nîmes": "30", "Avignon": "84",
-    "Toulon": "83", "Annecy": "74", "Chambéry": "73", "Amiens": "80", "Arras": "62",
-    "Lens": "62", "Calais": "62", "Boulogne-sur-Mer": "62", "Compiègne": "60",
-    "Beauvais": "60", "Évreux": "27", "Cherbourg": "50", "Chalon-sur-Saône": "71",
-    "Valence": "26", "Carcassonne": "11", "Tarbes": "65", "Montauban": "82", "Albi": "81",
-    "Auch": "32", "Cahors": "46", "Rodez": "12", "Troyes": "10", "Châlons-en-Champagne": "51",
-    "Bourges": "18", "Chartres": "28", "Blois": "41", "Niort": "79", "Angoulême": "16",
-    "Périgueux": "24", "Agen": "47", "Mont-de-Marsan": "40", "Bastia": "2B", "Ajaccio": "2A",
+# Business districts and agglomerations that are *not* communes, so the official list cannot
+# know them, yet job boards use them as the location. Short on purpose: a town belongs in the
+# communes file, not here.
+EXTRA_PLACES: dict[str, str] = {
+    "La Défense": "92", "Paris La Défense": "92", "Nanterre-Préfecture": "92",
+    "Marne-la-Vallée": "77", "Sophia Antipolis": "06", "Saint-Quentin-en-Yvelines": "78",
+    "Cergy-Pontoise": "95", "La Plaine Saint-Denis": "93", "Lyon-Part-Dieu": "69",
+    "Courtabœuf": "91", "Roissy CDG": "95", "Orly Aéroport": "94",
 }
 
 
@@ -165,11 +88,31 @@ FOREIGN_PLACES: tuple[str, ...] = (
     "luxembourg", "suisse", "switzerland", "geneve", "lausanne", "zurich", "bale",
     "allemagne", "germany", "deutschland", "berlin", "munich", "francfort", "frankfurt",
     "espagne", "spain", "madrid", "barcelone", "barcelona", "italie", "italy", "milan",
-    "rome", "turin", "royaume uni", "united kingdom", "angleterre", "londres", "london",
-    "irlande", "ireland", "dublin", "pays bas", "netherlands", "amsterdam", "rotterdam",
-    "portugal", "lisbonne", "lisbon", "porto", "pologne", "poland", "varsovie",
+    "rome", "turin", "royaume uni", "united kingdom", "angleterre", "england", "uk", "londres",
+    "london", "irlande", "ireland", "dublin", "pays bas", "netherlands", "amsterdam",
+    "rotterdam", "portugal", "lisbonne", "lisbon", "porto", "pologne", "poland", "varsovie",
     "roumanie", "bucarest", "maroc", "morocco", "casablanca", "rabat", "tunisie", "tunis",
     "algerie", "alger", "senegal", "dakar", "cote d ivoire", "abidjan", "canada", "quebec",
-    "montreal", "etats unis", "united states", "new york", "san francisco", "londres uk",
+    "ontario", "toronto", "vancouver", "etats unis", "united states", "united states of america",
+    "usa", "u s a", "washington dc", "washington d c", "new york", "san francisco", "los angeles",
+    "chicago", "boston", "seattle", "austin", "denver", "atlanta", "dallas", "houston",
     "singapour", "singapore", "dubai", "emirats arabes unis", "inde", "india", "bangalore",
+    "australie", "australia", "sydney", "melbourne",
+    # US states: unambiguous abroad markers on a French job board.
+    "alabama", "alaska", "arizona", "arkansas", "california", "californie", "colorado",
+    "connecticut", "delaware", "florida", "floride", "georgia", "hawaii", "idaho", "illinois",
+    "indiana", "iowa", "kansas", "kentucky", "louisiana", "louisiane", "maryland",
+    "massachusetts", "michigan", "minnesota", "mississippi", "missouri", "montana", "nebraska",
+    "nevada", "new hampshire", "new jersey", "new mexico", "north carolina", "north dakota",
+    "ohio", "oklahoma", "oregon", "pennsylvania", "pennsylvanie", "rhode island",
+    "south carolina", "south dakota", "tennessee", "texas", "utah", "vermont", "virginia",
+    "virginie", "washington", "west virginia", "wisconsin", "wyoming",
+)
+
+# "City, ST": the US and Canadian way of writing a location. Checked on the raw string
+# (uppercase, after a comma, at the end), so "Paris, LA DEFENSE" is not Louisiana.
+US_STATE_CODES: frozenset[str] = frozenset(
+    "AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH "
+    "NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY DC "
+    "AB BC MB NB NL NS NT NU ON PE QC SK YT".split()
 )

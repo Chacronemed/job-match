@@ -22,7 +22,7 @@ from job_match.domain.models import (
     WorkplaceType,
 )
 from job_match.normalization.company import normalize_company
-from job_match.normalization.location import block_location
+from job_match.normalization.location import block_location, same_block_location
 from job_match.normalization.title import normalize_title
 
 # ---------------------------------------------------------------------------
@@ -374,18 +374,23 @@ class JobRepository:
         self._conn.commit()
         return cursor.rowcount
 
-    def list_by_company(self, company_normalized: str, since: datetime) -> list[Job]:
-        """Dedup block: every recent job of one company, whatever its contract type.
+    def list_by_company(
+        self, company_normalized: str, location_key: str, since: datetime
+    ) -> list[Job]:
+        """Dedup block: one company in one place, whatever the contract type.
 
-        Cross-source dedup needs this. The same offer on Jooble usually carries no
-        contract type, so a (company, contract_type) block would never compare it to the
-        France Travail row.
+        Not (company, contract_type): the same offer on Jooble usually carries no contract
+        type, so a contract-keyed block would never compare it to the France Travail row.
+
+        The place is part of the block because one employer hiring in two departments is two
+        offers, however identical the two ads read. `same_block_location` keeps a posting
+        whose location names no department comparable with everything else.
         """
-        rows = self._conn.execute(
-            "SELECT * FROM jobs WHERE company_normalized = ? AND collected_at >= ?",
-            (company_normalized, since.isoformat()),
-        ).fetchall()
-        return [_row_to_job(r) for r in rows]
+        return self._block(
+            "company_normalized = ? AND collected_at >= ?",
+            [company_normalized, since.isoformat()],
+            location_key,
+        )
 
     def list_by_block(
         self,
@@ -415,21 +420,37 @@ class JobRepository:
         when the employer is hidden, because every hidden employer shares the empty string.
         `hidden_employer_only` keeps just the nameless rows, for a posting that does have a
         company and only needs to find its hidden twin.
-
-        The title and the department are computed in Python, so this scans the window once
-        on three small columns and only materializes the matches. If the window ever grows
-        enough for that to hurt, the fix is a `title_normalized` column with an index, the
-        way `company_normalized` already has one.
         """
-        sql = "SELECT id, title, location FROM jobs WHERE collected_at >= ?"
-        params: list = [since.isoformat()]
+        where = "collected_at >= ?"
         if hidden_employer_only:
-            sql += " AND COALESCE(company_normalized, '') = ''"
+            where += " AND COALESCE(company_normalized, '') = ''"
+        return self._block(
+            where, [since.isoformat()], location_key, title_normalized=title_normalized
+        )
+
+    def _block(
+        self,
+        where: str,
+        params: list,
+        location_key: str,
+        *,
+        title_normalized: str | None = None,
+    ) -> list[Job]:
+        """Rows matching `where`, narrowed in Python to one place (and one title).
+
+        The place and the title are normalized by our own code, so SQL cannot filter on
+        them: this scans the SQL-selected rows on three small columns and only materializes
+        the matches. If a block ever grows enough for that to hurt, the fix is stored
+        `title_normalized` / department columns with an index, the way `company_normalized`
+        already has one.
+        """
         ids = [
             row["id"]
-            for row in self._conn.execute(sql, params).fetchall()
-            if normalize_title(row["title"]) == title_normalized
-            and block_location(row["location"]) == location_key
+            for row in self._conn.execute(
+                f"SELECT id, title, location FROM jobs WHERE {where}", params
+            ).fetchall()
+            if same_block_location(block_location(row["location"]), location_key)
+            and (title_normalized is None or normalize_title(row["title"]) == title_normalized)
         ]
         if not ids:
             return []
@@ -493,6 +514,19 @@ class JobDuplicateRepository:
         self._conn.commit()
         return cursor.rowcount > 0
 
+    def delete_link(self, canonical_id: int, duplicate_id: int) -> bool:
+        """Remove one canonical/duplicate pair. True when a row was removed.
+
+        Used by the reprocess replay when the current rules no longer justify a link, so a
+        job the old rules hid comes back to the digest.
+        """
+        cursor = self._conn.execute(
+            "DELETE FROM job_duplicates WHERE canonical_job_id = ? AND duplicate_job_id = ?",
+            (canonical_id, duplicate_id),
+        )
+        self._conn.commit()
+        return cursor.rowcount > 0
+
     def delete_self_links(self) -> int:
         """Remove rows where a job is recorded as its own duplicate.
 
@@ -551,6 +585,7 @@ class RunRepository:
                         "rejected_by_reason": summary.rejected_by_reason,
                         "duplicates": summary.duplicates,
                         "self_links_dropped": summary.self_links_dropped,
+                        "stale_links_dropped": summary.stale_links_dropped,
                         "eligible": summary.eligible,
                         "strong": summary.strong,
                         "articles": summary.articles,

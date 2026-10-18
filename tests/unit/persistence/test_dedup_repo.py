@@ -244,12 +244,35 @@ def test_list_by_title_department_respects_since(db):
 
 
 def test_list_by_title_department_on_an_unreadable_location(db):
-    """No department resolves: the normalized location is the key."""
+    """No department resolves, so the posting stays comparable with every place.
+
+    Unknown never splits a block, exactly as it never rejects a job: Jooble often says only
+    "France" where France Travail says "35 - Rennes".
+    """
     repo = JobRepository(db.conn)
     repo.save(_job("FT-001", company="", location="Teletravail"))
 
     assert len(repo.list_by_title_department("devops engineer", "teletravail", _NOW)) == 1
-    assert repo.list_by_title_department("devops engineer", "75", _NOW) == []
+    assert len(repo.list_by_title_department("devops engineer", "75", _NOW)) == 1
+
+
+def test_list_by_company_is_department_aware(db):
+    """One employer hiring in two departments is two offers."""
+    repo = JobRepository(db.conn)
+    repo.save(_job("FT-059", location="59 - Lambersart"))
+    repo.save(_job("FT-078", location="78 - Velizy-Villacoublay"))
+
+    results = repo.list_by_company("acme", "59", _NOW)
+
+    assert [j.source_job_id for j in results] == ["FT-059"]
+
+
+def test_list_by_company_keeps_a_vague_location_comparable(db):
+    """A Jooble row that says only "France" must still meet its France Travail twin."""
+    repo = JobRepository(db.conn)
+    repo.save(_job("JB-001", source="jooble", location="France"))
+
+    assert len(repo.list_by_company("acme", "78", _NOW)) == 1
 
 
 def test_save_link_reports_whether_the_link_is_new(db):

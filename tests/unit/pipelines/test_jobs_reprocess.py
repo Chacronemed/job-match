@@ -207,6 +207,45 @@ def test_reprocess_rejects_a_job_the_new_rules_veto(db):
     assert row["score"] is None  # the stale strong score is cleared
 
 
+def test_reprocess_counts_jobs_per_department_from_their_location(db):
+    """The "?" bucket is where the gate cannot read a location; reprocess shows it too."""
+    run_jobs(
+        FakeSource([
+            _job("FT-001", location="35 - Rennes"),
+            _job("FT-002", location="Vierzon"),           # the communes list, not a prefix
+            _job("FT-003", location="Siège social"),      # unreadable, kept (France Travail)
+        ]),
+        _profile(), _settings(), db, {},
+    )
+
+    summary = reprocess_jobs(_profile(), _settings(), db, {})
+
+    assert summary.by_department == {"35": 1, "18": 1, "?": 1}
+
+
+def test_reprocess_rejects_a_stored_jooble_job_outside_france(db):
+    """What the digest bug looked like in the DB: a Jooble row in Bethpage, NY, eligible."""
+    run_jobs(
+        FakeSource([
+            _job("J-US", source="jooble", location="Bethpage, NY"),
+            _job("J-FR", source="jooble", location="Rennes, France"),
+            _job("J-??", source="jooble", location=""),
+        ]),
+        _profile(), _settings(), db, {},
+    )
+
+    summary = reprocess_jobs(_profile(), _settings(), db, {})
+
+    assert summary.eligible == 1
+    assert summary.rejected_by_reason == {"LOCATION": 2}
+    rows = db.conn.execute(
+        "SELECT source_job_id, eligibility FROM jobs ORDER BY source_job_id"
+    ).fetchall()
+    assert [(r["source_job_id"], r["eligibility"]) for r in rows] == [
+        ("J-??", "REJECTED"), ("J-FR", "ELIGIBLE"), ("J-US", "REJECTED"),
+    ]
+
+
 def test_reprocess_makes_no_api_calls(db):
     run_jobs(FakeSource([_job("FT-001")]), _profile(), _settings(), db, {})
     summary = reprocess_jobs(_profile(), _settings(), db, {})
@@ -391,3 +430,70 @@ def test_the_replay_leaves_an_unrelated_job_alone(db):
 
     assert summary.duplicates == 0
     assert db.conn.execute("SELECT COUNT(*) AS n FROM job_duplicates").fetchone()["n"] == 0
+
+
+def test_the_replay_removes_a_link_the_rules_no_longer_make(db):
+    """The company block is department-aware now, so a cross-department link must go."""
+    lille, velizy = _store(
+        db,
+        _job("FT-59", company="THALES", location="59 - Lambersart",
+             collected_at=_NOW - timedelta(hours=1)),
+        _job("FT-78", company="THALES", location="78 - Velizy-Villacoublay"),
+    )
+    JobDuplicateRepository(db.conn).save_link(lille, velizy, "fuzzy", 0.99)
+
+    summary = reprocess_jobs(_profile(), _settings(), db, {})
+
+    assert (summary.stale_links_dropped, summary.duplicates) == (1, 0)
+    assert db.conn.execute("SELECT COUNT(*) AS n FROM job_duplicates").fetchone()["n"] == 0
+    # both reach the digest now; the Velizy row was hidden behind the Lille one
+    assert len(JobRepository(db.conn).list_unnotified()) == 2
+
+
+def test_the_replay_keeps_a_link_the_rules_still_make(db):
+    older, newer = _store(
+        db,
+        _hidden("FT-OLD", collected_at=_NOW - timedelta(hours=1)),
+        _hidden("FT-NEW", collected_at=_NOW, description=_HIDDEN_DESC + " Urgent."),
+    )
+    JobDuplicateRepository(db.conn).save_link(older, newer, "fuzzy", 0.95)
+
+    summary = reprocess_jobs(_profile(), _settings(), db, {})
+
+    assert (summary.stale_links_dropped, summary.duplicates) == (0, 0)
+    assert db.conn.execute("SELECT COUNT(*) AS n FROM job_duplicates").fetchone()["n"] == 1
+
+
+def test_a_dry_run_removes_no_link(db):
+    lille, velizy = _store(
+        db,
+        _job("FT-59", company="THALES", location="59 - Lambersart",
+             collected_at=_NOW - timedelta(hours=1)),
+        _job("FT-78", company="THALES", location="78 - Velizy-Villacoublay"),
+    )
+    JobDuplicateRepository(db.conn).save_link(lille, velizy, "fuzzy", 0.99)
+
+    summary = reprocess_jobs(_profile(), _settings(), db, {}, dry_run=True)
+
+    assert summary.stale_links_dropped == 1  # what it would remove
+    assert db.conn.execute("SELECT COUNT(*) AS n FROM job_duplicates").fetchone()["n"] == 1
+
+
+def test_the_replay_relinks_to_the_right_canonical(db):
+    """A stale link and a valid one at once: remove the first, write the second."""
+    wrong, older, newer = _store(
+        db,
+        _job("FT-WRONG", company="THALES", location="59 - Lambersart",
+             collected_at=_NOW - timedelta(hours=2)),
+        _hidden("FT-OLD", collected_at=_NOW - timedelta(hours=1)),
+        _hidden("FT-NEW", collected_at=_NOW, description=_HIDDEN_DESC + " Urgent."),
+    )
+    JobDuplicateRepository(db.conn).save_link(wrong, newer, "fuzzy", 0.99)
+
+    summary = reprocess_jobs(_profile(), _settings(), db, {})
+
+    assert (summary.stale_links_dropped, summary.duplicates) == (1, 1)
+    row = db.conn.execute(
+        "SELECT canonical_job_id c, duplicate_job_id d FROM job_duplicates"
+    ).fetchone()
+    assert (row["c"], row["d"]) == (older, newer)

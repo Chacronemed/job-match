@@ -67,6 +67,14 @@ def test_normalize_location_folds_accents_and_case():
         ("Melun", {"77"}),
         ("Paris 15e", {"75"}),      # an arrondissement is still Paris
         ("Cesson-Sévigné", {"35"}),
+        ("Vierzon", {"18"}),        # never hand-listed: the official communes list
+        ("Lyon 1er Arrondissement", {"69"}),
+        ("La Défense", {"92"}),     # a business district, not a commune
+        ("Angers, Maine-et-Loire", {"49"}),
+        ("Haute-Savoie", {"74"}),   # longest name first: not Savoie
+        ("75008 Paris", {"75"}),
+        ("20000 Ajaccio", {"2A"}),
+        ("97400", {"974"}),
     ],
 )
 def test_departments_for_resolves_a_place_name(location, expected):
@@ -91,10 +99,32 @@ def test_departments_for_collects_every_place_mentioned():
         "France",            # a country is not a place we can gate on
         "",
         "Télétravail",
-        "Zurich",            # not in the table
+        "Zurich",            # foreign
+        "Lille, Belgique",   # a French town next to a country marker is abroad
+        "Saint-Louis, MO",   # a French town name in a US "City, ST"
         "Remote - Europe",
+        "Remote - Y",        # a two-letter village only counts as the whole string
+        "00000 Nowhere",     # not a French postal code
     ],
 )
 def test_departments_for_is_empty_when_unresolvable(location):
-    """Empty means "cannot tell". The gate keeps those jobs."""
+    """Empty means "cannot tell" or "abroad"; `french_location` tells them apart."""
     assert departments_for(location) == frozenset()
+
+
+def test_a_name_shared_by_several_communes_returns_all_of_them():
+    assert departments_for("Saint-Denis") >= {"93", "974"}
+
+
+def test_a_region_wins_over_a_village_of_the_same_name():
+    """Two villages are called Bretagne (36, 90); a job board means the region."""
+    assert departments_for("Bretagne") == {"22", "29", "35", "56"}
+
+
+def test_the_communes_file_is_the_official_list():
+    from job_match.normalization.fr_geo import FRENCH_DEPARTMENTS
+    from job_match.normalization.location import _load_communes
+
+    communes = _load_communes()
+    assert len(communes) > 30_000
+    assert all(depts <= FRENCH_DEPARTMENTS for depts in communes.values())

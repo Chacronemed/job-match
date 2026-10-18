@@ -11,7 +11,9 @@ from job_match.normalization.text import normalize_text
     ("K8S", "k8s"),
     ("(H/F)", "h f"),
     ("", ""),
-    ("NŒUD", "nœud"),  # Œ is a ligature; NFKD doesn't expand it to oe
+    ("NŒUD", "noeud"),  # NFKD leaves the ligature alone, so we spell it out
+
+    ("Courtabœuf", "courtaboeuf"),
 ])
 def test_normalize_text(inp, expected):
     assert normalize_text(inp) == expected

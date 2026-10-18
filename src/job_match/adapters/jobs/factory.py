@@ -39,8 +39,9 @@ def build_sources(
     (keyword, area) query, the quota-light sources to every region query.
 
     Geography comes from the profile's `location_scope`. A national scope means France
-    Travail drops its `departement` param and the quota-light sources send no location at
-    all (one paginated query), instead of walking `settings.sources.regions`.
+    Travail drops its `departement` param. The quota-light sources always walk
+    `settings.sources.regions`: nationally that list is the French regions, because Jooble
+    has no "France" query that returns French offers (see below).
     """
     # Imported here so a missing optional source never breaks `job-match --help`.
     from job_match.adapters.jobs.adzuna import AdzunaSource
@@ -61,13 +62,14 @@ def build_sources(
             )
             continue
 
-        regions = list(settings.sources.regions)
+        # Jooble's `location` is a literal place filter and jooble.org is a worldwide
+        # index, not a French one. Measured 2026-10-18 (scripts/jooble_location_probe.py):
+        # an empty location returned 18669 offers of which 0% were in France (46/50 US),
+        # "France" returned 16 offers (100% French, but only the ones whose location
+        # literally says "France"), and fr.jooble.org answers 403. So the national query
+        # is one query per French region, and `sources.regions` lists them.
+        areas = list(settings.sources.regions)
         max_calls = settings.sources.max_calls(name)
-        # A national scope sends no location at all. Jooble's `location` is a literal
-        # place filter: measured 2026-10-16, "France" matched 16 offers for our keywords
-        # while an empty location matched 18168 on the same day. jooble.org is already
-        # the French index, so "no location" is the national query.
-        areas = [""] if profile.ft_search.national else regions
 
         if name == "france_travail":
             kwargs = {} if limit is None else {"max_results": limit}

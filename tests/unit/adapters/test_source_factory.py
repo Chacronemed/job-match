@@ -183,13 +183,16 @@ def _national_profile() -> Profile:
     )
 
 
-def test_a_national_scope_makes_jooble_query_the_whole_index(monkeypatch):
-    """No location at all: Jooble's location is a literal filter, and "France" matches ~16."""
+def test_a_national_scope_makes_jooble_walk_the_configured_regions(monkeypatch):
+    """Never an empty location: on jooble.org that is the whole world (0% French, measured),
+    and "France" is a literal filter that matches ~16 offers. The regions are the country."""
     _with_keys(monkeypatch, "jooble")
-    (jooble,) = build_sources(_national_profile(), _settings(["jooble"]))
+    (jooble,) = build_sources(
+        _national_profile(), _settings(["jooble"], regions=["Bretagne", "Corse"])
+    )
 
-    assert jooble._regions == [""]        # not the 7 configured regions, and not "France"
-    assert jooble.pages_per_region == 10  # the whole call budget goes into depth
+    assert jooble._regions == ["Bretagne", "Corse"]
+    assert "" not in jooble._regions
 
 
 def test_a_restricted_scope_keeps_the_configured_regions(monkeypatch):

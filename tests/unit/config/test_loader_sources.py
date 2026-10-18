@@ -72,6 +72,17 @@ def test_committed_settings_enable_jooble_and_keep_adzuna_off():
     s = load_settings(Path("config/settings.yaml"))
     assert s.sources.enabled == ["france_travail", "jooble"]
     assert s.sources.is_enabled("adzuna") is False
-    assert s.sources.max_calls("jooble") == 15
+    assert s.sources.max_calls("jooble") == 26
     assert s.sources.max_calls("adzuna") == 20
     assert "Île-de-France" in s.sources.regions
+
+
+def test_committed_regions_are_french_regions_and_afford_two_jooble_pages_each():
+    """Jooble's national query is one query per region, so every region must resolve to
+    French departments and the budget must cover at least page 1 of each."""
+    from job_match.normalization.location import departments_for
+
+    s = load_settings(Path("config/settings.yaml"))
+    assert len(s.sources.regions) == 13
+    assert all(departments_for(region) for region in s.sources.regions)
+    assert s.sources.max_calls("jooble") // len(s.sources.regions) == 2

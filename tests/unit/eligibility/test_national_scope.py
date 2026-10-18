@@ -1,9 +1,12 @@
 """The location gate under `location_scope: france`.
 
 One profile setting decides both what we query and what we accept. Nationally the gate has
-no department list to match against, so it keeps every French location, keeps anything it
-cannot read, and rejects only what it can see is abroad.
+no department list to match against, so it keeps every French location and rejects the
+rest. "The rest" depends on the source: France Travail is French unless it says 99, while
+Jooble and Adzuna index the whole world, so there an unreadable location is rejected too.
 """
+from dataclasses import replace
+
 import pytest
 
 from job_match.config.schema import (
@@ -49,6 +52,10 @@ def _job(location: str) -> Job:
 # National scope accepts France, all of it
 # ---------------------------------------------------------------------------
 
+FT = "france_travail"
+JOOBLE = "jooble"
+
+
 @pytest.mark.parametrize(
     "location",
     [
@@ -63,12 +70,28 @@ def _job(location: str) -> Job:
         "France",
         "Télétravail",
         "Remote (France)",
-        "",                      # unreadable: kept, never rejected
-        "Saint-Machin-sur-Glane",
     ],
 )
-def test_a_national_scope_accepts_french_and_unknown_locations(location):
-    assert location_allowed(location, _profile()) is True
+@pytest.mark.parametrize("source", [FT, JOOBLE])
+def test_a_national_scope_accepts_french_locations_from_any_source(location, source):
+    assert location_allowed(location, _profile(), source=source) is True
+
+
+@pytest.mark.parametrize(
+    "location",
+    [
+        "Nanterre",                       # a commune
+        "Châteauneuf-d'Ille-et-Vilaine",  # one nobody would hand-list
+        "Lyon 1er Arrondissement",        # a municipal arrondissement
+        "Rennes, France",
+        "Porto-Vecchio",                  # "porto" inside a Corsican town is not Portugal
+        "75008 Paris",                    # postal code
+        "Saint-Quentin-en-Yvelines",      # a business district, not a commune
+        "Télétravail",
+    ],
+)
+def test_a_jooble_job_in_a_french_town_is_kept(location):
+    assert location_allowed(location, _profile(), source=JOOBLE) is True
 
 
 @pytest.mark.parametrize(
@@ -80,10 +103,31 @@ def test_a_national_scope_accepts_french_and_unknown_locations(location):
         "Genève",
         "Luxembourg",
         "Montréal, Canada",
+        "Bethpage, NY",          # US "City, ST"
+        "Washington DC",
+        "Arlington, VA",
+        "Austin, TX, USA",
+        "Saint-Louis, MO",       # a French commune name, a US state
     ],
 )
-def test_a_national_scope_rejects_clearly_foreign_locations(location):
-    assert location_allowed(location, _profile()) is False
+@pytest.mark.parametrize("source", [FT, JOOBLE])
+def test_a_national_scope_rejects_clearly_foreign_locations(location, source):
+    assert location_allowed(location, _profile(), source=source) is False
+
+
+UNREADABLE = ["", "   ", "Saint-Machin-sur-Glane", "Siège social", "Bethpage"]
+
+
+@pytest.mark.parametrize("location", UNREADABLE)
+def test_an_unreadable_location_is_kept_from_france_travail(location):
+    """France Travail is French by construction: only the abroad code 99 says otherwise."""
+    assert location_allowed(location, _profile(), source=FT) is True
+
+
+@pytest.mark.parametrize("location", UNREADABLE)
+def test_an_unreadable_location_is_rejected_from_a_worldwide_index(location):
+    """Jooble and Adzuna index the whole world: no positive French evidence, no job."""
+    assert location_allowed(location, _profile(), source=JOOBLE) is False
 
 
 # ---------------------------------------------------------------------------
@@ -100,6 +144,17 @@ def test_a_restricted_scope_rejects_the_others():
 
 def test_a_restricted_scope_keeps_an_unreadable_location():
     assert location_allowed("France", _profile(departments=["75"])) is True
+    assert location_allowed("Saint-Machin-sur-Glane", _profile(departments=["75"])) is True
+
+
+def test_a_restricted_scope_rejects_a_foreign_location_even_with_a_french_town_in_it():
+    assert location_allowed("Lille, Belgique", _profile(departments=["59"])) is False
+    assert location_allowed("Zurich", _profile(departments=["75"])) is False
+
+
+def test_a_restricted_scope_still_filters_france_travail_by_department():
+    assert location_allowed("31 - Toulouse", _profile(departments=["75"]), source=FT) is False
+    assert location_allowed("75 - Paris", _profile(departments=["75"]), source=FT) is True
 
 
 def test_remote_passes_any_scope():
@@ -127,6 +182,21 @@ def test_a_foreign_job_is_rejected_with_a_location_reason():
 
     assert result.eligible is False
     assert RejectionReason.LOCATION in result.reasons
+
+
+def test_a_jooble_job_in_the_us_is_rejected_with_a_location_reason():
+    job = replace(_job("Bethpage, NY"), source="jooble")
+    result = evaluate(job, parse_experience(job.description), _profile())
+
+    assert result.eligible is False
+    assert RejectionReason.LOCATION in result.reasons
+
+
+def test_a_jooble_job_with_no_location_is_rejected_but_a_france_travail_one_is_kept():
+    jooble = replace(_job(""), source="jooble")
+    ft = _job("")
+    assert RejectionReason.LOCATION in evaluate(jooble, parse_experience(""), _profile()).reasons
+    assert evaluate(ft, parse_experience(""), _profile()).eligible is True
 
 
 def test_the_same_job_was_rejected_by_the_old_department_scope():

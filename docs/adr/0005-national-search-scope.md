@@ -39,7 +39,10 @@ that ceiling was unreachable; a nationwide `motsCles=devops` hits it.
    France-Travail-side boundary, not a reason to lose the other keywords. One WARNING, then the
    next keyword.
 
-5. **Jooble sends no location at all** when the scope is national
+5. ~~**Jooble sends no location at all** when the scope is national~~ **Superseded by
+   ADR 0007 (2026-10-18):** the empty location is the whole world (0% French on a 50-offer
+   page), so Jooble now runs one query per French region. The original text follows.
+   **Jooble sends no location at all** when the scope is national
    (`adapters/jobs/factory.py` substitutes `[""]` for the region list), and spends its whole call
    budget on depth instead of breadth: `pages_per_region = max_calls_per_run // len(regions)` is
    the full budget when there is one query. Measured, not assumed: Jooble's `location` is a

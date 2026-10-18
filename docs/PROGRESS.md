@@ -3,13 +3,43 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**Milestone 15: dedup when the employer is hidden** — **DONE** (2026-10-16). France Travail
-publishes some offers without an employer name, and the dedup block was the normalized company,
-so those postings were never compared with anything. M14 is complete. M9 manual GitHub setup
-still pending (see below), and the `PROFILE_YAML` secret needs re-encoding before CI searches
-nationally.
+**Milestone 16: a location must be positively French** — **DONE** (2026-10-18). The digest was
+full of US jobs from Jooble: an empty Jooble location is the whole world, and the gate kept any
+location it could not prove was abroad. Jooble now queries one French region at a time, and under
+the national scope a Jooble/Adzuna job must name a French place (official communes list) or it is
+rejected on LOCATION. France Travail stays French unless it says 99. M9 manual GitHub setup still
+pending, `PROFILE_YAML` secret still needs re-encoding.
 
 ## Done
+- **Positive French location gate + Jooble per region** (2026-10-18, M16):
+  - **Measured first** (`scripts/jooble_location_probe.py`, 4 calls): jooble.org with an
+    empty location = 18 669 offers, **0% French** on page 1 (46/50 US); `location="France"` =
+    16 offers, 100% French but only the ones whose location literally says "France";
+    fr.jooble.org answers 403. No national query exists, so `sources.regions` is now the 13
+    metropolitan regions, the factory always passes them (the `[""]` substitution is gone),
+    and `jooble.max_calls_per_run: 26` = 2 pages per region.
+  - **Gate:** `location_allowed(location, profile, *, source)`. National scope: France Travail
+    is kept unless a 99 prefix or a foreign marker; every other source needs
+    `french_location(...) is True` (a commune, department, region or district name, a postal
+    code, or "France"); unknown is rejected. Restricted scope unchanged, except a clearly
+    foreign location is rejected there too.
+  - **Official communes list** replaces the 170-city hand table: `scripts/build_fr_communes.py`
+    (geo.api.gouv.fr, communes + municipal arrondissements, untrusted-data filtering) writes
+    `src/job_match/normalization/fr_communes.tsv` (35 013 rows, 540 KB, package data, lazy
+    load). `fr_geo.py` keeps regions, every multi-word department name, a 12-entry
+    `EXTRA_PLACES` for business districts that are not communes (La Défense, Sophia
+    Antipolis…), the foreign markers (now with US states, "usa", "uk"…) and `US_STATE_CODES`.
+  - `location._scan`: one n-gram, longest-first, span-consuming lookup over all names
+    (Porto-Vecchio is not Portugal, Haute-Savoie is not Savoie, "Y" only as the whole
+    string), plus postal codes. US "City, ST" detected on the raw string, end-anchored.
+    `departments_for` is empty for a foreign location. 2 000 lookups in 30 ms.
+  - `normalize_text` spells out ligatures (œ → oe): NFKD does not, and 110 communes were
+    being dropped. Fingerprints containing a ligature change; reprocess absorbs it.
+  - `job-match reprocess` tallies and prints `by_department` (the "?" bucket).
+  - **Reprocess on the local DB** (533 France Travail rows, all "NN - City"): nothing
+    changed — 0 LOCATION, 85 eligible / 28 strong, no "?" bucket, 0 links added/removed. The
+    US rows are in the production DB: trigger "Daily run" with `reprocess_since`.
+  - ADR 0007; ADR 0005 point 5 marked superseded. 89 new tests (1037 total), ruff clean.
 - **Dedup when the employer is hidden** (2026-10-16, M15):
   - **The bug:** the digest sent "Ingénieur DevOps — Rennes" twice. Measured on the local DB:
     jobs 155 and 160 shared a normalized title and a department, their descriptions were 98.6%
@@ -25,6 +55,17 @@ nationally.
   - `normalization.block_location` is the key: `department_of(location)`, falling back to the
     normalized text ("France", "Télétravail", an unlisted town). Source-independent — France
     Travail's "35 - Rennes" and Jooble's "Rennes, France" both give "35".
+  - **The company block takes the same key** (`list_by_company(company, location_key, since)`): one
+    employer hiring in two departments is two offers. It used to ignore the location, which hid a
+    THALES posting in Lambersart (59) behind the same employer's in Vélizy (78).
+    `same_block_location` is the tolerance: two real department codes are two places, but a key
+    that is not a department code means "cannot tell" and matches anything, so a Jooble row saying
+    only "France" still meets its France Travail twin. Unknown never splits a block, as it never
+    rejects a job.
+  - **The replay also removes links the current rules no longer make** (`_sync_dedup`,
+    `JobDuplicateRepository.delete_link`), and relinks to the right canonical in the same pass.
+    Keeping them would be the original bug upside down: a job hidden by a rule that no longer
+    exists. `RunSummary.stale_links_dropped` counts them, next to `self_links_dropped`.
   - `pipelines/jobs._candidate_blocks` / `_usable_candidates`: one place decides who a posting is
     compared against, used by the run and by the reprocess replay. A **rejected** row is never a
     candidate (`list_unnotified` hides every duplicate, so an eligible job behind a rejected
@@ -35,11 +76,13 @@ nationally.
     `collected_at`, candidates strictly earlier in `(collected_at, id)` so the older posting stays
     canonical, ids only in the log. `RunSummary.duplicates` = new links found,
     `RunSummary.self_links_dropped` = corrupt self-links removed.
-  - Reprocess on the real DB (533 jobs): **2 new duplicate links** (160 → 155, 200 → 155 — the
-    latter missed because both arrived in one run), digest pool 83 → 81 canonical eligible. The
-    one remaining same-title/same-department pair is two named employers whose descriptions are
-    57% similar: two different offers, correctly kept.
-  - ADR 0006. 34 new tests (937 total), ruff clean.
+  - Reprocess on the real DB (533 jobs), in two passes: the hidden-employer block **added 2**
+    links (160 → 155, and 200 → 155 which the original run missed because both arrived in one
+    run); the department-aware company block then **removed 2** (200 and 217, THALES in Lambersart
+    and Rennes, hidden behind the Vélizy posting). Digest pool 83 → 81 → 83, and both surviving
+    links are inside one department. The remaining same-title/same-department pair in the pool is
+    two named employers whose descriptions are 57% similar: two different offers, correctly kept.
+  - ADR 0006. 43 new tests (946 total), ruff clean.
 - **National search scope** (2026-10-16, M14):
   - One profile key replaces two lists: `location_scope: france` (or a department list) drives
     the France Travail queries, the Jooble location, and the location gate. Parsed in
@@ -244,9 +287,18 @@ nationally.
   - 26 tests green, `ruff check .` clean
 
 ## Next step
+- **Clean the production DB of the US rows:** trigger "Daily run" with `reprocess_since` =
+  the first Jooble collection date and `reprocess_scope` = `jobs`. The log's reason breakdown
+  should now show `LOCATION`, and the per-department block should have no "?" bucket worth
+  mentioning. Then check the next digest for any US/foreign card.
+- Watch the first per-region Jooble run: `by_area` has 13 rows now, 2 pages each; if one
+  region hits `available` far above what 2 pages return, raise `jooble.max_calls_per_run`.
+- If a real French job is rejected on LOCATION, look at its location string: a business park
+  or a lieu-dit goes into `fr_geo.EXTRA_PLACES`; never loosen the gate.
 - Watch the next digest: it should no longer carry the same offer twice. If a twin shows up, the
-  pair to look at is two *named* employers (the cross-company path needs a hidden employer on one
-  side) or two titles that normalize differently.
+  pair to look at is two *named* employers in one department (the cross-company path needs a hidden
+  employer on one side) or two titles that normalize differently. The opposite symptom — one offer
+  per department for the same ad — is deliberate now.
 - **Re-encode the `PROFILE_YAML` secret** from the updated `config/profile.yaml`, or CI keeps
   searching the old 14 departments (the deprecated `departments` alias still loads):
   `base64 -w0 config/profile.yaml`.
@@ -256,9 +308,8 @@ nationally.
   collection date to re-check (e.g. 2026-10-11) and `reprocess_scope` = `jobs`. Then re-check
   the digest: it should carry ~40 jobs, not 1.
 - **Pending from M13:** run the Jooble-only check (`sources.enabled: [jooble]`,
-  `job-match run --limit 10 --dry-run`) and review what Jooble actually returns: location
-  formats not in `fr_geo.py`, and how many jobs land with UNKNOWN contract. The key is in
-  `.env` and the keyword probe is done; this is the end-to-end pass.
+  `job-match run --limit 10 --dry-run`) and review how many jobs land with UNKNOWN contract
+  (location formats are covered by the communes list now).
 - Add `JOOBLE_API_KEY` as a GitHub secret before the next daily run, or Jooble stays skipped in CI.
 - Complete the M9 manual GitHub setup and trigger the first daily run; review the first digest's leads and
   evidence sentences (precision check before M11b).
@@ -353,20 +404,26 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
   Tighten `role_titles` if those turn out to be noise.
 - `job-match run` twice in a day is now safe, but the second run still re-scores every job
   and rewrites its row. Harmless, just wasted work.
-- `fr_geo.py` is deliberately incomplete: an unlisted city resolves to no department and the
-  job is kept. Expect noise from Jooble locations outside the table, never silent drops.
+- Under the national scope a Jooble/Adzuna location the communes list cannot read ("", a
+  lieu-dit, a business park not in `EXTRA_PLACES`) is **rejected** on LOCATION. That is the
+  intended trade; the fix for a real French place is one `EXTRA_PLACES` line.
+- A commune name shared by several departments ("Saint-Denis", "Sainte-Marie") resolves to no
+  single department: the job passes the gate, but lands in the "?" bucket and its dedup block
+  falls back to the location text.
+- `fr_communes.tsv` is a snapshot (2026-10-18); communes merge every January. Rebuild with
+  `scripts/build_fr_communes.py` when a merged town shows up rejected.
 - Contract `UNKNOWN` now passes the gate, so Jooble/Adzuna jobs with no contract field reach
   scoring. If that proves noisy, add a scoring penalty — not a gate rejection.
 - Cross-source dedup is fuzzy on title+description within one company. A reposting agency that
   renames the company still yields two canonical rows (same limitation as before).
 - A national France Travail query reaches 1050 offers (`Range` start <= 1000, end <= 1149, 150
   per page). A keyword with more live offers than that is truncated, with a WARNING per query.
-- `FOREIGN_PLACES` is a short marker list: an unlisted foreign city resolves to unknown and its
-  job is kept. Noise, never a dropped French job.
-- A French employer whose location field names a foreign HQ is now rejected on LOCATION.
-- Jooble pagination depth is `max_calls_per_run // len(regions)` pages: adding regions makes
-  every region shallower (7 regions, 15 calls = 2 pages = 100 offers each). Raise
-  `sources.jooble.max_calls_per_run` rather than trimming regions if depth matters.
+- `FOREIGN_PLACES` is a marker list: an unlisted foreign city from France Travail (no 99
+  prefix) resolves to unknown and is kept. From Jooble/Adzuna it is rejected anyway.
+- A French employer whose location field names a foreign HQ is rejected on LOCATION.
+- Jooble pagination depth is `max_calls_per_run // len(regions)` pages: 13 regions, 26 calls
+  = 2 pages = 100 offers per region. Raise `sources.jooble.max_calls_per_run` rather than
+  trimming regions if depth matters. Overseas regions are not queried on Jooble.
 - The Jooble probe measured one region on one day. If a region's union of keywords ever exceeds
   what the budget can page through, the relevance ranking decides what we lose, not us.
 - Jooble returns a snippet, not the full description: the experience parser and the scorer see
@@ -390,10 +447,17 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
   use fixtures.
 
 ## Session log
-- 2026-10-16: Dedup for employer-hidden postings. Title + department block when the company is
-  empty, the department as a source-independent blocking key, rejected rows excluded as
-  canonicals, and a dedup replay inside `job-match reprocess` (2 new links on the real DB,
-  digest pool 83 -> 81). ADR 0006. 937 tests passing.
+- 2026-10-18: US jobs in the digest. Measured Jooble (empty location = worldwide, 0% French;
+  "France" = 16 offers; fr.jooble.org 403) and switched to one query per French region.
+  Gate now needs a positively French location from Jooble/Adzuna, backed by the official
+  communes list shipped as package data (35k rows), an n-gram scanner, US "City, ST"
+  detection, and ligature folding in `normalize_text`. Reprocess prints the "?" bucket.
+  ADR 0007. 1037 tests passing.
+- 2026-10-16: Dedup blocks. Title + department block when the employer is hidden, the department
+  in the company block too (`same_block_location` keeps an unreadable location comparable),
+  rejected rows excluded as canonicals, and a dedup replay inside `job-match reprocess` that adds
+  and removes links (+2 then -2 on the real DB, digest pool 83 -> 81 -> 83). ADR 0006. 946 tests
+  passing.
 - 2026-10-16: National search. `location_scope: france` as the single geography setting,
   France Travail paginated nationwide inside its 1050-offer API window (truncation warned,
   HTTP 400 non-fatal), Jooble querying "France" once, a tri-state French/foreign/unknown
