@@ -253,6 +253,10 @@ class RunSummary:
     eligible: int = 0
     strong: int = 0
     stretch: int = 0  # jobs kept by the experience stretch band; not in eligible or strong
+    # Closure check after collection: stored offers asked at the source, and how many it
+    # said were gone. A check that got no clear answer counts in `errors`, never in `closed`.
+    checked: int = 0
+    closed: int = 0
     articles: int = 0
     leads: int = 0
     errors: int = 0

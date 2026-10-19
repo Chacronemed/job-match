@@ -18,6 +18,7 @@ from job_match.persistence.repositories import (
     JobRepository,
     RunRepository,
 )
+from job_match.pipelines.closure import check_closed
 from job_match.scoring.engine import ScoringEngine
 from job_match.scoring.native import NativeRuleScorer
 
@@ -63,6 +64,7 @@ def run_jobs(
     errors = 0
     by_source: dict[str, dict[str, int]] = {}
     by_department: dict[str, int] = {}
+    seen_ids: list[int] = []  # rows the search returned today: open by definition
 
     for source in source_list:
         counts = by_source.setdefault(
@@ -133,6 +135,8 @@ def run_jobs(
                 job = replace(job, eligibility=tier)
                 if not dry_run:
                     saved = _save(job, company_repo, job_repo)
+                    if saved.id is not None:
+                        seen_ids.append(saved.id)
                     if saved.id is not None and dedup_result.canonical_id is not None:
                         canonical_id = _canonical_of(dup_repo, dedup_result.canonical_id)
                         if canonical_id != saved.id:
@@ -162,7 +166,19 @@ def run_jobs(
                     strong += 1
 
             if not dry_run:
-                _save(job, company_repo, job_repo)
+                saved = _save(job, company_repo, job_repo)
+                if saved.id is not None:
+                    seen_ids.append(saved.id)
+
+    # Closure check: what the search just returned is open, everything else still shown
+    # is asked at its source. Check calls count as API calls of their source.
+    now = datetime.now(UTC)
+    if not dry_run:
+        job_repo.mark_open(seen_ids, now)
+    closure = check_closed(source_list, settings, db, now, dry_run=dry_run)
+    errors += closure.errors
+    for source in source_list:
+        by_source[source.name]["calls"] = getattr(source, "api_calls_count", 0)
 
     api_calls = sum(c["calls"] for c in by_source.values())
     stats = tuple(
@@ -186,6 +202,8 @@ def run_jobs(
         eligible=eligible,
         strong=strong,
         stretch=stretch,
+        checked=closure.checked,
+        closed=closure.closed,
         errors=errors,
         api_calls=api_calls,
         by_area=by_area,

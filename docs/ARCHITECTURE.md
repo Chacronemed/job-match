@@ -499,6 +499,7 @@ English-only, French postings are penalized, and the upstream repo is new with 2
 | 13 | **Multi-source ingestion** | Jooble + Adzuna adapters, source factory, per-source budgets, cross-source dedup, ADR 0004 |
 | 14–18 | National scope, dedup blocks, location gate, FT paging, stretch tier | ADR 0005–0008 |
 | 19 | **Static dashboard** | `job-match dashboard --out site` (index.html + data.json, allow-listed fields, XSS-safe embedding), Cloudflare Worker static assets behind Cloudflare Access from `daily.yml`, tests on shape / secrets / escaping / workflow, ADR 0009 |
+| 20 | **Offer closure check** | `FranceTravailSource.check_offer` (detail endpoint: 204 = closed, measured), `pipelines/closure.py` after collection (24 h interval, unknown never closes), `jobs.closed_at` / `last_checked_at` (migration 0006), `jobs.max_age_days` cut-off, digest and dashboard hide closed/stale rows, Posted + Age columns, `checked` / `closed` in the run summary, ADR 0010 |
 
 **MVP = M1–M6b + M8–M9.** M7 can be skipped or postponed without blocking anything.
 

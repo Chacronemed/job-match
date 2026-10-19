@@ -1,7 +1,7 @@
 import json
 import sqlite3
 from dataclasses import replace
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from job_match.domain.models import (
     Article,
@@ -102,6 +102,17 @@ def _ensure_source(conn: sqlite3.Connection, source_id: str, kind: str = "job") 
         "INSERT OR IGNORE INTO sources(id, kind, name) VALUES (?, ?, ?)",
         (source_id, kind, source_id),
     )
+
+
+def _visible_where(now: datetime | None, max_age_days: int | None) -> tuple[str, list]:
+    """SQL fragment (prefixed with AND) hiding closed jobs and, when both arguments are
+    given, jobs whose posting date — collection date when unknown — is older than the cut-off."""
+    where = " AND j.closed_at IS NULL"
+    params: list = []
+    if now is not None and max_age_days is not None:
+        where += " AND COALESCE(j.published_at, j.collected_at) >= ?"
+        params.append((now - timedelta(days=max_age_days)).isoformat())
+    return where, params
 
 
 def _row_to_job(row: sqlite3.Row) -> Job:
@@ -331,38 +342,113 @@ class JobRepository:
         ).fetchall()
         return [_row_to_job(r) for r in rows]
 
-    def list_unnotified(self, strong_threshold: int | None = None) -> list[Job]:
-        """Return canonical eligible jobs not yet notified, strong first then by score."""
+    def list_unnotified(
+        self,
+        strong_threshold: int | None = None,
+        *,
+        now: datetime | None = None,
+        max_age_days: int | None = None,
+    ) -> list[Job]:
+        """Return canonical eligible jobs not yet notified, strong first then by score.
+
+        A job the source said is closed is never listed. With `now` and `max_age_days`, a
+        job whose posting date (collection date when unknown) is older than the cut-off is
+        hidden too; without them there is no age cut-off.
+        """
+        where, params = _visible_where(now, max_age_days)
         rows = self._conn.execute(
-            """
+            f"""
             SELECT j.*
             FROM jobs j
             LEFT JOIN job_duplicates d ON d.duplicate_job_id = j.id
             WHERE j.eligibility IN ('ELIGIBLE', 'STRETCH')
               AND j.notified_at IS NULL
               AND d.duplicate_job_id IS NULL
+              {where}
             ORDER BY j.score DESC, j.collected_at DESC
-            """
+            """,
+            params,
         ).fetchall()
         return [_row_to_job(r) for r in rows]
 
-    def list_canonical_scored(self) -> list[Job]:
+    def list_canonical_scored(
+        self, *, now: datetime | None = None, max_age_days: int | None = None
+    ) -> list[Job]:
         """Every canonical ELIGIBLE or STRETCH job, notified or not, best score first.
 
         The dashboard's view: the same rows `list_unnotified` sees, without the digest's
-        notified filter. Duplicates and rejected jobs are never listed.
+        notified filter. Duplicates, rejected and closed jobs are never listed; the age
+        cut-off works as in `list_unnotified`.
         """
+        where, params = _visible_where(now, max_age_days)
         rows = self._conn.execute(
-            """
+            f"""
             SELECT j.*
             FROM jobs j
             LEFT JOIN job_duplicates d ON d.duplicate_job_id = j.id
             WHERE j.eligibility IN ('ELIGIBLE', 'STRETCH')
               AND d.duplicate_job_id IS NULL
+              {where}
             ORDER BY j.score DESC, j.collected_at DESC
-            """
+            """,
+            params,
         ).fetchall()
         return [_row_to_job(r) for r in rows]
+
+    # -- closure check (M20) ------------------------------------------------
+
+    def list_to_check(
+        self, now: datetime, max_age_days: int, *, recheck_after: timedelta
+    ) -> list[tuple[int, str, str]]:
+        """`(id, source, source_job_id)` of every visible job worth asking the source about.
+
+        Visible means canonical, ELIGIBLE or STRETCH, not closed, and not already hidden by
+        the age cut-off (no call is spent on a job nobody will see). A job checked less
+        than `recheck_after` ago is skipped. Never-checked jobs come first, so a run that
+        stops early still reaches the ones nobody asked about yet.
+        """
+        where, params = _visible_where(now, max_age_days)
+        rows = self._conn.execute(
+            f"""
+            SELECT j.id, j.source_id, j.source_job_id
+            FROM jobs j
+            LEFT JOIN job_duplicates d ON d.duplicate_job_id = j.id
+            WHERE j.eligibility IN ('ELIGIBLE', 'STRETCH')
+              AND d.duplicate_job_id IS NULL
+              {where}
+              AND (j.last_checked_at IS NULL OR j.last_checked_at < ?)
+            ORDER BY j.last_checked_at IS NOT NULL, j.last_checked_at, j.id
+            """,
+            [*params, (now - recheck_after).isoformat()],
+        ).fetchall()
+        return [(r["id"], r["source_id"], r["source_job_id"]) for r in rows]
+
+    def mark_checked(self, job_ids: list[int], checked_at: datetime) -> None:
+        """The source said the offer is still open."""
+        self._set_lifecycle(job_ids, "last_checked_at = ?", [checked_at.isoformat()])
+
+    def mark_closed(self, job_ids: list[int], closed_at: datetime) -> None:
+        """The source said the offer is gone. Nothing is deleted."""
+        self._set_lifecycle(
+            job_ids, "closed_at = ?, last_checked_at = ?",
+            [closed_at.isoformat(), closed_at.isoformat()],
+        )
+
+    def mark_open(self, job_ids: list[int], seen_at: datetime) -> None:
+        """The search just returned the offer: open by definition, no call needed."""
+        self._set_lifecycle(
+            job_ids, "closed_at = NULL, last_checked_at = ?", [seen_at.isoformat()]
+        )
+
+    def _set_lifecycle(self, job_ids: list[int], assignment: str, values: list) -> None:
+        if not job_ids:
+            return
+        placeholders = ",".join("?" * len(job_ids))
+        self._conn.execute(
+            f"UPDATE jobs SET {assignment} WHERE id IN ({placeholders})",
+            [*values, *job_ids],
+        )
+        self._conn.commit()
 
     def mark_notified(self, job_ids: list[int], notified_at: datetime) -> None:
         if not job_ids:
@@ -634,6 +720,8 @@ class RunRepository:
                         "eligible": summary.eligible,
                         "strong": summary.strong,
                         "stretch": summary.stretch,
+                        "checked": summary.checked,
+                        "closed": summary.closed,
                         "articles": summary.articles,
                         "leads": summary.leads,
                         "errors": summary.errors,
@@ -996,6 +1084,7 @@ class LeadRepository:
                      WHERE j.company_id = l.company_id
                        AND j.eligibility = 'ELIGIBLE'
                        AND d.duplicate_job_id IS NULL
+                       AND j.closed_at IS NULL
                        AND j.collected_at >= ?) AS open_jobs
             FROM leads l
             JOIN companies c ON c.id = l.company_id

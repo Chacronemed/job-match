@@ -53,6 +53,8 @@ class DashboardSeed:
     stretch: int
     duplicate: int
     rejected: int
+    closed: int   # eligible, but the source said it is gone (M20)
+    stale: int    # eligible, posted 46 days ago: hidden by jobs.max_age_days (M20)
     lead: int
     company: int
 
@@ -71,7 +73,7 @@ def _breakdown(score, explanations=(), positive=(), negative=(), missing=()):
 
 def _job(sid, title, company_name, *, score, eligibility, location="75 - Paris",
          experience=None, breakdown=None, url=None, collected_at=_NOW, rejection_reason=None,
-         company_id=None):
+         company_id=None, published_at=None):
     return Job(
         source="france_travail",
         source_job_id=sid,
@@ -83,6 +85,7 @@ def _job(sid, title, company_name, *, score, eligibility, location="75 - Paris",
         description="Kubernetes, Terraform. Secret description text that must never leave the DB.",
         url=url if url is not None else f"https://example.test/{sid}",
         collected_at=collected_at,
+        published_at=published_at,
         company_id=company_id,
         eligibility=eligibility,
         rejection_reason=rejection_reason,
@@ -128,6 +131,14 @@ def _seed(db: Database) -> DashboardSeed:
         "rejected", "Senior DevOps", "Delta", score=None, eligibility=Eligibility.REJECTED,
         rejection_reason="EXPERIENCE",
     ))
+    closed = jobs.save(_job(
+        "closed", "DevOps parti", "Epsilon", score=88, eligibility=Eligibility.ELIGIBLE,
+    ))
+    jobs.mark_closed([closed.id], _NOW)
+    stale = jobs.save(_job(
+        "stale", "DevOps d'automne", "Zeta", score=86, eligibility=Eligibility.ELIGIBLE,
+        published_at=datetime(2026, 9, 2, 7, 0, 0, tzinfo=UTC),  # 46 days before _NOW
+    ))
 
     article = ArticleRepository(conn).save(Article(
         source="maddyness", url="https://www.maddyness.com/acme-leve",
@@ -171,7 +182,8 @@ def _seed(db: Database) -> DashboardSeed:
     return DashboardSeed(
         now=_NOW, xss_title=_XSS_TITLE, secret_keyword=_SECRET_KEYWORD,
         strong=strong.id, eligible=eligible.id, stretch=stretch.id,
-        duplicate=duplicate.id, rejected=rejected.id, lead=lead.id, company=acme.id,
+        duplicate=duplicate.id, rejected=rejected.id, closed=closed.id, stale=stale.id,
+        lead=lead.id, company=acme.id,
     )
 
 

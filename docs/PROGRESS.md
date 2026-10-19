@@ -3,14 +3,48 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**Milestone 19: private web dashboard** — **DONE** (2026-10-19). `job-match dashboard --out site`
-writes a static, self-contained `index.html` + `data.json` (Jobs / Leads / Runs tabs) from the
-DB; `daily.yml` deploys `site/` as the Cloudflare Worker `job-match` (static assets, no code)
-behind Cloudflare Access. ADR 0009. The two Cloudflare secrets still have to be created (see
-Next step). M9 manual GitHub setup still pending, `PROFILE_YAML` secret still needs re-encoding,
-`SMTP_PORT` variable to create.
+**Milestone 20: offer closure check** — **DONE** (2026-10-19). Each `job-match run` asks France
+Travail whether the offers still shown exist (detail endpoint, 204 = closed), marks
+`jobs.closed_at` / `last_checked_at`, and the digest and dashboard hide closed rows plus any
+posting older than `jobs.max_age_days` (45). Dashboard shows Posted + Age. ADR 0010. Nothing
+in `daily.yml` changed. Still pending from earlier: the two Cloudflare secrets, M9 manual
+GitHub setup, `PROFILE_YAML` re-encoding, `SMTP_PORT` variable.
 
 ## Done
+- **Offer closure check** (2026-10-19, M20):
+  - **Measured first** (`scripts/ft_closed_probe.py`, 1 token + 9 detail calls, then 10 through
+    the adapter): `GET /partenaire/offresdemploi/v2/offres/{id}` answers **204 No Content** for
+    a withdrawn offer and 200 with the full offer otherwise; no status field, only
+    `dateCreation`/`dateActualisation`. 6 of the 10 oldest visible local offers were gone.
+  - Migration `0006_job_closure.sql`: `jobs.closed_at`, `jobs.last_checked_at` (nullable ISO
+    UTC, not on the `Job` model, never written by `save`, like `notified_at`).
+  - `adapters/jobs/base.OfferStatus` (OPEN / CLOSED / UNKNOWN); `check_offer` is an optional
+    `JobSource` method. `FranceTravailSource.check_offer`: same token and throttle as the
+    search, counts in `api_calls`; 200 → OPEN, 204/404 → CLOSED, anything else (400/401/403,
+    429/5xx after retries, timeout, transport error) → UNKNOWN with a warning; a token failure
+    propagates.
+  - `pipelines/closure.check_closed` runs inside `run_jobs` after collection: rows the search
+    returned are `mark_open` (no call); `JobRepository.list_to_check` picks canonical
+    ELIGIBLE/STRETCH rows not closed, inside the age cut-off, not checked in 24 h
+    (`RECHECK_AFTER`), never-checked first; CLOSED → `mark_closed`, OPEN → `mark_checked`,
+    UNKNOWN → untouched and counted in `errors`; an exception from a source stops the check
+    after one warning. `dry_run` writes nothing. `RunSummary.checked` / `closed`, stored in
+    `summary_json`, printed by `_print_summary` (jobs run only), shown on the Runs tab.
+  - `list_unnotified` / `list_canonical_scored` take keyword-only `now` + `max_age_days`: always
+    `closed_at IS NULL`, and with both `COALESCE(published_at, collected_at) >= cutoff`. Lead
+    `open_jobs` ignores closed jobs. `settings.yaml` `jobs.max_age_days: 45` (`JobsConfig`,
+    positive int).
+  - Dashboard: `posted_at` (= published_at or collected_at) and `age_days` per job; columns
+    "Posted" (sort desc) and "Age" (sort asc) replace "Collected"; date filters are "Posted
+    from/to"; details row shows the collected date and says when the source gave no posting
+    date; `RUN_KEYS` += checked/closed.
+  - **Local run** (real API, local DB): 15 search + 104 check calls, **39 closed (37 %)**, 0
+    unclear; 21 more hidden by age alone; dashboard 286 → 265 visible jobs (43 strong, 152
+    eligible, 70 stretch), ages 0–41 days; digest dry run 115 jobs. Playwright at 1440 and
+    390: headers, both sort directions on Age and Posted, `from=` filter, 9-column details
+    row, runs tab "checked at source 104 · closed 39", no horizontal overflow, 0 console
+    errors.
+  - 52 new tests (1175 total), ruff clean.
 - **Private web dashboard** (2026-10-19, M19):
   - `dashboard/data.py` is the allow-list of what leaves the DB: canonical ELIGIBLE/STRETCH
     jobs (`JobRepository.list_canonical_scored`, notified or not), every lead
@@ -380,6 +414,13 @@ Next step). M9 manual GitHub setup still pending, `PROFILE_YAML` secret still ne
   - 26 tests green, `ruff check .` clean
 
 ## Next step
+- **Watch the first production closure check:** the Actions log should carry
+  `closure check: checked=N closed=M unclear=0` and the summary's `checked:` / `closed:`
+  lines. The first run checks every visible row (none has `last_checked_at`), so expect
+  `api_calls` to jump by a few hundred once; from then on roughly one call per visible job
+  not returned by the day's search. If `unclear` is ever non-zero, look at the WARNING line
+  above it (HTTP status or exception name). If a visible offer is wrongly hidden, check
+  whether the API answered 404 for a live id: then drop 404 from `check_offer`'s CLOSED set.
 - **Wire the dashboard deploy:** check in the Cloudflare dashboard that Workers → `job-match`
   has Access enabled on its workers.dev and preview URLs (a first deploy without it would be
   public until Access is switched on). Then add two repository secrets:
@@ -527,6 +568,10 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
 - ~~**M9 — WAL flush before data-repo push:**~~ **Resolved in M9.** `PRAGMA wal_checkpoint(TRUNCATE)` + `VACUUM` run in daily.yml before DB push. `*.sqlite-wal` and `*.sqlite-shm` added to `.gitignore`.
 
 ## Known issues
+- Closure check covers France Travail only; Jooble/Adzuna rows are never asked and rely on
+  `jobs.max_age_days`. A job whose check keeps answering UNKNOWN stays visible and is asked
+  again daily until the age cut-off hides it (counted in `errors`). 404 is read as closed
+  without having been observed. The local DB now holds today's fetch (533 → 1587 rows).
 - Dashboard: an ELIGIBLE job gated by a seniority keyword alone shows "—" for required years
   (only the parser's number or the stretch note is stored; the gate is never re-run). The
   Leads tab's "open jobs" counts ELIGIBLE only, like the digest. `playwright-cli` blocks
@@ -590,6 +635,11 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
   use fixtures.
 
 ## Session log
+- 2026-10-19 (3): Offer closure check (M20). Measured the detail endpoint (204 = closed),
+  added `closed_at`/`last_checked_at`, `check_offer` on the France Travail adapter, the
+  post-collection `check_closed` step (24 h interval, unknown never closes), the
+  `jobs.max_age_days` cut-off in digest and dashboard, Posted/Age columns, checked/closed in
+  the run summary. Local run: 104 checked, 39 closed. ADR 0010. 1175 tests passing.
 - 2026-10-19 (2): CI collection fix. Dashboard seed helpers became conftest fixtures (no
   `tests` package imports), local test command aligned with `ci.yml` (`.venv\Scripts\pytest -q`),
   `lang="fr"` and uppercase contracts on the dashboard. 1123 tests passing under plain `pytest`.

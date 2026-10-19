@@ -5,8 +5,10 @@ import time
 from collections.abc import Iterator
 from datetime import UTC, datetime
 
+import httpx
+
 from job_match.adapters.http import HttpClient
-from job_match.adapters.jobs.base import QueryStat, RawItem
+from job_match.adapters.jobs.base import OfferStatus, QueryStat, RawItem
 from job_match.config.schema import Profile
 from job_match.domain.models import ContractType, Job, WorkplaceType
 
@@ -14,6 +16,10 @@ logger = logging.getLogger(__name__)
 
 TOKEN_URL = "https://entreprise.francetravail.fr/connexion/oauth2/access_token"
 SEARCH_URL = "https://api.francetravail.io/partenaire/offresdemploi/v2/offres/search"
+# One offer by id. A closed offer answers 204 No Content with an empty body; an open one
+# answers 200 with the full offer and no status field (measured 2026-10-19 on 9 stored
+# offers: 6 × 204, 3 × 200; scripts/ft_closed_probe.py). 404 is read as gone too.
+DETAIL_URL = "https://api.francetravail.io/partenaire/offresdemploi/v2/offres/{id}"
 PAGE_SIZE = 150
 # Pagination is the `range` QUERY PARAMETER ("0-149"), not an HTTP Range header: the API
 # silently ignores the header and answers page 1 every time (measured 2026-10-18, 7 pages
@@ -203,6 +209,33 @@ class FranceTravailSource:
                 "query keyword=%s dept=%s fetched=%d available=%s",
                 label, dept_label, fetched, available,
             )
+
+    def check_offer(self, source_job_id: str) -> OfferStatus:
+        """Ask the API whether a stored offer is still online. One throttled call.
+
+        Only a clear answer is reported: 200 is OPEN, 204 and 404 are CLOSED. Everything
+        else (a refused request, 429 or 5xx after the client's retries, a timeout, a
+        transport error) is UNKNOWN and the caller leaves the job as it is. A token
+        failure propagates: it would fail for every offer, so the caller stops instead.
+        """
+        token = self._ensure_token()
+        self._throttle()
+        try:
+            resp = self._http.get(
+                DETAIL_URL.format(id=source_job_id),
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        except httpx.HTTPError as exc:
+            self._api_calls += 1
+            logger.warning("%s: offer check failed: %s", self.name, type(exc).__name__)
+            return OfferStatus.UNKNOWN
+        self._api_calls += 1
+        if resp.status_code == 200:
+            return OfferStatus.OPEN
+        if resp.status_code in (204, 404):
+            return OfferStatus.CLOSED
+        logger.warning("%s: offer check answered HTTP %d", self.name, resp.status_code)
+        return OfferStatus.UNKNOWN
 
     def to_job(self, raw: RawItem) -> Job:
         return Job(

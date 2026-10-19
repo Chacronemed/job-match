@@ -135,6 +135,15 @@ class DigestConfig:
 
 
 @dataclass
+class JobsConfig:
+    """`max_age_days`: a job whose posting date (collection date when unknown) is older than
+    this is hidden from the digest and the dashboard even if its source was never asked
+    whether it is still open. The closure check is the primary mechanism; this is the net."""
+
+    max_age_days: int = 45
+
+
+@dataclass
 class FundingConfig:
     requests_per_second: float = 1.0
     extract_max_chars: int = 600
@@ -170,3 +179,4 @@ class Settings:
     relevance: RelevanceConfig = field(default_factory=RelevanceConfig)
     digest: DigestConfig = field(default_factory=DigestConfig)
     experience: ExperienceConfig = field(default_factory=ExperienceConfig)
+    jobs: JobsConfig = field(default_factory=JobsConfig)

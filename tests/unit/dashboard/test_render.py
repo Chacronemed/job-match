@@ -70,3 +70,16 @@ def test_light_and_dark_tokens_are_both_defined():
     assert "prefers-reduced-motion" in html
     assert "--canvas: #010102" in html
     assert "--canvas: #ffffff" in html
+
+
+def test_jobs_table_has_posted_and_age_columns_and_no_collected_column():
+    from job_match.dashboard.render import render_index
+
+    html = render_index(
+        {"generated_at": "", "thresholds": {}, "jobs": [], "leads": [], "runs": []}
+    )
+    assert 'data-key="posted_at">Posted<' in html
+    assert 'data-key="age_days">Age<' in html
+    assert 'data-key="collected_at"' not in html
+    assert "Posted from" in html and "Collected from" not in html
+    assert '"posted_at", "age_days"]' in html  # SORT_KEYS allow-list for the hash

@@ -18,6 +18,7 @@ from job_match.config.schema import (
 )
 from job_match.domain.models import ContractType, Eligibility, Job, WorkplaceType
 from job_match.persistence.db import Database
+from job_match.persistence.repositories import JobRepository
 from job_match.pipelines.jobs import run_jobs
 
 MIGRATIONS = Path(__file__).parent.parent.parent.parent / "src" / "job_match" / "migrations"
@@ -568,3 +569,87 @@ def test_a_stretch_job_carries_its_note_in_the_breakdown():
         run_jobs(_Src(jobs), _profile(3.0), _stretch_settings(1), db, {})
         raw = db.conn.execute("SELECT scoring_breakdown FROM jobs").fetchone()[0]
     assert "stretch: requires 4y, you have 3" in json.loads(raw)["explanations"]
+
+
+# ---------------------------------------------------------------------------
+# M20: closure check inside the run
+# ---------------------------------------------------------------------------
+
+class CheckingFakeSource(FakeSource):
+    """A fake with `check_offer`: the ids in `closed_ids` are gone, the rest are open."""
+
+    def __init__(self, jobs, *, closed_ids=()):
+        super().__init__(jobs)
+        self.closed_ids = set(closed_ids)
+        self.checks = 0
+        self.fetch_calls = 1
+
+    @property
+    def api_calls_count(self):
+        return self.fetch_calls + self.checks
+
+    def check_offer(self, source_job_id):
+        from job_match.adapters.jobs.base import OfferStatus
+
+        self.checks += 1
+        return OfferStatus.CLOSED if source_job_id in self.closed_ids else OfferStatus.OPEN
+
+
+def _lifecycle(db, sid):
+    row = db.conn.execute(
+        "SELECT closed_at, last_checked_at FROM jobs WHERE source_job_id = ?", (sid,)
+    ).fetchone()
+    return row["closed_at"], row["last_checked_at"]
+
+
+def test_a_job_the_search_returned_is_open_without_a_check(db):
+    """Re-collected rows are marked open (and reopened if ever closed), no call spent."""
+    source = CheckingFakeSource([_job("FT-001")])
+    run_jobs(source, _profile(), _settings(), db, aliases={})
+    closed_at, checked_at = _lifecycle(db, "FT-001")
+    assert closed_at is None and checked_at is not None
+    assert source.checks == 0
+
+    repo = JobRepository(db.conn)
+    repo.mark_closed([repo.list_all()[0].id], datetime(2026, 10, 1, tzinfo=UTC))
+    run_jobs(CheckingFakeSource([_job("FT-001")]), _profile(), _settings(), db, aliases={})
+    assert _lifecycle(db, "FT-001")[0] is None
+
+
+def test_stored_jobs_not_in_the_search_are_checked_and_closed_ones_hidden(db):
+    # three employers, or dedup would fold them into one canonical row
+    run_jobs(FakeSource([_job("OLD-1", company="Alpha"), _job("OLD-2", company="Beta")]),
+             _profile(), _settings(), db, {})
+    db.conn.execute("UPDATE jobs SET last_checked_at = NULL")
+    db.conn.commit()
+
+    source = CheckingFakeSource([_job("NEW-1", company="Gamma")], closed_ids={"OLD-2"})
+    summary = run_jobs(source, _profile(), _settings(), db, aliases={})
+
+    assert summary.checked == 2 and summary.closed == 1
+    assert summary.api_calls == 3  # 1 search + 2 checks
+    assert summary.by_source["france_travail"]["calls"] == 3
+    assert _lifecycle(db, "OLD-2")[0] is not None
+    assert _lifecycle(db, "OLD-1")[0] is None
+    visible = {j.source_job_id for j in JobRepository(db.conn).list_unnotified()}
+    assert visible == {"OLD-1", "NEW-1"}
+
+    row = db.conn.execute("SELECT summary_json FROM runs ORDER BY id DESC").fetchone()
+    stored = json.loads(row["summary_json"])
+    assert stored["checked"] == 2 and stored["closed"] == 1
+
+
+def test_a_source_without_check_offer_reports_zero_checks(db):
+    run_jobs(FakeSource([_job("OLD-1")]), _profile(), _settings(), db, {})
+    summary = run_jobs(FakeSource([_job("NEW-1")]), _profile(), _settings(), db, {})
+    assert summary.checked == 0 and summary.closed == 0
+
+
+def test_dry_run_never_writes_lifecycle_columns(db):
+    run_jobs(FakeSource([_job("OLD-1")]), _profile(), _settings(), db, {})
+    db.conn.execute("UPDATE jobs SET last_checked_at = NULL")
+    db.conn.commit()
+    source = CheckingFakeSource([], closed_ids={"OLD-1"})
+    summary = run_jobs(source, _profile(), _settings(), db, aliases={}, dry_run=True)
+    assert summary.checked == 1 and summary.closed == 1
+    assert _lifecycle(db, "OLD-1") == (None, None)

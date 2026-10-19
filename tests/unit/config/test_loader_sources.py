@@ -150,3 +150,24 @@ def test_committed_regions_are_french_regions_and_afford_two_jooble_pages_each()
     assert len(s.sources.regions) == 13
     assert all(departments_for(region) for region in s.sources.regions)
     assert s.sources.max_calls("jooble") // len(s.sources.regions) == 2
+
+
+def test_jobs_max_age_days_defaults_to_45(tmp_path):
+    s = load_settings(_write(tmp_path, "strong_threshold: 70\n"))
+    assert s.jobs.max_age_days == 45
+
+
+def test_jobs_max_age_days_is_parsed(tmp_path):
+    s = load_settings(_write(tmp_path, "jobs:\n  max_age_days: 30\n"))
+    assert s.jobs.max_age_days == 30
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "'45'", "true", "4.5"])
+def test_jobs_max_age_days_must_be_a_positive_integer(tmp_path, value):
+    with pytest.raises(ConfigError, match="jobs.max_age_days"):
+        load_settings(_write(tmp_path, f"jobs:\n  max_age_days: {value}\n"))
+
+
+def test_committed_settings_hide_postings_older_than_45_days():
+    s = load_settings(Path("config/settings.yaml"))
+    assert s.jobs.max_age_days == 45

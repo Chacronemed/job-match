@@ -33,7 +33,11 @@ class DigestBatch:
 
 
 def build_digest(db: Database, settings: Settings, now: datetime) -> DigestBatch:
-    unnotified = JobRepository(db.conn).list_unnotified()
+    # Closed offers and postings older than jobs.max_age_days never reach the digest; they
+    # stay in the DB, unnotified.
+    unnotified = JobRepository(db.conn).list_unnotified(
+        now=now, max_age_days=settings.jobs.max_age_days
+    )
     min_score = settings.digest.min_score
     jobs = [j for j in unnotified if j.score is not None and j.score >= min_score]
     # Stretch jobs have their own section, same min_score, never strong. `list_unnotified`

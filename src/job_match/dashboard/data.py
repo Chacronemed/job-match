@@ -40,6 +40,8 @@ RUN_KEYS: tuple[str, ...] = (
     "stretch",
     "errors",
     "api_calls",
+    "checked",
+    "closed",
     "by_source",
 )
 
@@ -90,8 +92,14 @@ def _iso(dt: datetime | None) -> str | None:
     return dt.isoformat() if dt else None
 
 
-def job_entry(job: Job, strong_threshold: int) -> dict:
+def posted_at(job: Job) -> datetime:
+    """The posting date the source gave, else the day we first saw the offer."""
+    return job.published_at or job.collected_at
+
+
+def job_entry(job: Job, strong_threshold: int, now: datetime) -> dict:
     bd = job.scoring_breakdown
+    posted = posted_at(job)
     return {
         "id": job.id,
         "section": section_of(job, strong_threshold),
@@ -106,6 +114,8 @@ def job_entry(job: Job, strong_threshold: int) -> dict:
         "experience_status": job.experience.status.value if job.experience else None,
         "collected_at": _iso(job.collected_at),
         "published_at": _iso(job.published_at),
+        "posted_at": posted.isoformat(),
+        "age_days": max((now - posted).days, 0),  # as of generated_at; the page is a snapshot
         "url": safe_url(job.url),
         "explanations": list(bd.explanations) if bd else [],
         "positive": list(bd.positive_matches) if bd else [],
@@ -155,7 +165,10 @@ def run_entry(run: RunRecord) -> dict:
 
 
 def build_dashboard_data(db: Database, settings: Settings, now: datetime) -> dict:
-    jobs = JobRepository(db.conn).list_canonical_scored()
+    # Closed offers and postings older than jobs.max_age_days never reach the page.
+    jobs = JobRepository(db.conn).list_canonical_scored(
+        now=now, max_age_days=settings.jobs.max_age_days
+    )
     jobs_since = now - timedelta(days=settings.dedup_window_days)
     leads = LeadRepository(db.conn).list_details(jobs_since)
     runs = RunRepository(db.conn).list_recent(RUN_PIPELINES, limit=RUN_LIMIT)
@@ -165,7 +178,7 @@ def build_dashboard_data(db: Database, settings: Settings, now: datetime) -> dic
             "strong": settings.strong_threshold,
             "min_score": settings.digest.min_score,
         },
-        "jobs": [job_entry(j, settings.strong_threshold) for j in jobs],
+        "jobs": [job_entry(j, settings.strong_threshold, now) for j in jobs],
         "leads": [lead_entry(lead) for lead in leads],
         "runs": [run_entry(r) for r in runs],
     }

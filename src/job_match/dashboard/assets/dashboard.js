@@ -245,7 +245,7 @@
     if (state.department) {
       if (state.department === "?" ? !!j.department : j.department !== state.department) return false;
     }
-    var day = dayOf(j.collected_at);
+    var day = dayOf(j.posted_at);
     if (state.from && day < state.from) return false;
     if (state.to && day > state.to) return false;
     if (state.q) {
@@ -290,12 +290,13 @@
   }
 
   function detailsFor(j) {
-    var td = el("td", { colspan: "8" });
+    var td = el("td", { colspan: "9" });
     var box = el("div", { class: "details" });
     var meta = [];
     if (j.location) meta.push(j.location);
     if (j.source) meta.push("source: " + j.source);
-    if (j.published_at) meta.push("published " + fmtDate(j.published_at));
+    if (!j.published_at) meta.push("no posting date from the source");
+    if (j.collected_at) meta.push("collected " + fmtDate(j.collected_at));
     var stretchLine = null;
     var others = [];
     (j.explanations || []).forEach(function (line) {
@@ -372,7 +373,9 @@
       row.appendChild(cell("num col-score", "Score", scoreCell(j)));
       var years = fmtYears(j.required_years);
       row.appendChild(cell("num col-years", "Years", el("span", { class: years === null ? "unknown years" : "years", text: years === null ? "—" : years + "y" })));
-      row.appendChild(cell("col-date", "Collected", fmtDate(j.collected_at)));
+      row.appendChild(cell("col-date", "Posted", fmtDate(j.posted_at)));
+      var age = typeof j.age_days === "number" ? j.age_days : null;
+      row.appendChild(cell("num col-age", "Age", el("span", { class: age === null ? "unknown" : "", text: age === null ? "—" : age + "d" })));
       row.appendChild(cell("link-col", "Link", link(j.url, "Open")));
 
       row.addEventListener("click", function (ev) {
@@ -445,7 +448,7 @@
     btn.addEventListener("click", function () {
       var key = btn.getAttribute("data-key");
       if (state.sortKey === key) state.sortDir = state.sortDir === "asc" ? "desc" : "asc";
-      else { state.sortKey = key; state.sortDir = (key === "score" || key === "collected_at") ? "desc" : "asc"; }
+      else { state.sortKey = key; state.sortDir = (key === "score" || key === "posted_at") ? "desc" : "asc"; }
       markSortHeader();
       renderJobs();
       syncHash();
@@ -460,7 +463,7 @@
     });
   }
 
-  var SORT_KEYS = ["title", "company", "department", "contract", "score", "required_years", "collected_at"];
+  var SORT_KEYS = ["title", "company", "department", "contract", "score", "required_years", "posted_at", "age_days"];
   var DAY = /^\d{4}-\d{2}-\d{2}$/;
 
   function applyHash() {
@@ -611,6 +614,8 @@
       stats.appendChild(stat("strong", r.strong));
       stats.appendChild(stat("stretch", r.stretch));
       if (r.api_calls) stats.appendChild(stat("API calls", r.api_calls));
+      if (r.checked) stats.appendChild(stat("checked at source", r.checked));
+      if (r.closed) stats.appendChild(stat("closed", r.closed));
       if (r.self_links_dropped) stats.appendChild(stat("self-links dropped", r.self_links_dropped));
       if (r.stale_links_dropped) stats.appendChild(stat("stale links dropped", r.stale_links_dropped));
       card.appendChild(stats);

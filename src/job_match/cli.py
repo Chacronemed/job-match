@@ -471,6 +471,9 @@ def _print_summary(summary: RunSummary, *, dry_run: bool = False) -> None:
     print(f"  eligible:   {summary.eligible}")
     print(f"  strong:     {summary.strong}")
     print(f"  stretch:    {summary.stretch}  (experience within stretch_years; never strong)")
+    if summary.pipeline == "jobs":
+        print(f"  checked:    {summary.checked}  (stored offers re-checked at the source)")
+        print(f"  closed:     {summary.closed}  (hidden from the digest and the dashboard)")
     if summary.api_calls:
         print(f"  api_calls:  {summary.api_calls}")
     if summary.errors:

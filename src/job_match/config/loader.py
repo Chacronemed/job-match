@@ -14,6 +14,7 @@ from job_match.config.schema import (
     FTSearch,
     FundingConfig,
     JMSConfig,
+    JobsConfig,
     LeadFilterConfig,
     Profile,
     RelevanceConfig,
@@ -121,6 +122,7 @@ def load_settings(path: Path) -> Settings:
         ),
         relevance=_parse_relevance(raw.get("relevance"), path),
         digest=_parse_digest(raw.get("digest"), path),
+        jobs=_parse_jobs(raw.get("jobs"), path),
     )
 
 
@@ -241,6 +243,15 @@ def _parse_digest(value: object, path: Path) -> DigestConfig:
         min_score=int(raw.get("min_score", d.min_score)),
         max_leads=int(raw.get("max_leads", d.max_leads)),
     )
+
+
+def _parse_jobs(value: object, path: Path) -> JobsConfig:
+    raw = _mapping(value, "jobs", path)
+    d = JobsConfig()
+    days = raw.get("max_age_days", d.max_age_days)
+    if isinstance(days, bool) or not isinstance(days, int) or days <= 0:
+        raise ConfigError(f"jobs.max_age_days must be a positive integer (in {path})")
+    return JobsConfig(max_age_days=days)
 
 
 def _require_key(raw: dict, key: str, source: str) -> object:

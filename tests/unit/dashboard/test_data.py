@@ -15,13 +15,14 @@ from job_match.persistence.db import Database
 
 JOB_KEYS = {
     "id", "section", "title", "company", "department", "location", "contract", "source",
-    "score", "required_years", "experience_status", "collected_at", "published_at", "url",
-    "explanations", "positive", "negative", "missing",
+    "score", "required_years", "experience_status", "collected_at", "published_at",
+    "posted_at", "age_days", "url", "explanations", "positive", "negative", "missing",
 }
 RUN_KEYS = {
     "id", "pipeline", "started_at", "finished_at", "fetched", "normalized",
     "rejected_by_reason", "duplicates", "self_links_dropped", "stale_links_dropped",
-    "eligible", "strong", "stretch", "errors", "api_calls", "by_source", "rejected",
+    "eligible", "strong", "stretch", "errors", "api_calls", "checked", "closed",
+    "by_source", "rejected",
 }
 
 
@@ -42,6 +43,8 @@ def test_jobs_are_canonical_eligible_or_stretch_only(dashboard_data):
     listed = {j["id"] for j in data["jobs"]}
     assert listed == {seed.strong, seed.eligible, seed.stretch}
     assert seed.duplicate not in listed and seed.rejected not in listed
+    # M20: a closed offer and a posting older than jobs.max_age_days are hidden too
+    assert seed.closed not in listed and seed.stale not in listed
     # best score first, like the digest
     assert [j["score"] for j in data["jobs"]] == [85, 72, 65]
 
@@ -66,6 +69,28 @@ def test_job_entry_keys_and_fields(dashboard_data):
     assert strong["positive"] == ["kubernetes", "terraform"]
     assert strong["missing"] == ["aws"]
     assert strong["collected_at"] == seed.now.isoformat()
+
+
+def test_posted_at_is_the_posting_date_or_the_collection_date_and_age_counts_days(
+    dashboard_data,
+):
+    data, seed = dashboard_data
+    strong = _by_id(data, seed.strong)  # no posting date from the source
+    assert strong["published_at"] is None
+    assert strong["posted_at"] == seed.now.isoformat()
+    assert strong["age_days"] == 0
+
+
+def test_the_age_cutoff_is_the_setting(seed_dashboard):
+    from job_match.config.schema import JobsConfig
+
+    with Database() as db:
+        seed = seed_dashboard(db)
+        data = build_dashboard_data(db, Settings(jobs=JobsConfig(max_age_days=60)), seed.now)
+    stale = _by_id(data, seed.stale)
+    assert stale["posted_at"] == "2026-09-02T07:00:00+00:00"
+    assert stale["age_days"] == 46
+    assert seed.closed not in {j["id"] for j in data["jobs"]}  # closed stays hidden
 
 
 def test_required_years_is_the_stored_number_or_the_stretch_note_or_null(dashboard_data):
@@ -156,6 +181,7 @@ def test_run_funnel_counts(dashboard_data):
     assert run["rejected_by_reason"] == {"EXPERIENCE": 50, "CONTRACT": 30, "NOT_RELEVANT": 10}
     assert run["strong"] == 8 and run["stretch"] == 3
     assert run["by_source"]["france_travail"]["calls"] == 13
+    assert run["checked"] == 0 and run["closed"] == 0  # runs recorded before M20
 
 
 def test_empty_database_gives_empty_lists():

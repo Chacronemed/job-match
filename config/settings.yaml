@@ -144,3 +144,11 @@ experience:
 digest:
   min_score: 60   # eligible jobs below this stay in the DB, not emailed
   max_leads: 10   # hiring first, then pre-seed..series B, then most recent; the rest roll over
+
+# Offer lifecycle. Each daily run re-checks every visible France Travail offer against the
+# offer-detail endpoint (a closed offer answers HTTP 204, measured 2026-10-19: 6 of the 9
+# oldest visible offers were already gone) and hides the closed ones. max_age_days is the
+# safety net for offers that were never checked (other sources, failed checks): a posting
+# date older than this is hidden from the digest and the dashboard, nothing is deleted.
+jobs:
+  max_age_days: 45

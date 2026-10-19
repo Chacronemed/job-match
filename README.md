@@ -129,7 +129,7 @@ job-match funding run                # ingest articles, funding events and leads
 
 `job-match dashboard --out site` writes a private, static dashboard from the database: `site/index.html` (one self-contained page, no framework, no build step, opens from the file system) and `site/data.json`. Three tabs:
 
-- **Jobs:** every canonical strong, eligible and stretch job with title, company, department, contract, score, required years, collection date and link; search, filters (section, department, minimum score, dates), sort on any column, and a details row with the scorer's explanations.
+- **Jobs:** every canonical strong, eligible and stretch job that is still online, with title, company, department, contract, score, required years, posting date, age in days and link; search, filters (section, department, minimum score, posting dates), sort on any column, and a details row with the scorer's explanations. Each daily run asks France Travail whether the offers it still shows exist (a withdrawn offer answers HTTP 204) and hides the closed ones; a posting older than `jobs.max_age_days` (45) is hidden whatever its check status. ADR 0010.
 - **Leads:** funding leads with amount, round, investors, hiring signal and the evidence sentence behind each field.
 - **Runs:** the last 30 runs as a funnel, fetched → rejected by reason → eligible / strong / stretch.
 
