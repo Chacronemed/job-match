@@ -144,6 +144,14 @@ class JobsConfig:
 
 
 @dataclass
+class RawPayloadsConfig:
+    """`retention_days`: raw source payloads (private DB only) older than this are pruned at
+    the end of each jobs run."""
+
+    retention_days: int = 60
+
+
+@dataclass
 class FundingConfig:
     requests_per_second: float = 1.0
     extract_max_chars: int = 600
@@ -180,3 +188,4 @@ class Settings:
     digest: DigestConfig = field(default_factory=DigestConfig)
     experience: ExperienceConfig = field(default_factory=ExperienceConfig)
     jobs: JobsConfig = field(default_factory=JobsConfig)
+    raw_payloads: RawPayloadsConfig = field(default_factory=RawPayloadsConfig)

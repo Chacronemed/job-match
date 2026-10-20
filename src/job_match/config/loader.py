@@ -17,6 +17,7 @@ from job_match.config.schema import (
     JobsConfig,
     LeadFilterConfig,
     Profile,
+    RawPayloadsConfig,
     RelevanceConfig,
     ScoringConfig,
     Settings,
@@ -123,6 +124,7 @@ def load_settings(path: Path) -> Settings:
         relevance=_parse_relevance(raw.get("relevance"), path),
         digest=_parse_digest(raw.get("digest"), path),
         jobs=_parse_jobs(raw.get("jobs"), path),
+        raw_payloads=_parse_raw_payloads(raw.get("raw_payloads"), path),
     )
 
 
@@ -252,6 +254,15 @@ def _parse_jobs(value: object, path: Path) -> JobsConfig:
     if isinstance(days, bool) or not isinstance(days, int) or days <= 0:
         raise ConfigError(f"jobs.max_age_days must be a positive integer (in {path})")
     return JobsConfig(max_age_days=days)
+
+
+def _parse_raw_payloads(value: object, path: Path) -> RawPayloadsConfig:
+    raw = _mapping(value, "raw_payloads", path)
+    d = RawPayloadsConfig()
+    days = raw.get("retention_days", d.retention_days)
+    if isinstance(days, bool) or not isinstance(days, int) or days <= 0:
+        raise ConfigError(f"raw_payloads.retention_days must be a positive integer (in {path})")
+    return RawPayloadsConfig(retention_days=days)
 
 
 def _require_key(raw: dict, key: str, source: str) -> object:

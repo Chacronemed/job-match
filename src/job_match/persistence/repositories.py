@@ -123,6 +123,7 @@ def _row_to_job(row: sqlite3.Row) -> Job:
             min_years=row["experience_min"],
             max_years=row["experience_max"],
             evidence=row["experience_evidence"],
+            excludes_apprenticeship=bool(row["experience_excludes_apprenticeship"]),
         )
 
     bd: ScoringBreakdown | None = None
@@ -202,9 +203,10 @@ class RawPayloadRepository:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
 
-    def save(self, payload: RawPayload) -> None:
+    def save(self, payload: RawPayload) -> bool:
+        """False when the item already has a row at this fetched_at (one copy per run)."""
         _ensure_source(self._conn, payload.source)
-        self._conn.execute(
+        cur = self._conn.execute(
             "INSERT OR IGNORE INTO raw_payloads"
             "(source_id, source_item_id, fetched_at, payload_json)"
             " VALUES (?, ?, ?, ?)",
@@ -216,6 +218,30 @@ class RawPayloadRepository:
             ),
         )
         self._conn.commit()
+        return cur.rowcount > 0
+
+    def save_if_changed(self, payload: RawPayload) -> bool:
+        """Store the payload unless it equals the latest one stored for the same item.
+
+        A daily run refetches most offers (the publication window spans days), so storing
+        every fetch would multiply the table for no new information."""
+        row = self._conn.execute(
+            "SELECT payload_json FROM raw_payloads WHERE source_id = ? AND source_item_id = ?"
+            " ORDER BY fetched_at DESC LIMIT 1",
+            (payload.source, payload.source_id),
+        ).fetchone()
+        if row is not None and row["payload_json"] == payload.payload_json:
+            return False
+        return self.save(payload)
+
+    def prune(self, older_than: datetime) -> int:
+        """Delete payloads fetched before `older_than`. No VACUUM: SQLite reuses the freed
+        pages for the next inserts, so the file settles at its steady-state size."""
+        cur = self._conn.execute(
+            "DELETE FROM raw_payloads WHERE fetched_at < ?", (older_than.isoformat(),)
+        )
+        self._conn.commit()
+        return cur.rowcount
 
 
 class JobRepository:
@@ -236,9 +262,10 @@ class JobRepository:
                 location, workplace_type, contract_type, description, url,
                 published_at, collected_at, fingerprint,
                 experience_min, experience_max, experience_status, experience_evidence,
+                experience_excludes_apprenticeship,
                 eligibility, rejection_reason, score, scoring_breakdown, needs_review,
                 search_query
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(source_id, source_job_id) DO UPDATE SET
                 title              = excluded.title,
                 company            = excluded.company,
@@ -256,6 +283,7 @@ class JobRepository:
                 experience_max     = excluded.experience_max,
                 experience_status  = excluded.experience_status,
                 experience_evidence= excluded.experience_evidence,
+                experience_excludes_apprenticeship = excluded.experience_excludes_apprenticeship,
                 eligibility        = excluded.eligibility,
                 rejection_reason   = excluded.rejection_reason,
                 score              = excluded.score,
@@ -282,6 +310,7 @@ class JobRepository:
                 job.experience.max_years if job.experience else None,
                 str(job.experience.status) if job.experience else None,
                 job.experience.evidence if job.experience else None,
+                int(job.experience.excludes_apprenticeship) if job.experience else 0,
                 str(job.eligibility) if job.eligibility else None,
                 job.rejection_reason,
                 job.score,
@@ -722,6 +751,8 @@ class RunRepository:
                         "stretch": summary.stretch,
                         "checked": summary.checked,
                         "closed": summary.closed,
+                        "raw_stored": summary.raw_stored,
+                        "raw_pruned": summary.raw_pruned,
                         "articles": summary.articles,
                         "leads": summary.leads,
                         "errors": summary.errors,

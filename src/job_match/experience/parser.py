@@ -1,4 +1,5 @@
 import re
+from dataclasses import replace
 
 from job_match.domain.models import ExperienceRequirement, ExperienceStatus
 from job_match.normalization.numbers import WORD_NUMBERS as _WORD_NUMS
@@ -23,37 +24,57 @@ _AMBIGUOUS_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Unit after the number. The trailing \b keeps "Un anglais" from reading as "un an".
+# "années" only counts after a qualifier (au moins, range, jusqu'à) or, in the plain
+# form, before "d'expérience": "deux années consécutives" is not a requirement.
+_UNIT = r"(?:ans?|ann[ée]es?|years?)\b"
+
 # Range: "2 à 5 ans", "2-5 years", "2 to 5 years"
 _RANGE_RE = re.compile(
-    r"(\d{1,2}|\b" + _W + r"\b)\s*(?:à|to|-)\s*(\d{1,2}|\b" + _W + r"\b)\s*(?:ans?|years?)",
+    r"(\d{1,2}|\b" + _W + r"\b)\s*(?:à|to|-)\s*(\d{1,2}|\b" + _W + r"\b)\s*" + _UNIT,
     re.IGNORECASE,
 )
 
 # Explicit minimum: "au moins 3 ans", "at least 3 years", "minimum 3 years"
 _MIN_EXPLICIT_RE = re.compile(
-    r"(?:au\s+moins|minimum|au\s+minimum|at\s+least)\s+" + _NC + r"\s*(?:ans?|years?)",
+    r"(?:au\s+moins|minimum|au\s+minimum|at\s+least)\s+" + _NC + r"\s*" + _UNIT,
     re.IGNORECASE,
 )
 
 # Plus notation: "3+ ans", "3+ years"
-_MIN_PLUS_RE = re.compile(r"(\d{1,2})\s*\+\s*(?:ans?|years?)", re.IGNORECASE)
+_MIN_PLUS_RE = re.compile(r"(\d{1,2})\s*\+\s*" + _UNIT, re.IGNORECASE)
 
 # Plain: "3 ans d'expérience", "3 years of experience", "deux ans d'expérience"
 # NOTE: numbers at positions claimed by other patterns are skipped in parse()
 _PLAIN_RE = re.compile(
-    _NC + r"\s+(?:ans?|years?)"
-    r"(?:\s+(?:d[''']?expérience|of\s+experience|expérience|experience))?",
+    _NC + r"\s+(?:(?:ans?|years?)\b"
+    r"(?:\s+(?:d[''']?expérience|of\s+experience|expérience|experience))?"
+    r"|ann[ée]es?\s+d[''']?\s*expérience)",
     re.IGNORECASE,
 )
 
 # Maximum: "jusqu'à 2 ans", "up to 2 years", "moins de 2 ans", "less than 2 years"
 _MAX_RE = re.compile(
-    r"(?:jusqu[''']à|up\s+to|moins\s+de|less\s+than)\s+" + _NC + r"\s*(?:ans?|years?)",
+    r"(?:jusqu[''']à|up\s+to|moins\s+de|less\s+than)\s+" + _NC + r"\s*" + _UNIT,
+    re.IGNORECASE,
+)
+
+# "hors stage", "hors alternance", "hors stage et alternance": internships and work-study
+# years do not count. Stored as a flag, never changes eligibility on its own.
+_EXCLUDES_APPRENTICESHIP_RE = re.compile(
+    r"\bhors\s+(?:stages?(?:\s*(?:et|ni|/|,)\s*(?:d['’]\s*)?alternances?)?|alternances?)\b",
     re.IGNORECASE,
 )
 
 
 def parse(text: str) -> ExperienceRequirement:
+    req = _parse(text)
+    if text and _EXCLUDES_APPRENTICESHIP_RE.search(text):
+        req = replace(req, excludes_apprenticeship=True)
+    return req
+
+
+def _parse(text: str) -> ExperienceRequirement:
     if not text:
         return ExperienceRequirement(status=ExperienceStatus.NOT_MENTIONED)
 
@@ -73,14 +94,20 @@ def parse(text: str) -> ExperienceRequirement:
             claimed.add(m.start(1))
             claimed.add(m.start(2))
 
+    # Explicit minimums ("minimum 5 ans", "au moins 3 ans", "5+ years"), kept apart so
+    # one can override a smaller plain mention below.
+    explicit: list[tuple[float, str]] = []
+
     for m in _MIN_EXPLICIT_RE.finditer(clean):
         val = _to_num(m.group(1))
         if val is not None:
             candidates.append((val, None, m.group(0)))
+            explicit.append((val, m.group(0)))
             claimed.add(m.start(1))
 
     for m in _MIN_PLUS_RE.finditer(clean):
         candidates.append((float(m.group(1)), None, m.group(0)))
+        explicit.append((float(m.group(1)), m.group(0)))
         claimed.add(m.start(1))
 
     for m in _MAX_RE.finditer(clean):
@@ -102,10 +129,15 @@ def parse(text: str) -> ExperienceRequirement:
             return ExperienceRequirement(status=ExperienceStatus.UNKNOWN, evidence=am.group(0))
         return ExperienceRequirement(status=ExperienceStatus.NOT_MENTIONED)
 
-    # Smallest-minimum rule: pick the candidate with the lowest explicit min_years
+    # Smallest-minimum rule: pick the candidate with the lowest min_years, unless an
+    # explicit minimum asks for more; then the stated minimum wins.
     with_min = [(mn, mx, ev) for mn, mx, ev in candidates if mn is not None]
     if with_min:
         mn, mx, ev = min(with_min, key=lambda t: t[0])
+        if explicit:
+            top, top_ev = max(explicit, key=lambda t: t[0])
+            if top > mn:
+                mn, mx, ev = top, None, top_ev
         return ExperienceRequirement(
             status=ExperienceStatus.ELIGIBLE, min_years=mn, max_years=mx, evidence=ev
         )

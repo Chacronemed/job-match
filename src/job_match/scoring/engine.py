@@ -1,5 +1,6 @@
 from job_match.config.schema import Profile, Settings
 from job_match.domain.models import (
+    EXCLUDES_APPRENTICESHIP_NOTE,
     EligibilityResult,
     ExperienceRequirement,
     Job,
@@ -56,6 +57,8 @@ class ScoringEngine:
             notes = (
                 stretch_note(eligibility.required_years, profile.candidate.experience_years),
             )
+        if experience.excludes_apprenticeship:
+            notes += (EXCLUDES_APPRENTICESHIP_NOTE,)
 
         if primary is not None:
             return ScoringBreakdown(

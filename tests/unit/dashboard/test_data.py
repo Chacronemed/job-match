@@ -188,3 +188,17 @@ def test_empty_database_gives_empty_lists():
     with Database(path=":memory:") as db:
         data = build_dashboard_data(db, Settings(), datetime(2026, 10, 18, tzinfo=UTC))
     assert data["jobs"] == [] and data["leads"] == [] and data["runs"] == []
+
+
+def test_raw_payloads_never_reach_the_dashboard(seed_dashboard):
+    from job_match.domain.models import RawPayload
+    from job_match.persistence.repositories import RawPayloadRepository
+
+    marker = "RAW-PAYLOAD-MARKER-91c2"
+    with Database(path=":memory:") as db:
+        seed = seed_dashboard(db)
+        RawPayloadRepository(db.conn).save(
+            RawPayload("france_travail", "X1", seed.now, json.dumps({"secret": marker}))
+        )
+        data = build_dashboard_data(db, Settings(), seed.now)
+    assert marker not in json.dumps(data)

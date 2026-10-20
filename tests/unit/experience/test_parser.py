@@ -170,3 +170,66 @@ def test_seniority_lead_word_boundary():
     assert infer_seniority_min("Tech Lead", "", _SMAP) == 5
     # "leading" must NOT match "lead"
     assert infer_seniority_min("", "leading a team of engineers", _SMAP) is None
+
+
+# ---------------------------------------------------------------------------
+# Explicit minimum vs plain mentions; "hors stage et alternance" flag
+# ---------------------------------------------------------------------------
+
+_HORS = "Minimum 5 ans d'expérience sur un poste DevOps ou Cloud (hors stage et alternance)."
+
+
+def test_parse_hors_stage_et_alternance_sentence():
+    result = parse(_HORS)
+    assert result.min_years == 5.0
+    assert result.excludes_apprenticeship is True
+
+
+def test_parse_un_anglais_is_not_one_year():
+    # Regression: "Un anglais" was read as "un an" and the smallest minimum (1) beat 5.
+    result = parse(_HORS + "\nUn anglais professionnel, indispensable dans les contextes.")
+    assert result.min_years == 5.0
+    assert result.evidence == "Minimum 5 ans"
+
+
+def test_parse_un_anglais_alone_mentions_nothing():
+    assert parse("Un anglais professionnel").status == ExperienceStatus.NOT_MENTIONED
+
+
+def test_parse_explicit_minimum_beats_smaller_plain_mention():
+    result = parse("Au moins 4 ans d'expérience. Un projet de 2 ans sur AWS.")
+    assert result.min_years == 4.0
+
+
+def test_parse_plus_notation_beats_smaller_plain_mention():
+    assert parse("5+ years in DevOps; 2 years of Go").min_years == 5.0
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "3 ans d'expérience (hors stage)",
+        "3 ans d'expérience hors alternance",
+        "3 ans hors stages et alternances",
+        "3 ans hors stage/alternance",
+        "première expérience hors stage",
+    ],
+)
+def test_parse_excludes_apprenticeship_variants(text):
+    assert parse(text).excludes_apprenticeship is True
+
+
+def test_parse_excludes_apprenticeship_default_false():
+    assert parse("3 ans d'expérience en alternance acceptée").excludes_apprenticeship is False
+    assert parse("").excludes_apprenticeship is False
+
+
+def test_parse_annees_after_explicit_minimum():
+    assert parse("d'au moins 3 années d'expérience en Infrastructure").min_years == 3.0
+
+
+def test_parse_plain_annees_needs_experience():
+    assert parse("deux années d'expérience en Linux").min_years == 2.0
+    assert parse("Great Place To Work deux années consécutives").status == (
+        ExperienceStatus.NOT_MENTIONED
+    )

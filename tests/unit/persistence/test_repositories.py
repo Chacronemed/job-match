@@ -173,6 +173,18 @@ def test_job_roundtrip_basic_fields(db):
     assert loaded.experience.status == ExperienceStatus.ELIGIBLE
     assert loaded.experience.min_years == 3.0
     assert loaded.experience.evidence == "3 ans d'expérience"
+    assert loaded.experience.excludes_apprenticeship is False
+
+
+def test_job_roundtrip_excludes_apprenticeship(db):
+    job = _make_job(
+        experience=ExperienceRequirement(
+            status=ExperienceStatus.ELIGIBLE, min_years=5.0, excludes_apprenticeship=True
+        ),
+    )
+    repo = JobRepository(db.conn)
+    loaded = repo.get(repo.save(job).id)
+    assert loaded.experience.excludes_apprenticeship is True
 
 
 def test_job_roundtrip_scoring_breakdown(db):
@@ -424,3 +436,49 @@ def test_reset_notified_since_returns_zero_when_nothing_matches(db):
     from datetime import date
     repo = JobRepository(db.conn)
     assert repo.reset_notified_since(date(2026, 10, 1)) == 0
+
+
+# ---------------------------------------------------------------------------
+# Raw payloads: stored on change, pruned by age
+# ---------------------------------------------------------------------------
+
+def _raw(item_id: str, body: str, fetched_at: datetime = _NOW) -> RawPayload:
+    return RawPayload(
+        source="france_travail", source_id=item_id, fetched_at=fetched_at, payload_json=body
+    )
+
+
+def _raw_count(db) -> int:
+    return db.conn.execute("SELECT COUNT(*) FROM raw_payloads").fetchone()[0]
+
+
+def test_raw_save_if_changed_skips_an_identical_payload(db):
+    repo = RawPayloadRepository(db.conn)
+    assert repo.save_if_changed(_raw("A", '{"x":1}')) is True
+    later = datetime(2026, 10, 2, tzinfo=UTC)
+    assert repo.save_if_changed(_raw("A", '{"x":1}', later)) is False
+    assert _raw_count(db) == 1
+
+
+def test_raw_save_if_changed_stores_a_changed_payload(db):
+    repo = RawPayloadRepository(db.conn)
+    repo.save_if_changed(_raw("A", '{"x":1}'))
+    assert repo.save_if_changed(_raw("A", '{"x":2}', datetime(2026, 10, 2, tzinfo=UTC)))
+    # compared with the latest row, so going back to the first body is a change too
+    assert repo.save_if_changed(_raw("A", '{"x":1}', datetime(2026, 10, 3, tzinfo=UTC)))
+    assert _raw_count(db) == 3
+
+
+def test_raw_prune_deletes_only_rows_older_than_the_cutoff(db):
+    repo = RawPayloadRepository(db.conn)
+    repo.save(_raw("old", "{}", datetime(2026, 7, 1, tzinfo=UTC)))
+    repo.save(_raw("new", "{}", _NOW))
+    assert repo.prune(datetime(2026, 8, 1, tzinfo=UTC)) == 1
+    left = [r[0] for r in db.conn.execute("SELECT source_item_id FROM raw_payloads")]
+    assert left == ["new"]
+
+
+def test_raw_save_reports_a_second_copy_in_the_same_run_as_not_stored(db):
+    repo = RawPayloadRepository(db.conn)
+    assert repo.save(_raw("A", '{"x":1}')) is True
+    assert repo.save(_raw("A", '{"x":2}')) is False  # same fetched_at: ignored

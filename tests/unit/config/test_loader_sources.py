@@ -171,3 +171,23 @@ def test_jobs_max_age_days_must_be_a_positive_integer(tmp_path, value):
 def test_committed_settings_hide_postings_older_than_45_days():
     s = load_settings(Path("config/settings.yaml"))
     assert s.jobs.max_age_days == 45
+
+
+def test_raw_payloads_retention_defaults_to_60(tmp_path):
+    s = load_settings(_write(tmp_path, "strong_threshold: 70\n"))
+    assert s.raw_payloads.retention_days == 60
+
+
+def test_raw_payloads_retention_is_parsed(tmp_path):
+    s = load_settings(_write(tmp_path, "raw_payloads:\n  retention_days: 14\n"))
+    assert s.raw_payloads.retention_days == 14
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "'60'", "true", "6.5"])
+def test_raw_payloads_retention_must_be_a_positive_integer(tmp_path, value):
+    with pytest.raises(ConfigError, match="raw_payloads.retention_days"):
+        load_settings(_write(tmp_path, f"raw_payloads:\n  retention_days: {value}\n"))
+
+
+def test_committed_settings_keep_raw_payloads_60_days():
+    assert load_settings(Path("config/settings.yaml")).raw_payloads.retention_days == 60

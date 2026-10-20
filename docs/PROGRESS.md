@@ -11,6 +11,34 @@ in `daily.yml` changed. Still pending from earlier: the two Cloudflare secrets, 
 GitHub setup, `PROFILE_YAML` re-encoding, `SMTP_PORT` variable.
 
 ## Done
+- **Raw payloads stored** (2026-10-20): `raw_payloads` existed since 0001 but nothing wrote it.
+  - `run_jobs` stores each fetched item right after `to_job` (not in dry run), as canonical
+    JSON (sorted keys, compact, `default=str`), via `RawPayloadRepository.save_if_changed`:
+    skipped when identical to the latest row for that offer. `save` now returns whether a row
+    was inserted (one copy per item per run), so `raw_stored` counts real rows.
+  - `adapters/jobs/base.source_payload` drops the adapters' own `_jm_*` annotations first:
+    with `_jm_query` kept, an offer returned by "devops" and "devsecops" differed every run.
+  - `prune(now - raw_payloads.retention_days)` after the closure check (`settings.yaml`
+    `raw_payloads.retention_days: 60`, `RawPayloadsConfig`, positive int). No VACUUM.
+  - `RunSummary.raw_stored` / `raw_pruned` in `summary_json` and the CLI summary; not in the
+    dashboard `RUN_KEYS`. Payloads are never logged (only counts and the exception type).
+  - Local DB: 8.3 MB (0 raw rows) → 12.6 MB after real runs; 582 offers stored at 4.3 KB avg
+    (2.5 MB); an immediate rerun stored 0. Projection: ~0.8 MB/day of new offers, ~50 MB at
+    60 days (more if offers change often). Lower `retention_days` if the DB push gets slow.
+  - README "Lessons from production": the "Un anglais" → 1 an row. 1211 tests, ruff clean.
+- **Experience parser fix** (2026-10-20, post-M20): job 171 ("Minimum 5 ans … (hors stage et
+  alternance)") was ELIGIBLE because `_PLAIN_RE` read "**Un an**glais" as 1 year and the
+  smallest-minimum rule beat 5. The France Travail structured experience field is not used at
+  all (the adapter never maps it, and FT raw payloads are not stored).
+  - Shared `_UNIT` with a trailing `\b`; "années" counts after a qualifier, or in the plain
+    form only before "d'expérience" ("deux années consécutives" is not a requirement).
+  - An explicit minimum ("minimum/au moins N", "N+") wins over a smaller plain or range mention.
+  - `ExperienceRequirement.excludes_apprenticeship` ("hors stage", "hors alternance", "hors
+    stage et alternance") → migration `0007` column, explanation note
+    `EXCLUDES_APPRENTICESHIP_NOTE`. Eligibility is unchanged by the flag.
+  - Local reprocess: 22 jobs changed status (14 ELIGIBLE→REJECTED, 3 STRETCH→REJECTED,
+    5 ELIGIBLE→STRETCH); rows ELIGIBLE 240→221, STRETCH 101→103. Flag: 0 ELIGIBLE, 3 STRETCH,
+    6 REJECTED. 1190 tests, ruff clean.
 - **Offer closure check** (2026-10-19, M20):
   - **Measured first** (`scripts/ft_closed_probe.py`, 1 token + 9 detail calls, then 10 through
     the adapter): `GET /partenaire/offresdemploi/v2/offres/{id}` answers **204 No Content** for

@@ -10,6 +10,7 @@ from job_match.config.schema import (
     Skills,
 )
 from job_match.domain.models import (
+    EXCLUDES_APPRENTICESHIP_NOTE,
     ContractType,
     EligibilityResult,
     ExperienceRequirement,
@@ -43,6 +44,14 @@ def test_a_plain_eligible_job_has_no_stretch_note():
         ExperienceRequirement(ExperienceStatus.ELIGIBLE),
     )
     assert not any(line.startswith("stretch:") for line in bd.explanations)
+
+
+def test_excludes_apprenticeship_is_explained_and_does_not_change_eligibility():
+    engine = ScoringEngine([NativeRuleScorer({})])
+    exp = ExperienceRequirement(ExperienceStatus.ELIGIBLE, excludes_apprenticeship=True)
+    bd = engine.score(_make_job(), _make_profile(), SETTINGS, EligibilityResult(eligible=True), exp)
+    assert EXCLUDES_APPRENTICESHIP_NOTE in bd.explanations
+    assert bd.eligible is True
 
 
 def _make_job() -> Job:

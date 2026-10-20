@@ -1,11 +1,13 @@
+import json
 import logging
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
+from job_match.adapters.jobs.base import source_payload
 from job_match.config.schema import Profile, Settings
 from job_match.dedup.engine import DedupEngine
 from job_match.dedup.fingerprint import compute_fingerprint
-from job_match.domain.models import Company, Eligibility, Job, RunSummary
+from job_match.domain.models import Company, Eligibility, Job, RawPayload, RunSummary
 from job_match.eligibility import gate
 from job_match.experience import parser as exp_parser
 from job_match.normalization.company import normalize_company
@@ -16,6 +18,7 @@ from job_match.persistence.repositories import (
     CompanyRepository,
     JobDuplicateRepository,
     JobRepository,
+    RawPayloadRepository,
     RunRepository,
 )
 from job_match.pipelines.closure import check_closed
@@ -48,6 +51,7 @@ def run_jobs(
     job_repo = JobRepository(db.conn)
     company_repo = CompanyRepository(db.conn)
     dup_repo = JobDuplicateRepository(db.conn)
+    raw_repo = RawPayloadRepository(db.conn)
 
     dedup_engine = DedupEngine(settings)
     scoring_engine = ScoringEngine([NativeRuleScorer(aliases)])
@@ -62,6 +66,7 @@ def run_jobs(
     strong = 0
     stretch = 0
     errors = 0
+    raw_stored = 0
     by_source: dict[str, dict[str, int]] = {}
     by_department: dict[str, int] = {}
     seen_ids: list[int] = []  # rows the search returned today: open by definition
@@ -90,6 +95,17 @@ def run_jobs(
 
             fetched += 1
             counts["fetched"] += 1
+
+            # Raw payload, as the source sent it: private DB only, never logged.
+            if not dry_run:
+                try:
+                    if raw_repo.save_if_changed(_raw_payload(source.name, job, raw, started_at)):
+                        raw_stored += 1
+                except Exception as exc:
+                    logger.warning(
+                        "%s: raw payload not stored: %s", source.name, type(exc).__name__
+                    )
+                    errors += 1
             # Where the offer is, not where we searched: a national query reports
             # area "all". "?" means no single department (a region, or a place that
             # is not in fr_geo).
@@ -177,6 +193,10 @@ def run_jobs(
         job_repo.mark_open(seen_ids, now)
     closure = check_closed(source_list, settings, db, now, dry_run=dry_run)
     errors += closure.errors
+    raw_pruned = 0
+    if not dry_run:
+        cutoff = now - timedelta(days=settings.raw_payloads.retention_days)
+        raw_pruned = raw_repo.prune(cutoff)
     for source in source_list:
         by_source[source.name]["calls"] = getattr(source, "api_calls_count", 0)
 
@@ -204,6 +224,8 @@ def run_jobs(
         stretch=stretch,
         checked=closure.checked,
         closed=closure.closed,
+        raw_stored=raw_stored,
+        raw_pruned=raw_pruned,
         errors=errors,
         api_calls=api_calls,
         by_area=by_area,
@@ -495,3 +517,15 @@ def _save(job: Job, company_repo: CompanyRepository, job_repo: JobRepository) ->
         Company(name=job.company, normalized_name=normalize_company(job.company))
     )
     return job_repo.save(replace(job, company_id=company.id))
+
+
+def _raw_payload(source: str, job: Job, raw: dict, fetched_at: datetime) -> RawPayload:
+    # Canonical JSON (sorted keys, compact) so an unchanged offer compares equal across runs;
+    # default=str keeps a non-JSON value (a datetime) from costing us the whole payload.
+    payload_json = json.dumps(
+        source_payload(raw), ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
+    )
+    return RawPayload(
+        source=source, source_id=job.source_job_id, fetched_at=fetched_at,
+        payload_json=payload_json,
+    )

@@ -7,6 +7,18 @@ from job_match.domain.models import Job
 
 RawItem = dict[str, Any]
 
+# Adapters tag raw items with their own keys ("_jm_query", "_jm_region") to say which query
+# returned them. They are ours, not the source's: the same offer found by two keywords must
+# compare equal, so they are dropped before the payload is stored.
+ANNOTATION_PREFIX = "_jm_"
+
+
+def source_payload(raw: RawItem) -> RawItem:
+    """The item as the source sent it, without the adapter's annotations."""
+    if not isinstance(raw, dict):
+        return raw
+    return {k: v for k, v in raw.items() if not str(k).startswith(ANNOTATION_PREFIX)}
+
 
 class OfferStatus(StrEnum):
     """What a source answers when asked whether a stored offer is still online.

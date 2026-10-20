@@ -20,6 +20,7 @@ class Eligibility(StrEnum):
 
 
 STRETCH_NOTE_PREFIX = "stretch:"
+EXCLUDES_APPRENTICESHIP_NOTE = "experience: internships/work-study excluded from required years"
 
 
 def format_years(years: float) -> str:
@@ -66,6 +67,9 @@ class ExperienceRequirement:
     min_years: float | None = None
     max_years: float | None = None
     evidence: str | None = None
+    # "hors stage et alternance": internships / work-study years do not count. Reported
+    # in explanations only; the gate does not use it (yet).
+    excludes_apprenticeship: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -257,6 +261,9 @@ class RunSummary:
     # said were gone. A check that got no clear answer counts in `errors`, never in `closed`.
     checked: int = 0
     closed: int = 0
+    # Raw source payloads written this run (new or changed only) and rows pruned by age.
+    raw_stored: int = 0
+    raw_pruned: int = 0
     articles: int = 0
     leads: int = 0
     errors: int = 0

@@ -152,3 +152,10 @@ digest:
 # date older than this is hidden from the digest and the dashboard, nothing is deleted.
 jobs:
   max_age_days: 45
+
+# Raw source payloads, kept as the API sent them in the private DB only (never logged, never
+# in the dashboard). Stored when new or changed since the last copy of the same offer, since
+# the 3-day window refetches most offers daily; rows older than retention_days are pruned
+# at the end of each jobs run.
+raw_payloads:
+  retention_days: 60

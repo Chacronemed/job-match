@@ -653,3 +653,97 @@ def test_dry_run_never_writes_lifecycle_columns(db):
     summary = run_jobs(source, _profile(), _settings(), db, aliases={}, dry_run=True)
     assert summary.checked == 1 and summary.closed == 1
     assert _lifecycle(db, "OLD-1") == (None, None)
+
+
+# ---------------------------------------------------------------------------
+# Raw payloads
+# ---------------------------------------------------------------------------
+
+_SECRET = "PAYLOAD-MARKER-7f3a"
+
+
+class DictSource(FakeSource):
+    """Raw items are dicts, as a real adapter returns them."""
+
+    def __init__(self, raws: list[dict]) -> None:
+        self._jobs = raws
+
+    def to_job(self, raw: dict) -> Job:
+        return _job(raw["id"], description=f"DevOps Kubernetes. {raw['note']}")
+
+
+def _raw_rows(db) -> list[tuple[str, str]]:
+    return list(db.conn.execute(
+        "SELECT source_item_id, payload_json FROM raw_payloads ORDER BY id"
+    ))
+
+
+def test_raw_payloads_are_stored_once_per_unchanged_offer(db):
+    raws = [{"id": "R1", "note": "a"}, {"id": "R2", "note": "b"}]
+    first = run_jobs(DictSource(raws), _profile(), _settings(), db, {})
+    assert first.raw_stored == 2
+    rows = _raw_rows(db)
+    assert [r[0] for r in rows] == ["R1", "R2"]
+    assert json.loads(rows[0][1]) == {"id": "R1", "note": "a"}
+
+    second = run_jobs(DictSource(raws), _profile(), _settings(), db, {})
+    assert second.raw_stored == 0
+    assert len(_raw_rows(db)) == 2
+
+
+def test_a_changed_raw_payload_is_stored_again(db):
+    run_jobs(DictSource([{"id": "R1", "note": "a"}]), _profile(), _settings(), db, {})
+    summary = run_jobs(DictSource([{"id": "R1", "note": "z"}]), _profile(), _settings(), db, {})
+    assert summary.raw_stored == 1
+    assert len(_raw_rows(db)) == 2
+
+
+def test_dry_run_stores_no_raw_payload(db):
+    summary = run_jobs(
+        DictSource([{"id": "R1", "note": "a"}]), _profile(), _settings(), db, {}, dry_run=True
+    )
+    assert summary.raw_stored == 0
+    assert _raw_rows(db) == []
+
+
+def test_raw_payloads_older_than_retention_are_pruned(db):
+    db.conn.execute("INSERT INTO sources(id, kind, name) VALUES ('france_travail', 'job', 'ft')")
+    db.conn.execute(
+        "INSERT INTO raw_payloads(source_id, source_item_id, fetched_at, payload_json)"
+        " VALUES ('france_travail', 'OLD', '2020-01-01T00:00:00+00:00', '{}')"
+    )
+    summary = run_jobs(DictSource([{"id": "R1", "note": "a"}]), _profile(), _settings(), db, {})
+    assert summary.raw_pruned == 1
+    assert [r[0] for r in _raw_rows(db)] == ["R1"]
+
+
+def test_raw_payload_counts_are_in_the_stored_run_summary(db):
+    run_jobs(DictSource([{"id": "R1", "note": "a"}]), _profile(), _settings(), db, {})
+    stored = json.loads(db.conn.execute("SELECT summary_json FROM runs").fetchone()[0])
+    assert stored["raw_stored"] == 1
+    assert stored["raw_pruned"] == 0
+
+
+def test_raw_payload_content_is_never_logged(db, caplog):
+    caplog.set_level("DEBUG")
+    run_jobs(DictSource([{"id": "R1", "note": "a", "extra": _SECRET}]),
+             _profile(), _settings(), db, {})
+    assert _SECRET in _raw_rows(db)[0][1]
+    assert _SECRET not in caplog.text
+
+
+def test_adapter_annotations_are_not_stored_and_do_not_count_as_a_change(db):
+    # Production: the same offer came back for "devops" and "devsecops"; the adapter's own
+    # _jm_query tag made the two copies differ, so every run stored it again.
+    raws = [
+        {"id": "R1", "note": "a", "_jm_query": "devops"},
+        {"id": "R1", "note": "a", "_jm_query": "devsecops"},
+    ]
+    first = run_jobs(DictSource(raws), _profile(), _settings(), db, {})
+    assert first.raw_stored == 1  # counts rows actually written, not attempts
+    rows = _raw_rows(db)
+    assert len(rows) == 1
+    assert "_jm_" not in rows[0][1]
+
+    second = run_jobs(DictSource(list(reversed(raws))), _profile(), _settings(), db, {})
+    assert second.raw_stored == 0

@@ -474,6 +474,8 @@ def _print_summary(summary: RunSummary, *, dry_run: bool = False) -> None:
     if summary.pipeline == "jobs":
         print(f"  checked:    {summary.checked}  (stored offers re-checked at the source)")
         print(f"  closed:     {summary.closed}  (hidden from the digest and the dashboard)")
+        print(f"  raw payloads: stored {summary.raw_stored} (new or changed),"
+              f" pruned {summary.raw_pruned}")
     if summary.api_calls:
         print(f"  api_calls:  {summary.api_calls}")
     if summary.errors:
