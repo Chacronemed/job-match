@@ -11,6 +11,15 @@ in `daily.yml` changed. Still pending from earlier: the two Cloudflare secrets, 
 GitHub setup, `PROFILE_YAML` re-encoding, `SMTP_PORT` variable.
 
 ## Done
+- **Compressed single-commit DB snapshot** (2026-10-20, ADR 0011): the data repo had a
+  27.3 MB `jobs.sqlite`, 26 commits, 9.2 MB packed. `job_match.persistence.snapshot`
+  restore (gunzip, legacy plain file read once) / publish (deterministic gzip, skip if
+  identical, rotate to `jobs.prev.sqlite.gz`, parentless commit force-pushed to `main`,
+  `::error::` + exit 1 and no push over 90 MB). `daily.yml` Restore/Push steps call it; the
+  VACUUM step is unchanged and runs before. Local DB: 11.7 MB → 2.6 MB gz (4.5×, 0.4 s).
+  Tests use a real bare repo in tmp_path. **One-time cleanup pending** (manual, see the
+  session notes / ADR 0011): delete and recreate `job-match-data` after the first new run,
+  or wait for GitHub GC.
 - **Raw payloads stored** (2026-10-20): `raw_payloads` existed since 0001 but nothing wrote it.
   - `run_jobs` stores each fetched item right after `to_job` (not in dry run), as canonical
     JSON (sorted keys, compact, `default=str`), via `RawPayloadRepository.save_if_changed`:

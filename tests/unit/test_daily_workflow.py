@@ -129,3 +129,50 @@ def test_site_is_never_uploaded_or_printed():
         run = str(step.get("run", ""))
         assert "cat site" not in run and "ls site" not in run
         assert "upload" not in run.lower()
+
+
+# ---------------------------------------------------------------------------
+# DB snapshot in the data repo: gunzip in, VACUUM, gzip + orphan force-push out
+# ---------------------------------------------------------------------------
+
+_SNAPSHOT = "python -m job_match.persistence.snapshot"
+
+
+def test_db_round_trip_step_order():
+    clone = _index("Clone data repo")
+    restore = _index("Restore DB")
+    vacuum = _index("WAL checkpoint and VACUUM")
+    push = _index("Push DB to data repo")
+    assert clone < restore < _index("Run pipeline") < vacuum < push
+    # every writer runs before the VACUUM, so the pushed file is the compacted one
+    for writer in ("Run funding pipeline", "Reprocess jobs", "Reprocess funding articles"):
+        assert _index(writer) < vacuum
+
+
+def test_restore_step_gunzips_through_the_snapshot_module():
+    step = _steps()[_index("Restore DB")]
+    assert step["run"].strip() == (
+        f"{_SNAPSHOT} restore --repo data-repo --db data/jobs.sqlite"
+    )
+
+
+def test_push_step_publishes_through_the_snapshot_module_after_a_successful_vacuum():
+    step = _steps()[_index("Push DB to data repo")]
+    assert step["run"].strip() == (
+        f"{_SNAPSHOT} publish --repo data-repo --db data/jobs.sqlite"
+    )
+    assert step["if"] == "always() && steps.wal.outcome == 'success'"
+    # the size guard must turn the step red: never swallowed
+    assert step.get("continue-on-error") is not True
+
+
+def test_vacuum_step_checkpoints_then_vacuums():
+    script = _steps()[_index("WAL checkpoint and VACUUM")]["run"]
+    assert script.index("wal_checkpoint(TRUNCATE)") < script.index('"VACUUM"')
+
+
+def test_no_step_copies_the_plain_db_into_the_data_repo_any_more():
+    for step in _steps():
+        run = step.get("run", "")
+        assert "data-repo/jobs.sqlite " not in run + " "
+        assert "git push" not in run  # only the snapshot module pushes, and it force-pushes

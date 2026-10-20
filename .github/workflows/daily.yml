@@ -59,16 +59,10 @@ jobs:
         run: |
           git clone --depth=1 git@github.com:Chacronemed/job-match-data.git data-repo
 
-      # Copy the DB if it exists; on first run the file won't be there — that is normal.
+      # gunzip data-repo/jobs.sqlite.gz into data/ (the legacy plain jobs.sqlite is still
+      # read once, on the first run after the switch); no file at all means a fresh start.
       - name: Restore DB
-        run: |
-          mkdir -p data
-          if [ -f data-repo/jobs.sqlite ]; then
-            cp data-repo/jobs.sqlite data/jobs.sqlite
-            echo "Restored existing DB"
-          else
-            echo "No existing DB — starting fresh"
-          fi
+        run: python -m job_match.persistence.snapshot restore --repo data-repo --db data/jobs.sqlite
 
       # Sources without a secret are skipped with a warning; the run continues on the
       # rest. Which sources are enabled is config/settings.yaml, not this file.
@@ -142,21 +136,13 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           DIGEST_TO:     ${{ secrets.DIGEST_TO }}
 
-      # Push the DB back when the WAL checkpoint succeeded, even if the digest failed.
+      # Push the DB back when the WAL checkpoint and VACUUM succeeded, even if the digest
+      # failed. gzip, then one orphan commit force-pushed to main: jobs.sqlite.gz plus the
+      # previous run's file as jobs.prev.sqlite.gz, so the data repo never accumulates a
+      # copy per day. Fails, pushing nothing, when the compressed file is over 90 MB.
       - name: Push DB to data repo
         if: always() && steps.wal.outcome == 'success'
-        run: |
-          cp data/jobs.sqlite data-repo/jobs.sqlite
-          cd data-repo
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git config user.name "github-actions[bot]"
-          git add jobs.sqlite
-          if git diff --cached --quiet; then
-            echo "DB unchanged — nothing to push"
-          else
-            git commit -m "chore: daily sync $(date -u +%Y-%m-%d)"
-            git push
-          fi
+        run: python -m job_match.persistence.snapshot publish --repo data-repo --db data/jobs.sqlite
 
       # The dashboard is a static snapshot of the DB served by a Cloudflare Worker behind
       # Cloudflare Access (ADR 0009). These steps run even when the digest failed and can
