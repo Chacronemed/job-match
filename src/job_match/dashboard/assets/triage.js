@@ -97,28 +97,78 @@
     return !err || !err.status || err.status >= 500;
   }
 
+  var PENDING_MAX = 200;
+  var JOB_KEY = /^[a-z0-9_]{1,32}:[A-Za-z0-9._-]{1,64}$/;
+  var KINDS = { save: true, decide: true, undecide: true };
+
+  function isObject(v) { return v !== null && typeof v === "object" && !Array.isArray(v); }
+
+  /* Only what this page itself would have queued survives a reload: anything else in the
+     store (an old format, a hand edit) is left out rather than sent to the API. */
+  function validOp(op) {
+    if (!isObject(op) || !KINDS[op.kind] || !isObject(op.payload)) return false;
+    var p = op.payload;
+    if (op.kind === "undecide") return typeof p.id === "number" && p.id > 0 && p.id % 1 === 0;
+    if (typeof p.key !== "string" || !JOB_KEY.test(p.key)) return false;
+    if (op.kind === "save") return isObject(p.rec) && T.STATUSES.indexOf(p.rec.status) >= 0;
+    return T.LABELS.indexOf(p.label) >= 0;
+  }
+
+  /* A localStorage slot that never throws: no storage, a private window, bad JSON or a full
+     quota all fall back to the queue in memory. */
+  function localStore(key, store) {
+    function area() {
+      try { return store || (typeof localStorage !== "undefined" ? localStorage : null); } catch (e) { return null; }
+    }
+    return {
+      load: function () {
+        try {
+          var s = area();
+          var raw = s ? s.getItem(key) : null;
+          var ops = raw ? JSON.parse(raw) : [];
+          return Array.isArray(ops) ? ops : [];
+        } catch (e) { return []; }
+      },
+      save: function (ops) {
+        try {
+          var s = area();
+          if (!s) return;
+          if (ops.length) s.setItem(key, JSON.stringify(ops)); else s.removeItem(key);
+        } catch (e) { /* quota or blocked storage: memory only */ }
+      }
+    };
+  }
+
   /* Operations that could not reach the API, sent again in order. `send(op)` returns a
-     promise; a refused operation (4xx) is dropped and reported through `onDrop`. */
-  function retryQueue(send, onDrop) {
-    var ops = [];
+     promise; a refused operation (4xx) is dropped and reported through `onDrop`. With a
+     `storage` adapter ({load, save}) the queue survives a reload. */
+  function retryQueue(send, onDrop, storage) {
+    var ops = (storage ? storage.load() : []).filter(validOp).slice(-PENDING_MAX)
+      .map(function (op) { return { kind: op.kind, payload: op.payload, attempts: op.attempts | 0 }; });
     var running = false;
+    function persist() { if (storage) storage.save(ops); }
     function flush() {
       if (running || !ops.length) return Promise.resolve(ops.length);
       running = true;
       function next() {
-        if (!ops.length) { running = false; return Promise.resolve(0); }
+        if (!ops.length) { running = false; persist(); return Promise.resolve(0); }
         var op = ops[0];
         op.attempts += 1;
-        return send(op).then(function () { ops.shift(); return next(); }, function (err) {
-          if (!retryable(err)) { ops.shift(); if (onDrop) onDrop(op, err); return next(); }
+        return send(op).then(function () { ops.shift(); persist(); return next(); }, function (err) {
+          if (!retryable(err)) { ops.shift(); persist(); if (onDrop) onDrop(op, err); return next(); }
           running = false;
+          persist();
           return ops.length;
         });
       }
       return next();
     }
     return {
-      add: function (op) { ops.push({ kind: op.kind, payload: op.payload, attempts: 0 }); },
+      add: function (op) {
+        ops.push({ kind: op.kind, payload: op.payload, attempts: 0 });
+        if (ops.length > PENDING_MAX) ops.shift();
+        persist();
+      },
       flush: flush,
       size: function () { return ops.length; },
       list: function () { return ops.slice(); }
@@ -137,7 +187,10 @@
     swipeRecord: swipeRecord,
     undoStack: undoStack,
     retryable: retryable,
-    retryQueue: retryQueue
+    retryQueue: retryQueue,
+    localStore: localStore,
+    validOp: validOp,
+    PENDING_MAX: PENDING_MAX
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.JMTriage = api;

@@ -27,8 +27,10 @@ phone, from the home screen if possible.
    checks. Without it, an undone swipe would still count in `calibrate`.
 4. **Failed saves wait.** A network error or a 5xx goes to an in-page retry queue (flushed on
    `online`, every 15 s, or by hand); a 4xx reverts.
-   - The queue is not persisted: closing the tab with actions pending loses them, and the banner
-     says they are pending.
+   - The queue is kept in `localStorage` (`jm.pending.v1`, every call in try/catch, at most 200
+     actions, validated on load) and replayed on the next visit. `beforeunload` warns while
+     actions are pending. These are my own records, kept in my browser on the page's origin,
+     behind Access.
 5. **Candidatures** is a board of to_apply / applied / interview / rejected, with due follow-ups
    on top. "J'ai postulé" sets applied_at and offers follow_up_at = +7 days.
    - `data.json` gains `tracked`: the jobs behind an application, closed or past the age cut-off

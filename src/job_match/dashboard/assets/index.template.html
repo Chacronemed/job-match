@@ -54,13 +54,13 @@ __CSS__
     <span class="tri-progress-text" id="tri-progress-text"></span>
   </div>
   <div class="tri-stage" id="tri-stage"></div>
-  <div class="tri-end" id="tri-end" hidden></div>
+  <div class="tri-end" id="tri-end" tabindex="-1" hidden></div>
   <div class="tri-controls" id="tri-controls">
-    <button type="button" class="tri-btn tri-btn-drop" id="tri-drop" aria-keyshortcuts="ArrowLeft">Écarter <kbd>←</kbd></button>
-    <button type="button" class="tri-btn tri-btn-undo" id="tri-undo" aria-keyshortcuts="Z" disabled>Annuler <kbd>Z</kbd></button>
-    <button type="button" class="tri-btn tri-btn-keep" id="tri-keep" aria-keyshortcuts="ArrowRight">Garder <kbd>→</kbd></button>
+    <button type="button" class="tri-btn tri-btn-drop" id="tri-drop" aria-keyshortcuts="ArrowLeft">Écarter <kbd aria-hidden="true">←</kbd></button>
+    <button type="button" class="tri-btn tri-btn-undo" id="tri-undo" aria-keyshortcuts="Z" disabled>Annuler <kbd aria-hidden="true">Z</kbd></button>
+    <button type="button" class="tri-btn tri-btn-keep" id="tri-keep" aria-keyshortcuts="ArrowRight">Garder <kbd aria-hidden="true">→</kbd></button>
   </div>
-  <div class="tri-reasons-bar" id="tri-reasons-bar" role="group" aria-label="Pourquoi l’écarter ?" hidden>
+  <div class="tri-reasons-bar" id="tri-reasons-bar" role="group" aria-label="Pourquoi l’écarter ?" aria-keyshortcuts="Escape" hidden>
     <span>Pourquoi ?</span>
     <span class="tri-reason-chips" id="tri-reason-chips"></span>
     <button type="button" class="link-btn" id="tri-reasons-close">Passer</button>

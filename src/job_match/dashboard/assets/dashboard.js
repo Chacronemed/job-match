@@ -362,7 +362,7 @@
 
   /* A note typed in the last moment, or a save still in flight, is not stored yet. */
   window.addEventListener("beforeunload", function (ev) {
-    if (track.pending > 0) { ev.preventDefault(); ev.returnValue = ""; }
+    if (track.pending > 0 || (typeof retry !== "undefined" && retry.size() > 0)) { ev.preventDefault(); ev.returnValue = ""; }
   });
   /* posting key -> status badges on screen ({node, row}); a grouped row's badge is listed
      under every posting key, so a save on any of them updates it. */
@@ -407,6 +407,7 @@
     if (!api || !/^https?:$/.test(location.protocol)) { track.status = "off"; trackBanner(); return; }
     track.status = "loading";
     trackBanner();
+    renderCurrent();  /* Tri and Candidatures say they are loading, buttons off */
     api.list().then(function (res) {
       var apps = {};
       (res.applications || []).forEach(function (a) { if (a && a.job_key) apps[a.job_key] = a; });
@@ -419,8 +420,11 @@
       track.confirmed = Object.assign({}, apps);
       track.decisions = decisions;
       track.status = "ready";
+      overlayPending();
       trackBanner();
       tri.built = false;  /* the queue depends on the statuses just loaded */
+      renderPending();
+      flushRetry();
       renderJobs();
       renderCurrent();
     }).catch(function () {
@@ -1152,9 +1156,17 @@
     }
     return api.undecide(p.id);
   }, function (op, err) {
-    announce("Action refusée par le serveur (" + failureText(err) + ").");
+    announce("Action refusée par le serveur (" + failureText(err) + ") : rien n’a été enregistré, refais-la depuis l’onglet Offres.");
     renderPending();
-  });
+  }, X.localStore("jm.pending.v1"));
+
+  /* Saves still waiting from an earlier visit win over what the API says until they are
+     sent: the page shows the decision I made, not the one it replaces. */
+  function overlayPending() {
+    retry.list().forEach(function (op) {
+      if (op.kind === "save") track.apps[op.payload.key] = Object.assign({ job_key: op.payload.key }, track.apps[op.payload.key] || {}, op.payload.rec);
+    });
+  }
 
   function announce(text) {
     triLive.textContent = "";
@@ -1188,7 +1200,7 @@
       if (X.retryable(err)) { retry.add({ kind: "save", payload: { key: key, rec: rec } }); renderPending(); return; }
       if (prev) track.apps[key] = prev; else delete track.apps[key];
       refreshBadges(key);
-      announce("Non enregistré (" + failureText(err) + ").");
+      announce("Non enregistré (" + failureText(err) + ") : recharge la page puis refais ce choix.");
     });
   }
 
@@ -1220,6 +1232,7 @@
     var w = j.why || { skills: [], unlisted: [], lowered: [] };
     var card = el("article", {
       class: "tri-card" + (isNext ? " is-next" : ""),
+      tabindex: isNext ? null : "-1",
       "aria-hidden": isNext ? "true" : null,
       "aria-label": isNext ? null : (j.title || "Offre")
     });
@@ -1329,13 +1342,17 @@
       list.appendChild(b);
     });
     bar.hidden = false;
+    announce("Pourquoi l’écarter ? 4 raisons au choix, Échap pour passer.");
     clearTimeout(reasonTimer);
     reasonTimer = setTimeout(hideReasons, 6000);
   }
 
   /* right = keep (to_apply + good_fit), left = drop (ignored; the reason is optional).
      A group: keep its best posting, drop all of them (as the row's quick actions do). */
+  var flying = null;  /* the card still flying out: a new action finishes it first */
+
   function commit(direction) {
+    if (flying) { clearTimeout(flying.timer); flying.advance(); }
     if (!canTriage() || tri.pos >= tri.items.length) return;
     hideReasons();
     var item = tri.items[tri.pos];
@@ -1351,16 +1368,24 @@
     if (rule.label) triDecide(item.row.key, rule.label, typeof item.row.score === "number" ? item.row.score : null);
     if (direction === "right") tri.kept += 1; else tri.dropped += 1;
     announce((direction === "right" ? "Gardée : " : "Écartée : ") + (item.row.title || "offre"));
-    var card = byId("tri-stage").querySelector(".tri-card:not(.is-next)");
+    var stage = byId("tri-stage");
+    var card = stage.querySelector(".tri-card:not(.is-next)");
+    var hadFocus = !!(card && card.contains(document.activeElement));
     function advance() {
+      flying = null;
       tri.pos += 1;
       renderTri();
       if (direction === "left") showReasons(item);
       updateCounts();
+      /* Focus was on a link or button of the card that just left: give it to the new card
+         rather than dropping it on the page. */
+      var next = stage.querySelector(".tri-card:not(.is-next)");
+      if (hadFocus && next) next.focus({ preventScroll: true });
+      else if (hadFocus) byId("tri-end").focus({ preventScroll: true });
     }
     if (card && !reduceMotion()) {
       card.classList.add(direction === "right" ? "fly-right" : "fly-left");
-      setTimeout(advance, 200);
+      flying = { advance: advance, timer: setTimeout(advance, 200) };
     } else {
       advance();
     }
@@ -1396,7 +1421,12 @@
     var end = byId("tri-end");
     var total = tri.items.length;
     clear(stage);
-    byId("tri-off").hidden = canTriage() || track.status === "loading";
+    var off = byId("tri-off");
+    off.hidden = canTriage();
+    off.textContent = track.status === "loading"
+      ? "Chargement du suivi…"
+      : "Le tri enregistre tes choix : il demande le tableau de bord hébergé, avec le suivi chargé.";
+    ["tri-keep", "tri-drop"].forEach(function (id) { byId(id).disabled = !canTriage(); });
     var b = X.batchOf(Math.min(tri.pos, Math.max(total - 1, 0)), total, X.BATCH);
     var atBoundary = tri.pos > 0 && tri.pos < total && tri.pos % X.BATCH === 0 && tri.pausedAt !== tri.pos;
     var done = tri.pos >= total;
@@ -1404,11 +1434,12 @@
     if (total) {
       var inBatch = done ? b.size : (atBoundary ? X.BATCH : tri.pos - b.start);
       var size = done ? b.size : (atBoundary ? X.BATCH : b.size);
-      byId("tri-progress-fill").style.width = (100 * inBatch / Math.max(size, 1)) + "%";
+      byId("tri-progress-fill").style.transform = "scaleX(" + (inBatch / Math.max(size, 1)) + ")";
       byId("tri-progress-text").textContent = "Lot " + (atBoundary ? b.index : b.index + 1) + "/" + b.count +
         " · " + inBatch + " / " + size + " · " + Math.max(total - tri.pos, 0) + " restantes";
       byId("tri-progress-bar").setAttribute("aria-valuenow", String(inBatch));
       byId("tri-progress-bar").setAttribute("aria-valuemax", String(size));
+      byId("tri-progress-bar").setAttribute("aria-valuetext", inBatch + " sur " + size);
     }
     byId("tri-controls").hidden = done || atBoundary || total === 0;
     byId("tri-undo").disabled = undo.size() === 0;
@@ -1448,7 +1479,8 @@
     if (currentTab !== "tri" || ev.altKey || ev.ctrlKey || ev.metaKey) return;
     var tag = ev.target && ev.target.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-    if (ev.key === "ArrowRight") { ev.preventDefault(); commit("right"); }
+    if (ev.key === "Escape" && !byId("tri-reasons-bar").hidden) { ev.preventDefault(); hideReasons(); }
+    else if (ev.key === "ArrowRight") { ev.preventDefault(); commit("right"); }
     else if (ev.key === "ArrowLeft") { ev.preventDefault(); commit("left"); }
     else if (ev.key === "z" || ev.key === "Z") { ev.preventDefault(); undoLast(); }
     else if (ev.key === "Enter" && !(ev.target && ev.target.closest && ev.target.closest("a, button"))) {
@@ -1468,7 +1500,9 @@
     return d.toISOString().slice(0, 10);
   }
 
-  function shortDay(day) { return day ? day.slice(8, 10) + "/" + day.slice(5, 7) : ""; }
+  var DAY_SHORT = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit", timeZone: "UTC" });
+  /* A calendar day (YYYY-MM-DD) as "28/10": read as UTC so no time zone moves it a day. */
+  function shortDay(day) { return T.isDay(day) ? DAY_SHORT.format(new Date(day + "T00:00:00Z")) : ""; }
 
   function setRecord(key, patch, done) {
     var prev = T.blank(track.apps[key]);
@@ -1491,7 +1525,7 @@
     if (dates.length) card.appendChild(el("p", { class: "kb-dates" + (T.isDue(app, today) ? " is-due" : ""), text: dates.join(" · ") }));
 
     var actions = el("div", { class: "kb-actions" });
-    var sel = el("select", { class: "kb-status", "aria-label": "Statut de " + (j ? j.title : key) });
+    var sel = el("select", { class: "kb-status", name: "status", "aria-label": "Statut de " + (j ? j.title : key) });
     T.STATUSES.forEach(function (s) { sel.appendChild(el("option", { value: s, text: BOARD_TEXT[s] || T.STATUS_TEXT[s] })); });
     sel.value = status;
     sel.addEventListener("change", function () {
@@ -1506,14 +1540,14 @@
       });
       actions.appendChild(applied);
     }
-    if (j && j.url && HTTP.test(j.url)) actions.appendChild(el("a", { href: j.url, target: "_blank", rel: "noopener noreferrer", text: "Offre" }));
+    if (j && j.url && HTTP.test(j.url)) actions.appendChild(el("a", { href: j.url, target: "_blank", rel: "noopener noreferrer", "aria-label": "Voir l’offre : " + (j.title || key), text: "Offre" }));
     card.appendChild(actions);
 
     if (appsUi.prompt === key && status === "applied") {
       var suggested = addDays(app.applied_at || today, 7);
       var line = el("div", { class: "kb-prompt", role: "group", "aria-label": "Date de relance" });
       if (appsUi.changing === key) {
-        var input = el("input", { type: "date", value: suggested, "aria-label": "Relance le", autocomplete: "off" });
+        var input = el("input", { type: "date", name: "follow_up_at", value: suggested, "aria-label": "Relance le", autocomplete: "off" });
         input.addEventListener("change", function () {
           if (!T.isDay(input.value)) return;
           appsUi.prompt = appsUi.changing = null;
@@ -1521,15 +1555,15 @@
         });
         line.appendChild(input);
       } else {
-        line.appendChild(el("span", { text: "Relance le " + shortDay(suggested) + " ?" }));
-        var yes = el("button", { type: "button", class: "link-btn", text: "Oui" });
+        line.appendChild(el("span", { text: "Relance prévue ?" }));
+        var yes = el("button", { type: "button", class: "link-btn", text: "Relancer le " + shortDay(suggested) });
         yes.addEventListener("click", function () {
           appsUi.prompt = null;
           setRecord(key, { follow_up_at: suggested }, "Relance prévue le " + shortDay(suggested));
         });
-        var change = el("button", { type: "button", class: "link-btn", text: "Changer" });
+        var change = el("button", { type: "button", class: "link-btn", text: "Autre date" });
         change.addEventListener("click", function () { appsUi.changing = key; renderApps(); });
-        var no = el("button", { type: "button", class: "link-btn", text: "Non" });
+        var no = el("button", { type: "button", class: "link-btn", text: "Pas de relance" });
         no.addEventListener("click", function () { appsUi.prompt = null; renderApps(); });
         [yes, change, no].forEach(function (b) { line.appendChild(b); });
       }
@@ -1552,6 +1586,7 @@
       var dx = ev.clientX - drag.x, dy = ev.clientY - drag.y;
       if (!drag.moved && Math.abs(dx) + Math.abs(dy) < 6) return;
       drag.moved = true;
+      document.body.classList.add("is-dragging-card");
       card.classList.add("is-dragging");
       card.style.transform = "translate(" + dx + "px," + dy + "px)";
       card.style.pointerEvents = "none";
@@ -1565,6 +1600,7 @@
       if (!drag || drag.card !== card) return;
       var was = drag;
       drag = null;
+      document.body.classList.remove("is-dragging-card");
       card.classList.remove("is-dragging");
       card.style.transform = "";
       var col = document.querySelector(".kb-col.is-over");
@@ -1924,6 +1960,7 @@
   renderRuns();
   if (window.innerWidth <= 768) byId("jobs-controls").removeAttribute("open");
   updateCounts();
+  renderPending();  /* actions left from an earlier visit show at once */
   applyHash();
   loadTracking();
 })();

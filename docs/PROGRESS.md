@@ -10,6 +10,44 @@ production rows. Still pending: the M21 Cloudflare setup, the data-repo cleanup 
 two Cloudflare secrets, M9 manual GitHub setup, `PROFILE_YAML` re-encoding, `SMTP_PORT` variable.
 
 ## Done
+- **M23 follow-up: guidelines pass + persistent pending queue** (2026-10-21):
+  - **Pending actions survive a reload:**
+    - `triage.retryQueue(send, onDrop, storage)` + `localStore("jm.pending.v1")`, every
+      `localStorage` call in try/catch; a missing store, bad JSON or a full quota fall back to
+      memory;
+    - `validOp` keeps only save/decide/undecide with a valid key, status or label, and an id;
+      at most 200 actions;
+    - on load the pending saves are overlaid on the statuses and flushed; `beforeunload` warns
+      while any are pending.
+    - 5 Node tests cover persist/clear, partial flush, malformed entries, a throwing or full
+      store, and the cap.
+    - Browser: writes offline → 3 actions → reload (the warning fired) → still 3 pending, the
+      swiped cards did not come back → online → D1 has them, the store is cleared, no warning.
+  - **Web Interface Guidelines pass on Tri and Candidatures** (full rule list from
+    vercel-labs, 1440 and 390, dark and light). Fixed:
+    - focus moves to the next card when the focused card leaves;
+    - an action during the fly-out finishes it first (interruptible; two fast presses = two
+      cards);
+    - `<kbd>` hints are `aria-hidden`;
+    - the reason bar is announced and closes with Escape;
+    - "Chargement du suivi…" with the buttons disabled while tracking loads;
+    - progress uses `transform: scaleX`, with `aria-valuetext`;
+    - kanban dates through `Intl.DateTimeFormat`;
+    - specific prompt labels (Relancer le 28/10 · Autre date · Pas de relance);
+    - `aria-label` on the Offre links; `name` on the menus and the date field;
+    - errors say what to do next;
+    - `text-wrap: balance/pretty` on titles; hover states on the cards;
+    - no text selection during a drag;
+    - safe-area bottom on the sticky controls and the toast;
+    - `overscroll-behavior: none` for fine pointers only;
+    - `min-width: 0` on flex children.
+    - Kept on purpose:
+      - sentence case, not Title Case (a French page);
+      - "J'ai postulé" / "je maîtrise" in the first person (your wording);
+      - no `inert` on a dragged card (it would drop its pointer capture);
+      - the Tri position is not in the URL (session state);
+      - no virtualization (columns well under 50 cards);
+      - hover colour transitions stay (they are not motion).
 - **M23 — Tri (swipe) + Candidatures + PWA** (2026-10-21, ADR 0014):
   - **Navigation:** Tri · Candidatures · Offres · Leads · Exécutions; the old `#today`, `#jobs`
     and `#runs` hashes are aliased. The Offres filters travel in the hash whatever the tab;

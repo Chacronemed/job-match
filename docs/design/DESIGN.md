@@ -625,6 +625,13 @@ The components the dashboard page actually uses (`src/job_match/dashboard/assets
   - Écarter: danger-soft. Annuler: neutral, disabled when there is nothing to undo. Garder:
     success-soft, solid success on hover.
   - Each shows its key (← Z →) in a quieter weight.
+- **Tri focus and keys**:
+  - When the card holding focus leaves (a swipe started from "Lire la suite" or "Voir l'offre"),
+    focus goes to the next card (`tabindex="-1"`, ring on `:focus-visible`) or to the end
+    screen.
+  - Escape closes the reason bar.
+  - The key hints in the buttons are `aria-hidden`; `aria-keyshortcuts` carries them.
+  - While tracking loads, the buttons are disabled under "Chargement du suivi…".
 - **`reason-bar`**: after a left swipe, a `{colors.surface-2}` strip with "Pourquoi ?", four
   quick-action pills (Hors sujet, Trop senior, Compétence manquante, Lieu) and "Passer". It
   closes after 6 s.
@@ -639,7 +646,8 @@ The components the dashboard page actually uses (`src/job_match/dashboard/assets
 - **`kanban-card`**: `{colors.surface-2}`, `{rounded.md}`, 12px padding.
   - Title 14px weight 500, meta and dates 12px (dates in stretch ink when due).
   - Below them: the status menu, "J'ai postulé" (small primary) and the offer link.
-  - The follow-up prompt "Relance le 28/10 ? Oui · Changer · Non" goes under the card.
+  - The follow-up prompt "Relance prévue ? Relancer le 28/10 · Autre date · Pas de relance" goes
+    under the card.
   - Dragging lifts the card with the one floating shadow.
 - **`filters-bar`** (phones): the "Filtres (n)" summary is sticky at the top of the panel and
   counts active filters.

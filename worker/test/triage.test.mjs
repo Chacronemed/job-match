@@ -126,3 +126,88 @@ describe("retry queue", () => {
     assert.ok(!X.retryable({ status: 409 }));
   });
 });
+
+describe("pending actions survive a reload", () => {
+  // A Storage-like object; `broken` makes every call throw (private mode, blocked storage).
+  function fakeStorage({ broken = false, quota = Infinity } = {}) {
+    const data = new Map();
+    return {
+      data,
+      getItem(k) { if (broken) throw new Error("SecurityError"); return data.has(k) ? data.get(k) : null; },
+      setItem(k, v) {
+        if (broken) throw new Error("SecurityError");
+        if (v.length > quota) throw new Error("QuotaExceededError");
+        data.set(k, String(v));
+      },
+      removeItem(k) { if (broken) throw new Error("SecurityError"); data.delete(k); },
+    };
+  }
+  const save = (key, status = "to_apply") => ({ kind: "save", payload: { key, rec: { status } } });
+  const offline = () => Promise.reject(new TypeError("Failed to fetch"));
+
+  test("queued actions are written on add and cleared once sent", async () => {
+    const store = fakeStorage();
+    const q = X.retryQueue(offline, null, X.localStore("jm.pending.v1", store));
+    q.add(save("ft:1"));
+    q.add({ kind: "decide", payload: { key: "ft:1", label: "good_fit", score: 80 } });
+    assert.equal(JSON.parse(store.data.get("jm.pending.v1")).length, 2);
+    const sent = [];
+    const online = X.retryQueue((op) => { sent.push(op.kind); return Promise.resolve(); }, null,
+      X.localStore("jm.pending.v1", store));
+    assert.equal(online.size(), 2); // the "reload": a new page reads what the last one left
+    assert.equal(await online.flush(), 0);
+    assert.deepEqual(sent, ["save", "decide"]);
+    assert.equal(store.data.has("jm.pending.v1"), false);
+  });
+
+  test("a partial flush keeps the rest, in order, for the next load", async () => {
+    const store = fakeStorage();
+    const q = X.retryQueue(offline, null, X.localStore("k", store));
+    ["ft:a", "ft:b", "ft:c"].forEach((k) => q.add(save(k)));
+    let calls = 0;
+    const flaky = X.retryQueue(() => (++calls === 1 ? Promise.resolve() : offline()), null, X.localStore("k", store));
+    assert.equal(await flaky.flush(), 2);
+    const after = X.retryQueue(offline, null, X.localStore("k", store));
+    assert.deepEqual(after.list().map((op) => op.payload.key), ["ft:b", "ft:c"]);
+  });
+
+  test("malformed or foreign entries are dropped on load", () => {
+    const store = fakeStorage();
+    store.setItem("k", JSON.stringify([
+      save("ft:ok"),
+      { kind: "eval", payload: { key: "ft:x" } },
+      { kind: "save", payload: { key: "not a key", rec: { status: "to_apply" } } },
+      { kind: "save", payload: { key: "ft:y", rec: { status: "hired" } } },
+      { kind: "decide", payload: { key: "ft:z", label: "great" } },
+      { kind: "undecide", payload: { id: -3 } },
+      { kind: "undecide", payload: { id: 7 } },
+      null,
+      "text",
+    ]));
+    const q = X.retryQueue(offline, null, X.localStore("k", store));
+    assert.deepEqual(q.list().map((op) => op.kind + ":" + (op.payload.key || op.payload.id)), ["save:ft:ok", "undecide:7"]);
+    store.setItem("k", "{not json");
+    assert.equal(X.retryQueue(offline, null, X.localStore("k", store)).size(), 0);
+  });
+
+  test("a store that throws or is full still queues in memory", async () => {
+    for (const store of [fakeStorage({ broken: true }), fakeStorage({ quota: 10 })]) {
+      const q = X.retryQueue(offline, null, X.localStore("k", store));
+      q.add(save("ft:1"));
+      assert.equal(q.size(), 1);
+      assert.equal(await q.flush(), 1);
+    }
+    const none = X.localStore("k", null); // no localStorage at all (Node, very old browsers)
+    assert.deepEqual(none.load(), []);
+    none.save([save("ft:1")]); // must not throw
+  });
+
+  test("the queue keeps at most the newest 200 actions", () => {
+    const store = fakeStorage();
+    const q = X.retryQueue(offline, null, X.localStore("k", store));
+    for (let i = 0; i < X.PENDING_MAX + 5; i += 1) q.add(save(`ft:${i}`));
+    assert.equal(q.size(), X.PENDING_MAX);
+    assert.equal(q.list()[0].payload.key, "ft:5");
+    assert.equal(X.retryQueue(offline, null, X.localStore("k", store)).size(), X.PENDING_MAX);
+  });
+});
