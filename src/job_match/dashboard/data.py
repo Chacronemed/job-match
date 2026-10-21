@@ -21,7 +21,9 @@ from job_match.domain.models import (
     LeadDetail,
     RunRecord,
 )
+from job_match.normalization.company import normalize_company
 from job_match.normalization.location import department_of
+from job_match.normalization.title import normalize_title
 from job_match.persistence.db import Database
 from job_match.persistence.repositories import JobRepository, LeadRepository, RunRepository
 from job_match.tracking.constants import job_key
@@ -147,6 +149,15 @@ def why_entry(job: Job) -> dict:
     }
 
 
+def group_key(job: Job) -> str | None:
+    """Same employer + same normalized title: the page shows one row when such postings sit in
+    several departments. No employer name, no group (two hidden employers are not one)."""
+    company = normalize_company(job.company or "")
+    if not company:
+        return None
+    return f"{company}|{normalize_title(job.title or '')}"
+
+
 def job_entry(job: Job, strong_threshold: int, now: datetime) -> dict:
     bd = job.scoring_breakdown
     posted = posted_at(job)
@@ -154,6 +165,7 @@ def job_entry(job: Job, strong_threshold: int, now: datetime) -> dict:
         "id": job.id,
         # The tracking key in D1 (`source:source_job_id`), stable across DB rebuilds.
         "key": job_key(job.source, job.source_job_id),
+        "group": group_key(job),
         "section": section_of(job, strong_threshold),
         "title": job.title,
         "company": job.company,

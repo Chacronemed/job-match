@@ -35,7 +35,7 @@
 
 # CI/CD and GitOps
 - jenkins
-- gitlab ci
+- gitlab
 - github actions
 - circleci
 - argocd
@@ -47,8 +47,7 @@
 - prometheus
 - grafana
 - elasticsearch
-- kibana
-- logstash
+- elk
 - loki
 - datadog
 - splunk

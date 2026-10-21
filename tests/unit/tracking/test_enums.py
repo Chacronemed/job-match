@@ -41,7 +41,7 @@ def test_labels_agree_everywhere():
 
 def test_every_status_and_label_has_display_text():
     for value in STATUSES + LABELS:
-        assert re.search(rf"\b{value}: \"[A-Z][a-z ]+\"", DASHBOARD), value
+        assert re.search(rf"\b{value}: \"[A-ZÀ-Ý][\w ’'-]+\"", DASHBOARD), value
 
 
 def test_note_limit_agrees_everywhere():

@@ -14,7 +14,7 @@ __CSS__
 </style>
 </head>
 <body>
-<a class="skip" href="#main">Skip to content</a>
+<a class="skip" href="#main">Aller au contenu</a>
 <header class="topbar">
   <div class="brand">
     <h1 class="wordmark" translate="no">job-match</h1>
@@ -22,25 +22,25 @@ __CSS__
   </div>
   <nav class="tabs" role="tablist" aria-label="Sections">
     <button class="tab" role="tab" id="tab-today" aria-controls="panel-today" aria-selected="true" data-tab="today">Aujourd'hui <span class="tab-count" id="count-today"></span></button>
-    <button class="tab" role="tab" id="tab-jobs" aria-controls="panel-jobs" aria-selected="false" tabindex="-1" data-tab="jobs">Jobs <span class="tab-count" id="count-jobs"></span></button>
+    <button class="tab" role="tab" id="tab-jobs" aria-controls="panel-jobs" aria-selected="false" tabindex="-1" data-tab="jobs">Offres <span class="tab-count" id="count-jobs"></span></button>
     <button class="tab" role="tab" id="tab-leads" aria-controls="panel-leads" aria-selected="false" tabindex="-1" data-tab="leads">Leads <span class="tab-count" id="count-leads"></span></button>
-    <button class="tab" role="tab" id="tab-runs" aria-controls="panel-runs" aria-selected="false" tabindex="-1" data-tab="runs">Runs <span class="tab-count" id="count-runs"></span></button>
+    <button class="tab" role="tab" id="tab-runs" aria-controls="panel-runs" aria-selected="false" tabindex="-1" data-tab="runs">Exécutions <span class="tab-count" id="count-runs"></span></button>
   </nav>
-  <button class="theme-toggle" id="theme-toggle" type="button" aria-pressed="false">Light mode</button>
+  <button class="theme-toggle" id="theme-toggle" type="button" aria-pressed="false">Mode clair</button>
 </header>
 
 <main id="main">
 <div class="track-banner" id="track-banner" role="status" hidden>
   <span id="track-banner-text"></span>
-  <button type="button" class="btn" id="track-retry" hidden>Retry</button>
+  <button type="button" class="btn" id="track-retry" hidden>Réessayer</button>
 </div>
 
 <section class="panel" id="panel-today" role="tabpanel" aria-labelledby="tab-today">
   <h2 class="sr-only">Aujourd'hui</h2>
   <div class="kpis kpis-today" aria-live="polite">
-    <div class="kpi kpi-apply"><span class="kpi-label">To apply</span><span class="kpi-value" id="kpi-today-apply">0</span></div>
-    <div class="kpi"><span class="kpi-label">To review</span><span class="kpi-value" id="kpi-today-review">0</span></div>
-    <div class="kpi kpi-due"><span class="kpi-label">Follow-ups due</span><span class="kpi-value" id="kpi-today-due">0</span></div>
+    <div class="kpi kpi-apply"><span class="kpi-label">À candidater</span><span class="kpi-value" id="kpi-today-apply">0</span></div>
+    <div class="kpi"><span class="kpi-label">À examiner</span><span class="kpi-value" id="kpi-today-review">0</span></div>
+    <div class="kpi kpi-due"><span class="kpi-label">Relances dues</span><span class="kpi-value" id="kpi-today-due">0</span></div>
   </div>
 
   <div class="followups" id="today-followups" hidden>
@@ -56,11 +56,11 @@ __CSS__
         </colgroup>
         <thead>
           <tr>
-            <th scope="col">Title</th>
-            <th scope="col">Company</th>
-            <th scope="col">Status</th>
-            <th scope="col">Follow up</th>
-            <th scope="col" class="link-col">Link</th>
+            <th scope="col">Titre</th>
+            <th scope="col">Entreprise</th>
+            <th scope="col">Statut</th>
+            <th scope="col">Relance</th>
+            <th scope="col" class="link-col">Lien</th>
           </tr>
         </thead>
         <tbody id="today-followups-body"></tbody>
@@ -79,73 +79,75 @@ __CSS__
         <col class="w-score">
         <col class="w-status">
         <col class="w-date">
+        <col class="w-actions">
         <col class="w-link">
       </colgroup>
       <thead>
         <tr>
-          <th scope="col">Title</th>
-          <th scope="col">Company</th>
-          <th scope="col">Dept</th>
+          <th scope="col">Titre</th>
+          <th scope="col">Entreprise</th>
+          <th scope="col">Dép.</th>
           <th scope="col" class="num">Score</th>
-          <th scope="col">Status</th>
-          <th scope="col">Posted</th>
-          <th scope="col" class="link-col">Link</th>
+          <th scope="col">Statut</th>
+          <th scope="col">Publiée</th>
+          <th scope="col"><span class="sr-only">Actions rapides</span></th>
+          <th scope="col" class="link-col">Lien</th>
         </tr>
       </thead>
       <tbody id="today-body"></tbody>
     </table>
-    <p class="empty" id="today-empty" hidden>Nothing left to review. Every listed job has a status.</p>
+    <p class="empty" id="today-empty" hidden>Plus rien à examiner : chaque offre listée a un statut.</p>
   </div>
 </section>
 
 <section class="panel" id="panel-jobs" role="tabpanel" aria-labelledby="tab-jobs" hidden>
-  <h2 class="sr-only">Jobs</h2>
+  <h2 class="sr-only">Offres</h2>
   <div class="kpis" aria-live="polite">
-    <div class="kpi kpi-strong"><span class="kpi-label">Strong</span><span class="kpi-value" id="kpi-strong">0</span></div>
-    <div class="kpi kpi-eligible"><span class="kpi-label">Eligible</span><span class="kpi-value" id="kpi-eligible">0</span></div>
-    <div class="kpi kpi-stretch"><span class="kpi-label">Stretch</span><span class="kpi-value" id="kpi-stretch">0</span></div>
-    <div class="kpi kpi-total"><span class="kpi-label">Shown</span><span class="kpi-value"><span id="kpi-shown">0</span><span class="kpi-of"> / <span id="kpi-total">0</span></span></span></div>
+    <div class="kpi kpi-strong"><span class="kpi-label">Fortes</span><span class="kpi-value" id="kpi-strong">0</span></div>
+    <div class="kpi kpi-eligible"><span class="kpi-label">Éligibles</span><span class="kpi-value" id="kpi-eligible">0</span></div>
+    <div class="kpi kpi-stretch"><span class="kpi-label">À tenter</span><span class="kpi-value" id="kpi-stretch">0</span></div>
+    <div class="kpi kpi-total"><span class="kpi-label">Affichées</span><span class="kpi-value"><span id="kpi-shown">0</span><span class="kpi-of"> / <span id="kpi-total">0</span></span></span></div>
   </div>
 
   <details class="controls" id="jobs-controls" open>
-    <summary class="controls-summary">Filters</summary>
+    <summary class="controls-summary">Filtres</summary>
     <div class="controls-grid">
       <label class="field field-search">
-        <span class="field-label">Search</span>
-        <input type="search" id="f-search" name="q" placeholder="Title or company…" autocomplete="off" spellcheck="false">
+        <span class="field-label">Recherche</span>
+        <input type="search" id="f-search" name="q" placeholder="Titre ou entreprise…" autocomplete="off" spellcheck="false">
       </label>
       <div class="field field-sections" role="group" aria-label="Sections">
         <span class="field-label">Section</span>
         <div class="chips">
-          <button type="button" class="chip chip-strong" data-section="strong" aria-pressed="true">Strong</button>
-          <button type="button" class="chip chip-eligible" data-section="eligible" aria-pressed="true">Eligible</button>
-          <button type="button" class="chip chip-stretch" data-section="stretch" aria-pressed="true">Stretch</button>
+          <button type="button" class="chip chip-strong" data-section="strong" aria-pressed="true">Fortes</button>
+          <button type="button" class="chip chip-eligible" data-section="eligible" aria-pressed="true">Éligibles</button>
+          <button type="button" class="chip chip-stretch" data-section="stretch" aria-pressed="true">À tenter</button>
         </div>
       </div>
       <label class="field">
-        <span class="field-label">Department</span>
-        <select id="f-department" name="department"><option value="">All</option></select>
+        <span class="field-label">Département</span>
+        <select id="f-department" name="department"><option value="">Tous</option></select>
       </label>
       <label class="field">
-        <span class="field-label">Status</span>
-        <select id="f-status" name="status"><option value="">All</option></select>
+        <span class="field-label">Statut</span>
+        <select id="f-status" name="status"><option value="">Tous</option></select>
       </label>
       <div class="field field-score">
-        <label class="field-label" for="f-min-score">Min score <span class="field-hint" id="min-score-hint"></span></label>
+        <label class="field-label" for="f-min-score">Score minimum <span class="field-hint" id="min-score-hint"></span></label>
         <div class="score-row">
           <input type="range" id="f-min-score" name="min_score" min="0" max="100" step="5" value="0">
           <output for="f-min-score" id="f-min-score-out" class="mono">0</output>
         </div>
       </div>
       <label class="field">
-        <span class="field-label">Posted from</span>
+        <span class="field-label">Publiée depuis</span>
         <input type="date" id="f-from" name="from" autocomplete="off">
       </label>
       <label class="field">
-        <span class="field-label">Posted to</span>
+        <span class="field-label">Publiée avant</span>
         <input type="date" id="f-to" name="to" autocomplete="off">
       </label>
-      <button type="button" class="btn btn-secondary field-reset" id="f-reset">Reset</button>
+      <button type="button" class="btn btn-secondary field-reset" id="f-reset">Réinitialiser</button>
     </div>
   </details>
 
@@ -162,64 +164,71 @@ __CSS__
         <col class="w-status">
         <col class="w-date">
         <col class="w-age">
+        <col class="w-actions">
         <col class="w-link">
       </colgroup>
       <thead>
         <tr>
-          <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="title">Title</button></th>
-          <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="company">Company</button></th>
-          <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="department">Dept</button></th>
-          <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="contract">Contract</button></th>
+          <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="title">Titre</button></th>
+          <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="company">Entreprise</button></th>
+          <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="department">Dép.</button></th>
+          <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="contract">Contrat</button></th>
           <th scope="col" class="num" aria-sort="descending"><button type="button" class="sort" data-key="score">Score</button></th>
-          <th scope="col" class="num" aria-sort="none"><button type="button" class="sort" data-key="required_years">Years</button></th>
-          <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="status">Status</button></th>
-          <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="posted_at">Posted</button></th>
-          <th scope="col" class="num" aria-sort="none"><button type="button" class="sort" data-key="age_days">Age</button></th>
-          <th scope="col" class="link-col"><span class="sort-static">Link</span></th>
+          <th scope="col" class="num" aria-sort="none"><button type="button" class="sort" data-key="required_years">Années</button></th>
+          <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="status">Statut</button></th>
+          <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="posted_at">Publiée</button></th>
+          <th scope="col" class="num" aria-sort="none"><button type="button" class="sort" data-key="age_days">Âge</button></th>
+          <th scope="col"><span class="sr-only">Actions rapides</span></th>
+          <th scope="col" class="link-col"><span class="sort-static">Lien</span></th>
         </tr>
       </thead>
       <tbody id="jobs-body"></tbody>
     </table>
-    <p class="empty" id="jobs-empty" hidden>No job matches these filters.</p>
+    <p class="empty" id="jobs-empty" hidden>Aucune offre ne correspond à ces filtres.</p>
   </div>
 </section>
 
 <section class="panel" id="panel-leads" role="tabpanel" aria-labelledby="tab-leads" hidden>
-  <h2 class="sr-only">Funding leads</h2>
+  <h2 class="sr-only">Leads de financement</h2>
   <p class="rowcount" id="leads-rowcount"></p>
   <div class="table-wrap">
     <table class="data leads" id="leads-table">
       <thead>
         <tr>
-          <th scope="col">Company</th>
-          <th scope="col">Priority</th>
-          <th scope="col">Raise</th>
-          <th scope="col">Hiring</th>
-          <th scope="col" class="num">Open jobs</th>
-          <th scope="col">Published</th>
+          <th scope="col">Entreprise</th>
+          <th scope="col">Priorité</th>
+          <th scope="col">Levée</th>
+          <th scope="col">Recrutement</th>
+          <th scope="col" class="num">Offres</th>
+          <th scope="col">Publiée</th>
           <th scope="col" class="link-col">Article</th>
         </tr>
       </thead>
       <tbody id="leads-body"></tbody>
     </table>
-    <p class="empty" id="leads-empty" hidden>No funding leads yet.</p>
+    <p class="empty" id="leads-empty" hidden>Aucun lead de financement pour l’instant.</p>
   </div>
 </section>
 
 <section class="panel" id="panel-runs" role="tabpanel" aria-labelledby="tab-runs" hidden>
-  <h2 class="sr-only">Runs</h2>
+  <h2 class="sr-only">Exécutions</h2>
   <p class="rowcount" id="runs-rowcount"></p>
   <div class="legend" aria-hidden="true">
-    <span class="legend-item"><i class="swatch sw-rejected"></i>Rejected</span>
-    <span class="legend-item"><i class="swatch sw-duplicates"></i>Duplicates</span>
-    <span class="legend-item"><i class="swatch sw-eligible"></i>Eligible</span>
-    <span class="legend-item"><i class="swatch sw-strong"></i>of which strong</span>
-    <span class="legend-item"><i class="swatch sw-stretch"></i>Stretch</span>
+    <span class="legend-item"><i class="swatch sw-rejected"></i>Rejetées</span>
+    <span class="legend-item"><i class="swatch sw-duplicates"></i>Doublons</span>
+    <span class="legend-item"><i class="swatch sw-eligible"></i>Éligibles</span>
+    <span class="legend-item"><i class="swatch sw-strong"></i>dont fortes</span>
+    <span class="legend-item"><i class="swatch sw-stretch"></i>À tenter</span>
   </div>
   <div class="runs" id="runs-list"></div>
-  <p class="empty" id="runs-empty" hidden>No runs recorded yet.</p>
+  <p class="empty" id="runs-empty" hidden>Aucune exécution enregistrée.</p>
 </section>
 </main>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden>
+  <span id="toast-text"></span>
+  <button type="button" class="link-btn" id="toast-action" hidden></button>
+</div>
 
 <script type="application/json" id="data">__DATA__</script>
 <script>

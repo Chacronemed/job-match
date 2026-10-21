@@ -6,20 +6,22 @@
 
   var STATUSES = ["to_review", "to_apply", "applied", "interview", "rejected", "ignored"];
   var STATUS_TEXT = {
-    to_review: "To review",
-    to_apply: "To apply",
-    applied: "Applied",
-    interview: "Interview",
-    rejected: "Rejected",
-    ignored: "Ignored"
+    to_review: "À examiner",
+    to_apply: "À candidater",
+    applied: "Candidature envoyée",
+    interview: "Entretien",
+    rejected: "Refusée",
+    ignored: "Ignorée"
   };
   var LABELS = ["good_fit", "off_topic", "too_senior", "missing_skill"];
   var LABEL_TEXT = {
-    good_fit: "Good fit",
-    off_topic: "Off topic",
-    too_senior: "Too senior",
-    missing_skill: "Missing skill"
+    good_fit: "Bon match",
+    off_topic: "Hors sujet",
+    too_senior: "Trop senior",
+    missing_skill: "Compétence manquante"
   };
+  /* How far an application got: a grouped row shows its most advanced posting. */
+  var STATUS_RANK = { ignored: 0, to_review: 1, to_apply: 2, applied: 3, interview: 4, rejected: 5 };
   var ACTIVE = ["to_review", "to_apply"];
   var NO_FOLLOW_UP = ["rejected", "ignored"];
   var NOTE_MAX = 2000;
@@ -58,20 +60,61 @@
       NO_FOLLOW_UP.indexOf(app.status) < 0;
   }
 
-  /* The "Aujourd'hui" view.
-     queue: jobs still waiting for me (no row, to_review, to_apply), to_apply first, then by
-     score. followups: applications whose follow-up date is today or past, oldest first, with
-     their job when the snapshot still lists it. */
-  function todayItems(jobs, apps, today) {
-    var queue = jobs.filter(function (j) { return isActive(statusOf(apps[j.key])); });
+  /* The postings a row stands for: itself, or every posting of its group. */
+  function postingsOf(row) {
+    return row.postings || [row];
+  }
+
+  /* Same company + same normalized title (`group`, from the data) in more than one
+     department: one row, the best-scored posting as its face, `postings` holding them all
+     (best first). Anything else stays as it is. */
+  function groupJobs(jobs) {
+    var byGroup = {};
+    jobs.forEach(function (j) {
+      if (j.group) (byGroup[j.group] = byGroup[j.group] || []).push(j);
+    });
+    var done = {};
+    var rows = [];
+    jobs.forEach(function (j) {
+      var members = j.group ? byGroup[j.group] : null;
+      var depts = {};
+      (members || []).forEach(function (m) { depts[m.department || "?"] = true; });
+      if (!members || members.length < 2 || Object.keys(depts).length < 2) { rows.push(j); return; }
+      if (done[j.group]) return;
+      done[j.group] = true;
+      var sorted = members.slice().sort(function (a, b) {
+        return (b.score === null ? -1 : b.score) - (a.score === null ? -1 : a.score);
+      });
+      var row = Object.assign({}, sorted[0]);
+      row.postings = sorted;
+      row.departments = Object.keys(depts).sort();
+      rows.push(row);
+    });
+    return rows;
+  }
+
+  /* A row's status: its posting's, or the most advanced one of its group. */
+  function rowStatus(row, apps) {
+    return postingsOf(row).reduce(function (best, p) {
+      var s = statusOf(apps[p.key]);
+      return STATUS_RANK[s] > STATUS_RANK[best] ? s : best;
+    }, "ignored");
+  }
+
+  /* The "Aujourd'hui" view, over rows (`groupJobs`).
+     queue: rows still waiting for me (to_review, to_apply), to_apply first, then by score.
+     followups: applications whose follow-up date is today or past, oldest first, with their
+     posting when the snapshot still lists it. */
+  function todayItems(rows, apps, today) {
+    var queue = rows.filter(function (r) { return isActive(rowStatus(r, apps)); });
     queue.sort(function (a, b) {
-      var sa = statusOf(apps[a.key]) === "to_apply" ? 0 : 1;
-      var sb = statusOf(apps[b.key]) === "to_apply" ? 0 : 1;
+      var sa = rowStatus(a, apps) === "to_apply" ? 0 : 1;
+      var sb = rowStatus(b, apps) === "to_apply" ? 0 : 1;
       if (sa !== sb) return sa - sb;
       return (b.score === null ? -1 : b.score) - (a.score === null ? -1 : a.score);
     });
     var byKey = {};
-    jobs.forEach(function (j) { byKey[j.key] = j; });
+    rows.forEach(function (r) { postingsOf(r).forEach(function (p) { byKey[p.key] = p; }); });
     var followups = Object.keys(apps)
       .filter(function (k) { return isDue(apps[k], today); })
       .map(function (k) {
@@ -81,6 +124,14 @@
         return a.app.follow_up_at < b.app.follow_up_at ? -1 : a.app.follow_up_at > b.app.follow_up_at ? 1 : 0;
       });
     return { queue: queue, followups: followups };
+  }
+
+  /* Things waiting for me today, each counted once: a queued row with a follow-up due is one
+     thing, not two. */
+  function todayCount(items) {
+    var inQueue = {};
+    items.queue.forEach(function (r) { postingsOf(r).forEach(function (p) { inQueue[p.key] = true; }); });
+    return items.queue.length + items.followups.filter(function (f) { return !inQueue[f.key]; }).length;
   }
 
   function isHttpsUrl(value) {
@@ -93,11 +144,11 @@
   /* The same rules as the Worker, checked before sending so a typo shows at the field. */
   function validateRecord(rec) {
     var errors = {};
-    if (STATUSES.indexOf(rec.status) < 0) errors.status = "Pick a status.";
-    if (rec.applied_at && !isDay(rec.applied_at)) errors.applied_at = "Use a real date.";
-    if (rec.follow_up_at && !isDay(rec.follow_up_at)) errors.follow_up_at = "Use a real date.";
-    if (rec.note && rec.note.length > NOTE_MAX) errors.note = "At most " + NOTE_MAX + " characters.";
-    if (rec.cv_url && !isHttpsUrl(rec.cv_url)) errors.cv_url = "Must be an https:// link.";
+    if (STATUSES.indexOf(rec.status) < 0) errors.status = "Choisis un statut.";
+    if (rec.applied_at && !isDay(rec.applied_at)) errors.applied_at = "Indique une vraie date.";
+    if (rec.follow_up_at && !isDay(rec.follow_up_at)) errors.follow_up_at = "Indique une vraie date.";
+    if (rec.note && rec.note.length > NOTE_MAX) errors.note = NOTE_MAX + " caractères au maximum.";
+    if (rec.cv_url && !isHttpsUrl(rec.cv_url)) errors.cv_url = "Doit être un lien https://.";
     return errors;
   }
 
@@ -156,6 +207,11 @@
     daysBetween: daysBetween,
     isDue: isDue,
     todayItems: todayItems,
+    todayCount: todayCount,
+    groupJobs: groupJobs,
+    rowStatus: rowStatus,
+    postingsOf: postingsOf,
+    STATUS_RANK: STATUS_RANK,
     isHttpsUrl: isHttpsUrl,
     validateRecord: validateRecord,
     blank: blank,

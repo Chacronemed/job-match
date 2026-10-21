@@ -15,7 +15,8 @@ from job_match.persistence.db import Database
 from job_match.tracking.constants import JOB_KEY_RE
 
 JOB_KEYS = {
-    "id", "key", "section", "title", "company", "department", "location", "contract", "source",
+    "id", "key", "group", "section", "title", "company", "department", "location", "contract",
+    "source",
     "score", "required_years", "experience_status", "collected_at", "published_at",
     "posted_at", "age_days", "url", "explanations", "positive", "negative", "missing", "why",
 }

@@ -10,6 +10,50 @@ production rows. Still pending: the M21 Cloudflare setup, the data-repo cleanup 
 two Cloudflare secrets, M9 manual GitHub setup, `PROFILE_YAML` re-encoding, `SMTP_PORT` variable.
 
 ## Done
+- **Dashboard refinements** (2026-10-21, post-M22):
+  - **Aujourd'hui:** the rule was already "canonical, not closed, strong/eligible/stretch,
+    to_review or to_apply, plus follow-ups due". The local build shows 154, not the 387 that was
+    reported, which must come from another snapshot. Fixed: the tab counter counted a queued job
+    with a follow-up due twice; `tracking.todayCount` counts each one once.
+  - **French UI everywhere** (tabs, KPIs, columns, form, save states, banners, leads, runs,
+    statuses, verdicts, validation, `fr-FR` dates, units with a non-breaking space). The scorer's
+    explanation lines are translated for display only (`frExplanation`). A render test scans the
+    markup and the scripts for English labels.
+  - **Quick actions** on every row ("À candidater", "Ignorer"):
+    - saved optimistically through `saveRecord`;
+    - a toast "Offre ignorée · Annuler" for 5 s (held while hovered or focused);
+    - Annuler puts the previous record back;
+    - a refused save reverts and offers Réessayer.
+  - **Details:** tracking form → meta line → postings (when grouped) → "Pourquoi cette offre ?"
+    as a `<details>` closed by default, with counts in its summary. Each block shows chips; a
+    click reveals the sentence. The weight reads "poids +3" with a tooltip.
+  - **Grouping:** `data.py` `group` = normalized employer + normalized title; `tracking.groupJobs`
+    merges a group across two or more departments into one row (best score in front,
+    "N dép.", the most advanced status by `STATUS_RANK`). Each posting keeps its own status in
+    the details. Ignorer applies to every posting, À candidater to the representative.
+    The local data has 0 such groups; verified on a seeded copy (3 departments).
+  - **Aliases:**
+    - `gitlab: [gitlab ci, gitlab-ci, gitlabci, gitlab ci/cd]` and
+      `elk: [elastic stack, kibana, logstash]`;
+    - vocabulary: `gitlab ci` → `gitlab`, kibana/logstash removed, `elk` added;
+    - a test fails when a vocabulary term is another term's alias;
+    - the profile audit found one overlap: the profile lists both `gcp` and `google cloud`
+      (+3 each), and the alias makes one "Google Cloud" mention count both. Not changed (the
+      profile is private), to decide;
+    - scores are unchanged (gitlab already matched inside "gitlab-ci"); only the "non trouvé"
+      lists got cleaner.
+  - **Closure check:** it exists (M20) and runs daily. The 30/09 offer was checked open on
+    19/10. A live probe of the 10 oldest visible France Travail offers (10 calls) found 3
+    closed, now marked; all 10 were already past the 45-day cut-off, which stays.
+  - **Verified** with playwright-cli at 1440 and 390, dark and light:
+    - counts unique;
+    - Ignorer → toast → Annuler restores D1;
+    - a forced 500 → "Non enregistré (le serveur a échoué) · Réessayer";
+    - the panel starts closed, a chip opens its sentence, the "poids" tooltip;
+    - a grouped row with 3 postings;
+    - 0 English labels, 0 clipped numbers at 1280 and 1440, no overflow, 0 console errors.
+    - Web Interface Guidelines applied: `touch-action: manipulation`, non-breaking spaces,
+      scroll padding under the toast.
 - **Fixed table columns + RQTH-specialised recruiters** (2026-10-21, post-M22):
   - **Dashboard:** at about 1800px the Score and Posted cells clipped ("8" for 87, "19 Oct 2…").
     - Cause: every `td` has `max-width: 0; overflow: hidden`, and `min-width` on table cells

@@ -14,10 +14,16 @@
   try {
     data = JSON.parse(raw.textContent);
   } catch (err) {
-    document.getElementById("main").textContent = "The embedded data could not be read.";
+    document.getElementById("main").textContent = "Les données intégrées sont illisibles.";
     return;
   }
   var jobs = data.jobs || [];
+  var rows = T.groupJobs(jobs);
+  var SORT_TEXT = {
+    title: "titre", company: "entreprise", department: "département", contract: "contrat",
+    score: "score", required_years: "années", status: "statut", posted_at: "publication",
+    age_days: "âge"
+  };
   var leads = data.leads || [];
   var runs = data.runs || [];
   var thresholds = data.thresholds || { strong: 70, min_score: 60 };
@@ -61,7 +67,7 @@
     if (!iso) return "—";
     var d = new Date(iso);
     if (isNaN(d.getTime())) return iso.slice(0, 10);
-    return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
   }
 
   /* "19/10" for the tables; the full date goes in the cell's tooltip and the details. */
@@ -82,7 +88,7 @@
     if (!iso) return "—";
     var d = new Date(iso);
     if (isNaN(d.getTime())) return iso;
-    return d.toLocaleString("en-GB", {
+    return d.toLocaleString("fr-FR", {
       day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
       timeZone: "UTC", timeZoneName: "short"
     });
@@ -97,7 +103,7 @@
     if (amount === null || amount === undefined) return null;
     var unit = "";
     var n = amount;
-    if (n >= 1e9) { n = n / 1e9; unit = " bn"; }
+    if (n >= 1e9) { n = n / 1e9; unit = " Md"; }
     else if (n >= 1e6) { n = n / 1e6; unit = " M"; }
     else if (n >= 1e3) { n = n / 1e3; unit = " k"; }
     var s = (Math.round(n * 10) / 10).toString();
@@ -127,7 +133,7 @@
 
   function applyTheme(theme, persist) {
     document.documentElement.setAttribute("data-theme", theme);
-    themeBtn.textContent = theme === "dark" ? "Light mode" : "Dark mode";
+    themeBtn.textContent = theme === "dark" ? "Mode clair" : "Mode sombre";
     themeBtn.setAttribute("aria-pressed", theme === "light" ? "true" : "false");
     if (persist) {
       try { localStorage.setItem("job-match-theme", theme); } catch (e) { /* private window */ }
@@ -244,7 +250,7 @@
   var chips = Array.prototype.slice.call(document.querySelectorAll(".chip[data-section]"));
   var jobsBody = byId("jobs-body");
 
-  byId("min-score-hint").textContent = "(digest ≥ " + thresholds.min_score + ", strong ≥ " + thresholds.strong + ")";
+  byId("min-score-hint").textContent = "(digest ≥ " + thresholds.min_score + ", fort ≥ " + thresholds.strong + ")";
 
   function fillDepartments() {
     var counts = {};
@@ -256,7 +262,7 @@
     Object.keys(counts).sort().forEach(function (d) {
       deptSelect.appendChild(el("option", { value: d, text: d + " (" + counts[d] + ")" }));
     });
-    if (unknown) deptSelect.appendChild(el("option", { value: "?", text: "? unknown (" + unknown + ")" }));
+    if (unknown) deptSelect.appendChild(el("option", { value: "?", text: "? inconnu (" + unknown + ")" }));
   }
 
   function fillStatuses() {
@@ -270,7 +276,8 @@
     if (state.status && statusOfJob(j) !== state.status) return false;
     if (state.minScore > 0 && (j.score === null || j.score < state.minScore)) return false;
     if (state.department) {
-      if (state.department === "?" ? !!j.department : j.department !== state.department) return false;
+      var depts = T.postingsOf(j).map(function (p) { return p.department || ""; });
+      if (state.department === "?" ? depts.indexOf("") < 0 : depts.indexOf(state.department) < 0) return false;
     }
     var day = dayOf(j.posted_at);
     if (state.from && day < state.from) return false;
@@ -330,34 +337,38 @@
 
   /* Why a write failed, in words the reader can act on. */
   function failureText(err) {
-    if (err && err.status === 401) return "your Access session expired, reload the page";
-    if (err && err.status >= 500) return "the server failed";
-    return (err && err.message) || "network error";
+    if (err && err.status === 401) return "ta session Access a expiré, recharge la page";
+    if (err && err.status >= 500) return "le serveur a échoué";
+    return (err && err.message) || "erreur réseau";
   }
 
   /* A note typed in the last moment, or a save still in flight, is not stored yet. */
   window.addEventListener("beforeunload", function (ev) {
     if (track.pending > 0) { ev.preventDefault(); ev.returnValue = ""; }
   });
-  var badges = {};   /* job key -> status badges on screen, updated in place after a save */
+  /* posting key -> status badges on screen ({node, row}); a grouped row's badge is listed
+     under every posting key, so a save on any of them updates it. */
+  var badges = {};
   var api = (typeof window.fetch === "function") ? T.client(window.fetch.bind(window)) : null;
 
   function statusOfJob(j) {
-    return T.statusOf(track.apps[j.key]);
+    return T.rowStatus(j, track.apps);
   }
 
-  function statusBadge(key) {
-    var s = T.statusOf(track.apps[key]);
+  function statusBadge(row) {
+    var s = T.rowStatus(row, track.apps);
     var b = el("span", { class: "status status-" + s, text: T.STATUS_TEXT[s] });
-    (badges[key] = badges[key] || []).push(b);
+    T.postingsOf(row).forEach(function (p) {
+      (badges[p.key] = badges[p.key] || []).push({ node: b, row: row });
+    });
     return b;
   }
 
   function refreshBadges(key) {
-    var s = T.statusOf(track.apps[key]);
-    (badges[key] || []).forEach(function (b) {
-      b.className = "status status-" + s;
-      b.textContent = T.STATUS_TEXT[s];
+    (badges[key] || []).forEach(function (entry) {
+      var s = T.rowStatus(entry.row, track.apps);
+      entry.node.className = "status status-" + s;
+      entry.node.textContent = T.STATUS_TEXT[s];
     });
     updateTodayCounts();
   }
@@ -369,8 +380,8 @@
     if (track.status === "ready" || track.status === "loading") { banner.hidden = true; return; }
     banner.hidden = false;
     msg.textContent = track.status === "off"
-      ? "Tracking is unavailable in a page opened from a file. Statuses and notes need the hosted dashboard."
-      : "Tracking could not be loaded, so statuses show as “To review” and nothing can be saved.";
+      ? "Le suivi est indisponible dans une page ouverte depuis un fichier. Les statuts et les notes demandent le tableau de bord hébergé."
+      : "Le suivi n’a pas pu être chargé : les statuts s’affichent « À examiner » et rien ne peut être enregistré.";
     retry.hidden = track.status !== "error";
   }
 
@@ -415,7 +426,7 @@
     if (!j.key) return box;
     if (track.status !== "ready") {
       box.appendChild(el("p", { class: "track-off", text: track.status === "loading"
-        ? "Loading tracking…" : "Tracking unavailable: nothing can be saved from this page." }));
+        ? "Chargement du suivi…" : "Suivi indisponible : rien ne peut être enregistré depuis cette page." }));
       return box;
     }
     var rec = T.blank(track.apps[j.key]);
@@ -439,15 +450,15 @@
     var applied = el("input", { type: "date", autocomplete: "off" });
     var follow = el("input", { type: "date", autocomplete: "off" });
     var cv = el("input", { type: "url", inputmode: "url", autocomplete: "off", spellcheck: "false", placeholder: "https://…" });
-    var cvOpen = el("a", { class: "cv-open", target: "_blank", rel: "noopener noreferrer", text: "Open" });
-    var note = el("textarea", { rows: "3", maxlength: String(T.NOTE_MAX), placeholder: "Contact, salary, next step…" });
+    var cvOpen = el("a", { class: "cv-open", target: "_blank", rel: "noopener noreferrer", text: "Ouvrir" });
+    var note = el("textarea", { rows: "3", maxlength: String(T.NOTE_MAX), placeholder: "Contact, salaire, prochaine étape…" });
     var counter = el("span", { class: "note-count", "aria-hidden": "true" });
 
     var grid = el("div", { class: "track-grid" }, [
-      field("status", "Status", status),
-      field("applied_at", "Applied on", applied),
-      field("follow_up_at", "Follow up on", follow),
-      field("cv_url", "CV sent", cv, cvOpen),
+      field("status", "Statut", status),
+      field("applied_at", "Candidature envoyée le", applied),
+      field("follow_up_at", "Relance le", follow),
+      field("cv_url", "CV envoyé", cv, cvOpen),
       field("note", "Note", note, counter)
     ]);
     box.appendChild(grid);
@@ -461,12 +472,12 @@
       verdicts.appendChild(b);
     });
     var saveState = el("span", { class: "save-state", role: "status" });
-    var retry = el("button", { type: "button", class: "btn btn-retry", text: "Retry", hidden: true });
+    var retry = el("button", { type: "button", class: "btn btn-retry", text: "Réessayer", hidden: true });
     box.appendChild(el("div", { class: "track-foot" }, [saveState, retry]));
     /* The verdicts live in the "Pourquoi cette offre ?" panel, next to the reasons they
        judge; detailsFor places this block there. */
     var vState = el("span", { class: "save-state", role: "status" });
-    var vRetry = el("button", { type: "button", class: "btn btn-retry", text: "Retry", hidden: true });
+    var vRetry = el("button", { type: "button", class: "btn btn-retry", text: "Réessayer", hidden: true });
     var verdictBlock = el("div", { class: "verdict-block" }, [verdicts, vState, vRetry]);
     box.verdictBlock = verdictBlock;
 
@@ -521,20 +532,20 @@
       track.seq[key] = seq;
       track.apps[key] = Object.assign({ job_key: key }, track.apps[key] || {}, next);
       refreshBadges(key);
-      setState("saving", "Saving…");
+      setState("saving", "Enregistrement…");
       track.pending += 1;
       api.save(key, next).finally(function () { track.pending -= 1; }).then(function (res) {
         if (track.seq[key] !== seq) return;          /* a later edit is in flight */
         track.apps[key] = track.confirmed[key] = res.application;
         refreshBadges(key);
-        setState("saved", "Saved");
+        setState("saved", "Enregistré");
       }).catch(function (err) {
         if (track.seq[key] !== seq) return;
         var prev = track.confirmed[key];
         if (prev) track.apps[key] = prev; else delete track.apps[key];
         refreshBadges(key);
         fill(T.blank(prev));
-        setState("error", "Not saved (" + failureText(err) + "). The fields show the last saved values.", function () {
+        setState("error", "Non enregistré (" + failureText(err) + "). Les champs montrent les dernières valeurs enregistrées.", function () {
           fill(next);
           send(next);
         });
@@ -546,7 +557,7 @@
       var errs = T.validateRecord(next);
       showErrors(errs);
       if (Object.keys(errs).length) {
-        setState("error", "Fix the highlighted field; nothing was saved.");
+        setState("error", "Corrige le champ signalé : rien n’a été enregistré.");
         return;
       }
       send(next);
@@ -565,13 +576,13 @@
       var before = track.decisions[key];
       track.decisions[key] = label;
       syncExtras();
-      setVerdictState("saving", "Saving verdict…");
+      setVerdictState("saving", "Enregistrement de l’avis…");
       api.decide(key, label, typeof j.score === "number" ? j.score : null).then(function () {
-        setVerdictState("saved", "Verdict saved");
+        setVerdictState("saved", "Avis enregistré");
       }).catch(function (err) {
         if (before) track.decisions[key] = before; else delete track.decisions[key];
         syncExtras();
-        setVerdictState("error", "Verdict not saved (" + failureText(err) + ").", function () { decide(label); });
+        setVerdictState("error", "Avis non enregistré (" + failureText(err) + ").", function () { decide(label); });
       });
     }
     verdictBlock.addEventListener("click", function (ev) { ev.stopPropagation(); });
@@ -613,14 +624,54 @@
     return typeof w === "number" ? (w > 0 ? "+" + w : String(w)) : null;
   }
 
-  /* One skill: its pill, its weight, then the sentence of the offer it was found in. */
-  function evidenceItem(cls, name, weight, snippet, control) {
-    var head = el("div", { class: "why-head" }, [
-      el("span", { class: "tag " + cls, text: name }),
-      weight === null ? null : el("span", { class: "why-weight", text: weight }),
-      control || null
-    ]);
-    return el("li", { class: "why-item" }, [head, snippet ? el("q", { class: "evidence", text: snippet }) : null]);
+  /* "poids +3": what the skill adds to (or takes from) this offer's score, said in full on
+     hover and to screen readers. */
+  function weightTag(w) {
+    var n = Math.abs(w);
+    var points = n + " point" + (n > 1 ? "s" : "");
+    var says = w > 0 ? "Ajoute " + points + " au score de cette offre" : "Retire " + points + " au score de cette offre";
+    return el("span", { class: "why-weight", title: says + ". Le poids se règle dans ton profil.", "aria-label": "poids " + weightText(w) + " : " + says }, "poids " + weightText(w));
+  }
+
+  var chipSeq = 0;
+
+  /* Chips only; a chip with a sentence is a button that shows it under the list. One
+     sentence open at a time per list. */
+  function chipList(entries) {
+    var wrap = el("div", { class: "why-chips" });
+    var ul = el("ul", { class: "why-list" });
+    var out = el("q", { class: "evidence", id: "ev-" + (++chipSeq), hidden: true });
+    var open = null;
+    function close() {
+      if (open) open.setAttribute("aria-expanded", "false");
+      open = null;
+      out.hidden = true;
+      out.textContent = "";
+    }
+    entries.forEach(function (e) {
+      var chip;
+      if (e.snippet) {
+        chip = el("button", { type: "button", class: "tag chip-ev " + e.cls, "aria-expanded": "false", "aria-controls": out.id, title: "Voir la phrase de l’offre", text: e.name });
+        chip.addEventListener("click", function () {
+          if (open === chip) { close(); return; }
+          if (open) open.setAttribute("aria-expanded", "false");
+          open = chip;
+          chip.setAttribute("aria-expanded", "true");
+          out.textContent = e.snippet;
+          out.hidden = false;
+        });
+      } else {
+        chip = el("span", { class: "tag " + e.cls, text: e.name });
+      }
+      ul.appendChild(el("li", { class: "why-item" }, [
+        chip,
+        typeof e.weight === "number" ? weightTag(e.weight) : null,
+        e.control || null
+      ]));
+    });
+    wrap.appendChild(ul);
+    wrap.appendChild(out);
+    return wrap;
   }
 
   /* "je maîtrise": saved in D1, merged into the profile on the next run. Optimistic, like the
@@ -632,7 +683,7 @@
     var done = el("span", { class: "override-done", text: "Ajouté — compté au prochain run" });
     var undo = el("button", { type: "button", class: "link-btn", text: "Annuler" });
     var state = el("span", { class: "override-state", role: "status" });
-    var retry = el("button", { type: "button", class: "btn btn-retry", text: "Retry", hidden: true });
+    var retry = el("button", { type: "button", class: "btn btn-retry", text: "Réessayer", hidden: true });
     [add, done, undo, state, retry].forEach(function (n) { wrap.appendChild(n); });
 
     function sync() {
@@ -652,7 +703,7 @@
       if (on) track.overrides[skill] = true; else delete track.overrides[skill];
       syncAll();
       wrap.setAttribute("data-state", "saving");
-      state.textContent = "Saving…";
+      state.textContent = "Enregistrement…";
       retry.hidden = true;
       track.pending += 1;
       api.overrideSkill(skill, on).finally(function () { track.pending -= 1; }).then(function () {
@@ -662,7 +713,7 @@
         if (before) track.overrides[skill] = true; else delete track.overrides[skill];
         syncAll();
         wrap.setAttribute("data-state", "error");
-        state.textContent = "Not saved (" + failureText(err) + ").";
+        state.textContent = "Non enregistré (" + failureText(err) + ").";
         retry.hidden = false;
         retry.onclick = function () { set(on); };
       });
@@ -681,19 +732,41 @@
       : years === "0" ? "Aucune année exigée"
         : years + (years === "1" ? " an requis" : " ans requis");
     var basis = e.basis && BASIS_TEXT[e.basis] ? e.basis : "none";
-    var out = [el("div", { class: "why-head" }, [
+    var head = el("div", { class: "why-head" }, [
       el("span", { class: "why-years", text: text }),
       el("span", { class: "confidence confidence-" + basis, text: basis === "none" ? "non recalculé" : BASIS_TEXT[basis] })
-    ])];
-    if (e.sentence) out.push(el("q", { class: "evidence", text: e.sentence }));
+    ]);
+    var out = [head];
+    if (e.sentence) {
+      var q = el("q", { class: "evidence", id: "ev-" + (++chipSeq), hidden: true, text: e.sentence });
+      var more = el("button", { type: "button", class: "link-btn", "aria-expanded": "false", "aria-controls": q.id, text: "voir la phrase" });
+      more.addEventListener("click", function () {
+        var show = q.hidden;
+        q.hidden = !show;
+        more.setAttribute("aria-expanded", show ? "true" : "false");
+        more.textContent = show ? "masquer la phrase" : "voir la phrase";
+      });
+      head.appendChild(more);
+      out.push(q);
+    }
     if (e.excludes_apprenticeship) out.push(el("span", { class: "tag tag-flag", text: "hors stage et alternance" }));
     return out;
   }
 
+  function plural(n, one, many) { return n + " " + (n > 1 ? many : one); }
+
+  /* Closed by default: the tracking form is what a row is opened for; the reasons are one
+     click away. */
   function whyPanel(j, verdictBlock) {
     var w = j.why || { skills: [], unlisted: [], lowered: [], experience: null };
-    var panel = el("section", { class: "why", "aria-label": "Pourquoi cette offre ?" });
-    panel.appendChild(el("h3", { class: "why-title", text: "Pourquoi cette offre ?" }));
+    var parts = [plural(w.skills.length, "compétence", "compétences")];
+    if (w.unlisted.length) parts.push(plural(w.unlisted.length, "non trouvée", "non trouvées"));
+    if (w.lowered.length) parts.push(plural(w.lowered.length, "malus", "malus"));
+    var panel = el("details", { class: "why" });
+    panel.appendChild(el("summary", { class: "why-title" }, [
+      el("span", { text: "Pourquoi cette offre ?" }),
+      el("span", { class: "why-summary", text: parts.join(" · ") })
+    ]));
     var grid = el("div", { class: "why-grid" });
     /* Skills on the left; the shorter blocks stack on the right; the verdict spans both. */
     var left = el("div", { class: "why-col" });
@@ -702,10 +775,9 @@
     function block(name, title, body) {
       target.appendChild(el("div", { class: "why-block why-" + name }, [el("h4", { text: title })].concat(body)));
     }
-    function list(items) { return el("ul", { class: "why-list" }, items); }
 
     var skills = [w.skills.length
-      ? list(w.skills.map(function (s) { return evidenceItem("tag-pos", s.name, weightText(s.weight), s.snippet); }))
+      ? chipList(w.skills.map(function (s) { return { cls: "tag-pos", name: s.name, weight: s.weight, snippet: s.snippet }; }))
       : el("p", { class: "note", text: "Aucune compétence de ton profil trouvée dans l’offre." })];
     if (j.missing && j.missing.length) {
       skills.push(el("div", { class: "why-aside" }, [
@@ -717,13 +789,13 @@
     target = right;
 
     block("unlisted", "Non trouvé dans ton profil", [w.unlisted.length
-      ? list(w.unlisted.map(function (u) { return evidenceItem("tag-miss", u.name, null, u.snippet, overrideControl(u.name)); }))
+      ? chipList(w.unlisted.map(function (u) { return { cls: "tag-miss", name: u.name, snippet: u.snippet, control: overrideControl(u.name) }; }))
       : el("p", { class: "note", text: "L’offre ne cite pas d’autre compétence connue." })]);
 
     block("experience", "Expérience", experienceBody(w.experience));
 
     block("lowered", "Ce qui a baissé le score", [w.lowered.length
-      ? list(w.lowered.map(function (s) { return evidenceItem("tag-neg", s.name, weightText(s.weight), s.snippet); }))
+      ? chipList(w.lowered.map(function (s) { return { cls: "tag-neg", name: s.name, weight: s.weight, snippet: s.snippet }; }))
       : el("p", { class: "note", text: "Rien n’a baissé le score." })]);
 
     grid.appendChild(left);
@@ -733,10 +805,159 @@
       el("p", { class: "note", text: "Les avis s’enregistrent depuis le tableau de bord hébergé." })]);
 
     panel.appendChild(grid);
-    /* Clicks inside the panel (buttons, folded explanations) must not toggle the row. */
+    /* Clicks inside the panel (chips, buttons, the summary) must not toggle the row. */
     panel.addEventListener("click", function (ev) { ev.stopPropagation(); });
     panel.addEventListener("keydown", function (ev) { ev.stopPropagation(); });
     return panel;
+  }
+
+  /* ---------- quick actions and the undo toast ---------- */
+
+  var toast = byId("toast");
+  var toastText = byId("toast-text");
+  var toastAction = byId("toast-action");
+  var toastTimer = null;
+  var TOAST_MS = 5000;
+
+  function hideToast() {
+    clearTimeout(toastTimer);
+    toast.hidden = true;
+  }
+
+  function armToast() {
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(hideToast, TOAST_MS);
+  }
+
+  function showToast(text, actionText, onAction) {
+    toastText.textContent = text;
+    toastAction.hidden = !actionText;
+    toastAction.textContent = actionText || "";
+    toastAction.onclick = onAction ? function () { hideToast(); onAction(); } : null;
+    toast.hidden = false;
+    armToast();
+  }
+
+  /* Hovering or focusing the toast holds it: the undo stays reachable. */
+  toast.addEventListener("mouseenter", function () { clearTimeout(toastTimer); });
+  toast.addEventListener("mouseleave", armToast);
+  toast.addEventListener("focusin", function () { clearTimeout(toastTimer); });
+  toast.addEventListener("focusout", armToast);
+
+  /* A status save outside the form: the page first, then the API; a refused save brings the
+     last stored record back. */
+  function saveRecord(key, next) {
+    var seq = (track.seq[key] || 0) + 1;
+    track.seq[key] = seq;
+    track.apps[key] = Object.assign({ job_key: key }, track.apps[key] || {}, next);
+    refreshBadges(key);
+    track.pending += 1;
+    return api.save(key, next).finally(function () { track.pending -= 1; }).then(function (res) {
+      if (track.seq[key] !== seq) return;
+      track.apps[key] = track.confirmed[key] = res.application;
+      refreshBadges(key);
+    }, function (err) {
+      if (track.seq[key] === seq) {
+        var prev = track.confirmed[key];
+        if (prev) track.apps[key] = prev; else delete track.apps[key];
+        refreshBadges(key);
+      }
+      throw err;
+    });
+  }
+
+  function rerenderLists() {
+    renderJobs();
+    if (currentTab === "today") renderToday(); else updateTodayCounts();
+  }
+
+  /* changes: [{key, next}]; undo: the records to put back, or null (an undo is not undone). */
+  function applyChanges(changes, done, undo) {
+    var saving = Promise.all(changes.map(function (c) { return saveRecord(c.key, c.next); }));
+    rerenderLists();
+    showToast(done, undo ? "Annuler" : null, undo ? function () { applyChanges(undo, "Modification annulée", null); } : null);
+    saving.catch(function (err) {
+      rerenderLists();
+      showToast("Non enregistré (" + failureText(err) + ")", "Réessayer", function () { applyChanges(changes, done, undo); });
+    });
+  }
+
+  /* "Ignorer" sets every posting of a group; "À candidater" only the best-scored one (the
+     others stay one click away in the details). */
+  function quickSet(row, status) {
+    var targets = status === "ignored" ? T.postingsOf(row) : [row];
+    var before = targets.map(function (p) { return { key: p.key, next: T.blank(track.apps[p.key]) }; });
+    var changes = before.map(function (b) { return { key: b.key, next: Object.assign({}, b.next, { status: status }) }; });
+    var done = status === "ignored"
+      ? (targets.length > 1 ? targets.length + " offres ignorées" : "Offre ignorée")
+      : "Offre passée à « À candidater »";
+    applyChanges(changes, done, before);
+  }
+
+  function quickActions(row) {
+    if (track.status !== "ready" || !api) return null;
+    var s = T.rowStatus(row, track.apps);
+    var wrap = el("span", { class: "qa-wrap" });
+    function button(text, status) {
+      var b = el("button", { type: "button", class: "qa", "aria-label": text + " : " + (row.title || "offre"), text: text });
+      b.addEventListener("click", function (ev) { ev.stopPropagation(); quickSet(row, status); });
+      b.addEventListener("keydown", function (ev) { ev.stopPropagation(); });
+      wrap.appendChild(b);
+    }
+    if (s === "to_review" || s === "ignored") button("À candidater", "to_apply");
+    if (s === "to_review" || s === "to_apply") button("Ignorer", "ignored");
+    return wrap.childNodes.length ? wrap : null;
+  }
+
+  /* A grouped row's postings: each keeps its own status. */
+  function postingsBlock(j) {
+    var box = el("div", { class: "postings" });
+    box.appendChild(el("h4", { text: "Publiée dans " + j.departments.length + " départements" }));
+    var ul = el("ul", { class: "postings-list" });
+    j.postings.forEach(function (p) {
+      var li = el("li", { class: "posting" }, [
+        el("span", { class: "posting-place", text: p.location || p.department || "—" }),
+        el("span", { class: "posting-date", title: p.posted_at ? fmtDate(p.posted_at) : null, text: fmtShortDate(p.posted_at) })
+      ]);
+      if (track.status === "ready" && api) {
+        var sel = el("select", { class: "posting-status", "aria-label": "Statut de l’offre à " + (p.location || p.department || "?") });
+        T.STATUSES.forEach(function (s) { sel.appendChild(el("option", { value: s, text: T.STATUS_TEXT[s] })); });
+        sel.value = T.statusOf(track.apps[p.key]);
+        sel.addEventListener("change", function () {
+          var before = [{ key: p.key, next: T.blank(track.apps[p.key]) }];
+          applyChanges([{ key: p.key, next: Object.assign({}, before[0].next, { status: sel.value }) }],
+            "Statut enregistré pour " + (p.department || "?"), before);
+        });
+        li.appendChild(sel);
+      } else {
+        li.appendChild(statusBadge(p));
+      }
+      li.appendChild(link(p.url, "Ouvrir"));
+      ul.appendChild(li);
+    });
+    box.appendChild(ul);
+    box.addEventListener("click", function (ev) { ev.stopPropagation(); });
+    box.addEventListener("keydown", function (ev) { ev.stopPropagation(); });
+    return box;
+  }
+
+  /* The scorer writes its explanations in English (they are stored and logged that way);
+     the page shows them in French. Unknown lines pass through as they are. */
+  var EXPLAIN_FR = [
+    [/^stretch: requires (\S+)y, you have (\S+)$/, function (m) { return "À tenter : " + m[1] + " an(s) requis, tu en as " + m[2]; }],
+    [/^Matched preferred: (.+) \((\+?-?\d+)\)$/, function (m) { return "Compétence trouvée : " + m[1] + " (" + m[2] + ")"; }],
+    [/^Missed preferred: (.+)$/, function (m) { return "Compétence absente de l’offre : " + m[1]; }],
+    [/^Matched negative: (.+) \((-?\d+)\)$/, function (m) { return "Malus : " + m[1] + " (" + m[2] + ")"; }],
+    [/^Title keyword match: (.+) \((\+?\d+)\)$/, function (m) { return "Mot-clé dans le titre : " + m[1] + " (" + m[2] + ")"; }],
+    [/^experience: internships\/work-study excluded from required years$/, function () { return "Expérience : stages et alternance exclus des années requises"; }]
+  ];
+
+  function frExplanation(line) {
+    for (var i = 0; i < EXPLAIN_FR.length; i++) {
+      var m = EXPLAIN_FR[i][0].exec(line);
+      if (m) return EXPLAIN_FR[i][1](m);
+    }
+    return line;
   }
 
   function detailsFor(j, prefix, colspan) {
@@ -746,10 +967,10 @@
     box.appendChild(form);
     var meta = [];
     if (j.location) meta.push(j.location);
-    if (j.source) meta.push("source: " + j.source);
-    if (!j.published_at) meta.push("no posting date from the source");
-    if (j.posted_at) meta.push("posted " + fmtDate(j.posted_at));
-    if (j.collected_at) meta.push("collected " + fmtDate(j.collected_at));
+    if (j.source) meta.push("source : " + j.source);
+    if (!j.published_at) meta.push("pas de date de publication à la source");
+    if (j.posted_at) meta.push("publiée le " + fmtDate(j.posted_at));
+    if (j.collected_at) meta.push("collectée le " + fmtDate(j.collected_at));
     var stretchLine = null;
     var others = [];
     (j.explanations || []).forEach(function (line) {
@@ -757,13 +978,14 @@
       else others.push(line);
     });
     box.appendChild(el("p", { class: "meta", text: meta.join(" · ") }));
-    if (stretchLine) box.appendChild(el("p", { class: "stretch-note", text: stretchLine }));
+    if (stretchLine) box.appendChild(el("p", { class: "stretch-note", text: frExplanation(stretchLine) }));
+    if (j.postings) box.appendChild(postingsBlock(j));
 
     var panel = whyPanel(j, form.verdictBlock || null);
     if (others.length) {
       panel.appendChild(el("details", { class: "explain-all" }, [
         el("summary", { text: "Toutes les explications (" + others.length + ")" }),
-        el("ul", null, others.map(function (t) { return el("li", { text: t }); }))
+        el("ul", null, others.map(function (t) { return el("li", { text: frExplanation(t) }); }))
       ]));
     }
     box.appendChild(panel);
@@ -774,33 +996,39 @@
   /* Cell builders shared by the Jobs table and the Aujourd'hui queue. */
   var COLUMNS = {
     title: function (j, prefix, expanded) {
-      return cell("col-title", "Title", el("button", {
+      return cell("col-title", "Titre", el("button", {
         type: "button", class: "expand", "aria-expanded": expanded ? "true" : "false",
         "aria-controls": prefix + "-details-" + j.id
       }, [el("span", { class: "dot dot-" + j.section, "aria-hidden": "true" }), el("span", { class: "title-text", text: j.title || "—", title: j.title || null })]));
     },
     company: function (j) {
-      var td = cell("col-company", "Company", j.company || "—");
+      var td = cell("col-company", "Entreprise", j.company || "—");
       if (j.company) td.title = j.company;
       return td;
     },
-    department: function (j) { return cell("col-dept", "Dept", j.department || "?"); },
-    contract: function (j) { return cell("col-contract", "Contract", j.contract || "UNKNOWN"); },
+    department: function (j) {
+      if (!j.postings) return cell("col-dept", "Dép.", j.department || "?");
+      var td = cell("col-dept", "Dép.", el("span", { class: "dept-multi", text: j.departments.length + " dép." }));
+      td.title = j.departments.length + " départements : " + j.departments.join(", ");
+      return td;
+    },
+    actions: function (j) { return cell("col-actions", "Actions", quickActions(j)); },
+    contract: function (j) { return cell("col-contract", "Contrat", j.contract || "INCONNU"); },
     score: function (j) { return cell("num col-score", "Score", scoreCell(j)); },
     required_years: function (j) {
       var years = fmtYears(j.required_years);
-      return cell("num col-years", "Years", el("span", { class: years === null ? "unknown years" : "years", text: years === null ? "—" : years + "y" }));
+      return cell("num col-years", "Années", el("span", { class: years === null ? "unknown years" : "years", text: years === null ? "—" : years + " an" + (years === "0" || years === "1" ? "" : "s") }));
     },
-    status: function (j) { return cell("col-status", "Status", statusBadge(j.key)); },
-    posted_at: function (j) { return dateCell("col-date", "Posted", j.posted_at); },
+    status: function (j) { return cell("col-status", "Statut", statusBadge(j)); },
+    posted_at: function (j) { return dateCell("col-date", "Publiée", j.posted_at); },
     age_days: function (j) {
       var age = typeof j.age_days === "number" ? j.age_days : null;
-      return cell("num col-age", "Age", el("span", { class: age === null ? "unknown" : "", text: age === null ? "—" : age + "d" }));
+      return cell("num col-age", "Âge", el("span", { class: age === null ? "unknown" : "", text: age === null ? "—" : age + " j" }));
     },
-    link: function (j) { return cell("link-col", "Link", link(j.url, "Open")); }
+    link: function (j) { return cell("link-col", "Lien", link(j.url, "Ouvrir")); }
   };
-  var JOB_COLUMNS = ["title", "company", "department", "contract", "score", "required_years", "status", "posted_at", "age_days", "link"];
-  var TODAY_COLUMNS = ["title", "company", "department", "score", "status", "posted_at", "link"];
+  var JOB_COLUMNS = ["title", "company", "department", "contract", "score", "required_years", "status", "posted_at", "age_days", "actions", "link"];
+  var TODAY_COLUMNS = ["title", "company", "department", "score", "status", "posted_at", "actions", "link"];
 
   function jobRows(list, prefix, columns, expandedMap) {
     var frag = document.createDocumentFragment();
@@ -818,7 +1046,7 @@
         if (!now && existing) existing.parentNode.removeChild(existing);
       }
       row.addEventListener("click", function (ev) {
-        if (ev.target.closest("a")) return;
+        if (ev.target.closest("a, .qa")) return;
         toggle();
       });
       row.addEventListener("keydown", function (ev) {
@@ -834,21 +1062,21 @@
   function dropBadges(root) {
     /* Badges inside a table about to be cleared stop being updated. */
     Object.keys(badges).forEach(function (k) {
-      badges[k] = badges[k].filter(function (b) { return !root.contains(b); });
+      badges[k] = badges[k].filter(function (b) { return !root.contains(b.node); });
     });
   }
 
   function renderJobs() {
-    var shown = jobs.filter(matches).sort(compare);
+    var shown = rows.filter(matches).sort(compare);
     var counts = { strong: 0, eligible: 0, stretch: 0 };
     shown.forEach(function (j) { counts[j.section] += 1; });
     byId("kpi-strong").textContent = counts.strong;
     byId("kpi-eligible").textContent = counts.eligible;
     byId("kpi-stretch").textContent = counts.stretch;
     byId("kpi-shown").textContent = shown.length;
-    byId("kpi-total").textContent = jobs.length;
-    byId("jobs-rowcount").textContent = shown.length + " of " + jobs.length + " jobs · sorted by " +
-      state.sortKey.replace("_", " ") + (state.sortDir === "asc" ? " ↑" : " ↓");
+    byId("kpi-total").textContent = rows.length;
+    byId("jobs-rowcount").textContent = shown.length + " sur " + rows.length + " offres · tri par " +
+      SORT_TEXT[state.sortKey] + (state.sortDir === "asc" ? " ↑" : " ↓");
 
     dropBadges(jobsBody);
     clear(jobsBody);
@@ -859,12 +1087,12 @@
   /* ---------- aujourd'hui ---------- */
 
   function updateTodayCounts() {
-    var items = T.todayItems(jobs, track.apps, T.localDay());
+    var items = T.todayItems(rows, track.apps, T.localDay());
     var toApply = items.queue.filter(function (j) { return statusOfJob(j) === "to_apply"; }).length;
     byId("kpi-today-apply").textContent = toApply;
     byId("kpi-today-review").textContent = items.queue.length - toApply;
     byId("kpi-today-due").textContent = items.followups.length;
-    byId("count-today").textContent = items.queue.length + items.followups.length;
+    byId("count-today").textContent = T.todayCount(items);
   }
 
   function followupRow(f) {
@@ -872,17 +1100,17 @@
     var row = el("tr", { class: "row row-followup" + (j ? " row-" + j.section : "") });
     var title = j
       ? el("span", { class: "followup-title" }, [el("span", { class: "dot dot-" + j.section, "aria-hidden": "true" }), el("span", { class: "title-text", text: j.title || "—" })])
-      : el("span", { class: "unknown", text: f.key + " · offer no longer listed" });
-    var titleCell = cell("col-title", "Title", title);
+      : el("span", { class: "unknown", text: f.key + " · offre plus affichée" });
+    var titleCell = cell("col-title", "Titre", title);
     if (j && j.title) titleCell.title = j.title;
     row.appendChild(titleCell);
-    row.appendChild(cell("col-company", "Company", j ? (j.company || "—") : "—"));
-    row.appendChild(cell("col-status", "Status", statusBadge(f.key)));
+    row.appendChild(cell("col-company", "Entreprise", j ? (j.company || "—") : "—"));
+    row.appendChild(cell("col-status", "Statut", statusBadge(j || { key: f.key })));
     var due = el("span", { class: "due" + (f.late > 0 ? " due-late" : "") }, [
-      fmtShortDate(f.app.follow_up_at), el("span", { class: "due-late-text", text: f.late > 0 ? " · " + f.late + "d late" : " · today" })
+      fmtShortDate(f.app.follow_up_at), el("span", { class: "due-late-text", text: f.late > 0 ? " · " + f.late + " j de retard" : " · aujourd’hui" })
     ]);
-    row.appendChild(cell("col-due", "Follow up", due));
-    row.appendChild(cell("link-col", "Link", j ? link(j.url, "Open") : el("span", { class: "unknown", text: "—" })));
+    row.appendChild(cell("col-due", "Relance", due));
+    row.appendChild(cell("link-col", "Lien", j ? link(j.url, "Ouvrir") : el("span", { class: "unknown", text: "—" })));
     if (j) {
       /* Opens the job in the queue below or, when it has left the queue, in Jobs. */
       row.setAttribute("tabindex", "0");
@@ -895,7 +1123,10 @@
     return row;
   }
 
-  function openInJobs(j) {
+  function openInJobs(posting) {
+    var j = rows.filter(function (r) {
+      return T.postingsOf(r).some(function (p) { return p.key === posting.key; });
+    })[0] || posting;
     state.q = (j.title || "").toLowerCase();
     searchInput.value = j.title || "";
     state.status = ""; statusSelect.value = "";
@@ -908,7 +1139,7 @@
 
   function renderToday() {
     var today = T.localDay();
-    var items = T.todayItems(jobs, track.apps, today);
+    var items = T.todayItems(rows, track.apps, today);
     updateTodayCounts();
 
     var fBody = byId("today-followups-body");
@@ -921,7 +1152,7 @@
     dropBadges(qBody);
     clear(qBody);
     byId("today-empty").hidden = items.queue.length > 0;
-    byId("today-rowcount").textContent = items.queue.length + " jobs to review or apply to · “To apply” first, then by score";
+    byId("today-rowcount").textContent = items.queue.length + " offres à examiner ou à candidater · « À candidater » d’abord, puis par score";
     qBody.appendChild(jobRows(items.queue, "today", TODAY_COLUMNS, todayExpanded));
   }
 
@@ -1046,28 +1277,28 @@
     var meta = [];
     if (l.reason) meta.push(l.reason);
     if (l.country) meta.push(l.country);
-    if (l.source) meta.push("source: " + l.source);
+    if (l.source) meta.push("source : " + l.source);
     if (l.article_title) meta.push(l.article_title);
     box.appendChild(el("p", { class: "meta", text: meta.join(" · ") }));
     var grid = el("div", { class: "details-grid" });
     var left = el("div");
-    left.appendChild(el("h3", { text: "Evidence" }));
+    left.appendChild(el("h3", { text: "Preuves" }));
     var keys = Object.keys(l.evidence || {});
     if (keys.length) {
       left.appendChild(el("ul", null, keys.map(function (k) {
         return el("li", null, [el("b", { text: k + ": " }), l.evidence[k]]);
       })));
     } else {
-      left.appendChild(el("p", { class: "note", text: "No evidence sentence stored." }));
+      left.appendChild(el("p", { class: "note", text: "Aucune phrase de preuve enregistrée." }));
     }
     grid.appendChild(left);
     var right = el("div");
     if (l.investors && l.investors.length) {
-      right.appendChild(el("h3", { text: "Investors" }));
+      right.appendChild(el("h3", { text: "Investisseurs" }));
       right.appendChild(el("div", { class: "tags" }, l.investors.map(function (t) { return el("span", { class: "tag", text: t }); })));
     }
-    right.appendChild(el("h3", { text: "Eligible open jobs" }));
-    right.appendChild(el("p", { class: "note", text: String(l.open_jobs || 0) + " canonical eligible job(s) at this company in the dedup window" }));
+    right.appendChild(el("h3", { text: "Offres éligibles ouvertes" }));
+    right.appendChild(el("p", { class: "note", text: String(l.open_jobs || 0) + " offre(s) éligible(s) de cette entreprise dans la fenêtre de déduplication" }));
     grid.appendChild(right);
     box.appendChild(grid);
     td.appendChild(box);
@@ -1077,21 +1308,21 @@
   function renderLeads() {
     var body = byId("leads-body");
     clear(body);
-    byId("leads-rowcount").textContent = leads.length + " funding leads · high priority first";
+    byId("leads-rowcount").textContent = leads.length + " leads de financement · priorité haute d’abord";
     byId("leads-empty").hidden = leads.length > 0;
     var frag = document.createDocumentFragment();
     leads.forEach(function (l) {
       var row = el("tr", { class: "row", tabindex: "0", "aria-expanded": "false" });
       var btn = el("button", { type: "button", class: "expand", "aria-expanded": "false", "aria-controls": "lead-details-" + l.id },
         [el("span", { class: "dot " + (l.priority === "high" ? "dot-strong" : ""), "aria-hidden": "true" }), el("span", { class: "title-text", text: l.company || "—" })]);
-      row.appendChild(cell("col-title", "Company", btn));
-      row.appendChild(cell("col-priority", "Priority", el("span", { class: "badge" + (l.priority === "high" ? " badge-high" : ""), text: l.priority || "normal" })));
+      row.appendChild(cell("col-title", "Entreprise", btn));
+      row.appendChild(cell("col-priority", "Priorité", el("span", { class: "badge" + (l.priority === "high" ? " badge-high" : ""), text: l.priority === "high" ? "haute" : "normale" })));
       var raise = [fmtAmount(l.amount, l.currency), l.round].filter(Boolean).join(" · ");
-      row.appendChild(cell("col-raise", "Raise", raise ? el("span", { class: "mono", text: raise }) : el("span", { class: "unknown", text: "—" })));
-      row.appendChild(cell("col-hiring", "Hiring", l.hiring ? l.hiring : el("span", { class: "unknown", text: "—" })));
-      row.appendChild(cell("num col-open", "Open jobs", el("span", { class: "mono", text: String(l.open_jobs || 0) })));
-      row.appendChild(cell("col-date", "Published", fmtDate(l.published_at || l.created_at)));
-      row.appendChild(cell("link-col", "Article", link(l.article_url, "Read")));
+      row.appendChild(cell("col-raise", "Levée", raise ? el("span", { class: "mono", text: raise }) : el("span", { class: "unknown", text: "—" })));
+      row.appendChild(cell("col-hiring", "Recrutement", l.hiring ? l.hiring : el("span", { class: "unknown", text: "—" })));
+      row.appendChild(cell("num col-open", "Offres", el("span", { class: "mono", text: String(l.open_jobs || 0) })));
+      row.appendChild(dateCell("col-date", "Publiée", l.published_at || l.created_at));
+      row.appendChild(cell("link-col", "Article", link(l.article_url, "Lire")));
       var open = false;
       function toggle() {
         open = !open;
@@ -1128,45 +1359,45 @@
   function renderRuns() {
     var list = byId("runs-list");
     clear(list);
-    byId("runs-rowcount").textContent = runs.length + " most recent job runs · newest first";
+    byId("runs-rowcount").textContent = runs.length + " dernières exécutions · la plus récente d’abord";
     byId("runs-empty").hidden = runs.length > 0;
     runs.forEach(function (r) {
       var card = el("article", { class: "run" });
       var head = el("div", { class: "run-head" });
       head.appendChild(el("span", { class: "run-date", text: fmtDateTime(r.started_at) }));
-      if (r.pipeline === "jobs_reprocess") head.appendChild(el("span", { class: "badge badge-reprocess", text: "reprocess" }));
-      if (r.errors) head.appendChild(el("span", { class: "badge", text: r.errors + " error(s)" }));
-      head.appendChild(el("span", { class: "run-fetched" }, [r.pipeline === "jobs_reprocess" ? "read " : "fetched ", el("b", { text: String(r.fetched) })]));
+      if (r.pipeline === "jobs_reprocess") head.appendChild(el("span", { class: "badge badge-reprocess", text: "retraitement" }));
+      if (r.errors) head.appendChild(el("span", { class: "badge", text: r.errors + " erreur(s)" }));
+      head.appendChild(el("span", { class: "run-fetched" }, [r.pipeline === "jobs_reprocess" ? "lues " : "récupérées ", el("b", { text: String(r.fetched) })]));
       card.appendChild(head);
 
       var total = r.fetched || 0;
       var funnel = el("div", { class: "funnel" });
-      funnel.appendChild(seg("seg-rejected", r.rejected, total, "Rejected"));
-      funnel.appendChild(seg("seg-duplicates", r.duplicates, total, r.pipeline === "jobs_reprocess" ? "New duplicate links" : "Duplicates"));
-      var strongInner = el("i", { title: "Strong: " + r.strong });
+      funnel.appendChild(seg("seg-rejected", r.rejected, total, "Rejetées"));
+      funnel.appendChild(seg("seg-duplicates", r.duplicates, total, r.pipeline === "jobs_reprocess" ? "Nouveaux doublons" : "Doublons"));
+      var strongInner = el("i", { title: "Fortes : " + r.strong });
       strongInner.style.width = r.eligible > 0 ? (100 * r.strong / r.eligible) + "%" : "0%";
-      funnel.appendChild(seg("seg-eligible", r.eligible, total, "Eligible (" + r.strong + " strong)", strongInner));
-      funnel.appendChild(seg("seg-stretch", r.stretch, total, "Stretch"));
+      funnel.appendChild(seg("seg-eligible", r.eligible, total, "Éligibles (" + r.strong + " fortes)", strongInner));
+      funnel.appendChild(seg("seg-stretch", r.stretch, total, "À tenter"));
       card.appendChild(funnel);
 
       var stats = el("p", { class: "run-stats" });
-      stats.appendChild(stat("rejected", r.rejected));
-      stats.appendChild(stat(r.pipeline === "jobs_reprocess" ? "new links" : "duplicates", r.duplicates));
-      stats.appendChild(stat("eligible", r.eligible));
-      stats.appendChild(stat("strong", r.strong));
-      stats.appendChild(stat("stretch", r.stretch));
-      if (r.api_calls) stats.appendChild(stat("API calls", r.api_calls));
-      if (r.checked) stats.appendChild(stat("checked at source", r.checked));
-      if (r.closed) stats.appendChild(stat("closed", r.closed));
-      if (r.self_links_dropped) stats.appendChild(stat("self-links dropped", r.self_links_dropped));
-      if (r.stale_links_dropped) stats.appendChild(stat("stale links dropped", r.stale_links_dropped));
+      stats.appendChild(stat("rejetées", r.rejected));
+      stats.appendChild(stat(r.pipeline === "jobs_reprocess" ? "nouveaux liens" : "doublons", r.duplicates));
+      stats.appendChild(stat("éligibles", r.eligible));
+      stats.appendChild(stat("fortes", r.strong));
+      stats.appendChild(stat("à tenter", r.stretch));
+      if (r.api_calls) stats.appendChild(stat("appels API", r.api_calls));
+      if (r.checked) stats.appendChild(stat("vérifiées à la source", r.checked));
+      if (r.closed) stats.appendChild(stat("fermées", r.closed));
+      if (r.self_links_dropped) stats.appendChild(stat("auto-liens supprimés", r.self_links_dropped));
+      if (r.stale_links_dropped) stats.appendChild(stat("liens obsolètes supprimés", r.stale_links_dropped));
       card.appendChild(stats);
 
       var reasons = Object.keys(r.rejected_by_reason || {}).sort(function (a, b) {
         return r.rejected_by_reason[b] - r.rejected_by_reason[a];
       });
       if (reasons.length) {
-        var p = el("p", { class: "run-reasons" }, ["Rejected by reason (a job may fail several gates): "]);
+        var p = el("p", { class: "run-reasons" }, ["Rejets par motif (une offre peut échouer à plusieurs filtres) : "]);
         reasons.forEach(function (k, i) {
           if (i) p.appendChild(document.createTextNode(" · "));
           p.appendChild(document.createTextNode(k.toLowerCase() + " "));
@@ -1182,9 +1413,9 @@
           var s = r.by_source[name] || {};
           sp.appendChild(el("span", null, [
             name + ": ",
-            el("b", { text: String(s.fetched || 0) }), " fetched, ",
-            el("b", { text: String(s.eligible || 0) }), " eligible, ",
-            el("b", { text: String(s.calls || 0) }), " calls"
+            el("b", { text: String(s.fetched || 0) }), " récupérées, ",
+            el("b", { text: String(s.eligible || 0) }), " éligibles, ",
+            el("b", { text: String(s.calls || 0) }), " appels"
           ]));
         });
         card.appendChild(sp);
@@ -1195,8 +1426,8 @@
 
   /* ---------- boot ---------- */
 
-  byId("generated-at").textContent = "snapshot " + fmtDateTime(data.generated_at);
-  byId("count-jobs").textContent = jobs.length;
+  byId("generated-at").textContent = "instantané du " + fmtDateTime(data.generated_at);
+  byId("count-jobs").textContent = rows.length;
   byId("count-leads").textContent = leads.length;
   byId("count-runs").textContent = runs.length;
   fillDepartments();

@@ -81,10 +81,10 @@ def test_jobs_table_has_posted_and_age_columns_and_no_collected_column():
     html = render_index(
         {"generated_at": "", "thresholds": {}, "jobs": [], "leads": [], "runs": []}
     )
-    assert 'data-key="posted_at">Posted<' in html
-    assert 'data-key="age_days">Age<' in html
+    assert 'data-key="posted_at">Publiée<' in html
+    assert 'data-key="age_days">Âge<' in html
     assert 'data-key="collected_at"' not in html
-    assert "Posted from" in html and "Collected from" not in html
+    assert "Publiée depuis" in html and "Collected from" not in html
     assert '"status", "posted_at", "age_days"]' in html  # SORT_KEYS allow-list for the hash
 
 
@@ -95,7 +95,7 @@ def test_today_is_the_default_tab_and_jobs_has_a_status_column_and_filter():
     assert 'id="panel-today" role="tabpanel" aria-labelledby="tab-today">' in html
     assert 'id="panel-jobs" role="tabpanel" aria-labelledby="tab-jobs" hidden>' in html
     assert 'var TABS = ["today", "jobs", "leads", "runs"];' in html
-    assert 'data-key="status">Status<' in html
+    assert 'data-key="status">Statut<' in html
     assert '<select id="f-status" name="status">' in html
     assert "Relances du jour" in html and "À traiter" in html
     assert 'id="track-banner"' in html
@@ -104,3 +104,19 @@ def test_today_is_the_default_tab_and_jobs_has_a_status_column_and_filter():
 def test_tracking_script_is_inlined_before_the_dashboard_script():
     html = render_index(_EMPTY)
     assert html.index("root.JMTracking = api") < html.index("var T = window.JMTracking;")
+
+
+def test_the_interface_is_in_french():
+    """No English label left in the markup or the scripts' visible strings."""
+    import re
+
+    html = render_index(_EMPTY)
+    text_nodes = re.findall(r">([^<>]+)<", html.split('<script type="application/json"')[0])
+    visible = " ".join(t.strip() for t in text_nodes if t.strip())
+    for word in ("Title", "Company", "Status", "Posted", "Link", "Filters", "Reset", "Strong",
+                 "Eligible", "Stretch", "To apply", "To review", "Follow", "Light mode", "Runs"):
+        assert not re.search(rf"\b{word}\b", visible), word
+    scripts = html.split('<script type="application/json"')[1]
+    for phrase in ('"Saving…"', '"Saved"', '"Retry"', '"Open"', '"Not saved', '"Verdict saved"',
+                   '"To review"', '"Applied"', '"Good fit"'):
+        assert phrase not in scripts, phrase

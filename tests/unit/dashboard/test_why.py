@@ -67,3 +67,15 @@ def test_evidence_is_capped():
 def test_no_breakdown_gives_an_empty_panel():
     assert why_entry(_job(None)) == {"skills": [], "unlisted": [], "lowered": [],
                                      "experience": None}
+
+
+def test_group_key_joins_employer_and_normalized_title():
+    from dataclasses import replace
+
+    from job_match.dashboard.data import group_key
+
+    a = _job(None)
+    b = replace(a, title="DEVOPS (H/F)", location="69 - Lyon")
+    assert group_key(a) == group_key(b) and group_key(a).startswith("acme|")
+    assert group_key(replace(a, company="")) is None
+    assert group_key(replace(a, company="Other")) != group_key(a)

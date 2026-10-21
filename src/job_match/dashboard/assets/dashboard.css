@@ -386,8 +386,8 @@ table.data td.col-title { max-width: none; }
    fixed widths sized for their longest value; Title and Company share what is left and
    ellipsize (full text in the cell's tooltip). */
 table.data.fixed { table-layout: fixed; }
-table.data.fixed col.w-company { width: 20%; }
-table.data.fixed col.w-dept { width: 56px; }
+table.data.fixed col.w-company { width: 15%; }
+table.data.fixed col.w-dept { width: 72px; }
 table.data.fixed col.w-contract { width: 96px; }
 table.data.fixed col.w-score { width: 112px; }
 table.data.fixed col.w-years { width: 72px; }
@@ -396,6 +396,7 @@ table.data.fixed col.w-date { width: 80px; }
 table.data.fixed col.w-age { width: 64px; }
 table.data.fixed col.w-due { width: 160px; }
 table.data.fixed col.w-link { width: 68px; }
+table.data.fixed col.w-actions { width: 196px; }
 table.data td.num, table.data td.col-date, table.data td.col-due, table.data td.col-age {
   font-variant-numeric: tabular-nums;
   text-overflow: clip;
@@ -444,7 +445,7 @@ tr.row:focus-visible { outline: 2px solid var(--primary-focus); outline-offset: 
 .score-bar > i { display: block; height: 100%; background: var(--primary); }
 .score-strong .score-bar > i { background: var(--success); }
 .score-stretch .score-bar > i { background: var(--stretch); }
-.years { font-family: var(--mono); }
+.years { font-variant-numeric: tabular-nums; }
 .unknown { color: var(--ink-tertiary); }
 
 td.link-col a {
@@ -570,7 +571,22 @@ textarea { resize: vertical; min-height: 64px; line-height: 1.45; font: inherit;
 
 /* ---------- "Pourquoi cette offre ?" ---------- */
 
-.why-title { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--ink); }
+/* Closed by default: a summary line with the counts, the blocks behind it. */
+.why { margin-top: 4px; }
+.why-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  min-height: 36px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+}
+.why-title:focus-visible { outline: 2px solid var(--primary-focus); outline-offset: 2px; }
+.why-summary { font-weight: 400; color: var(--ink-subtle); font-size: 12px; }
+.why[open] .why-title { margin-bottom: 8px; }
 .why-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -579,10 +595,17 @@ textarea { resize: vertical; min-height: 64px; line-height: 1.45; font: inherit;
 .why-block h4 { margin: 0 0 6px; font-size: 12px; font-weight: 500; color: var(--ink-subtle); }
 .why-col { display: grid; gap: 14px; align-content: start; min-width: 0; }
 .why-verdict { grid-column: 1 / -1; }
-.why-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.why-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; }
 .details .why-list li { margin: 0; }
 .why-head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; }
-.why-weight { font-family: var(--mono); font-size: 12px; color: var(--ink-subtle); }
+.why-item { display: inline-flex; align-items: center; gap: 6px; }
+.why-weight { font-size: 12px; color: var(--ink-subtle); font-variant-numeric: tabular-nums; cursor: help; }
+.chip-ev { cursor: pointer; font: inherit; font-size: 12px; line-height: inherit; }
+.chip-ev:hover { border-color: var(--hairline-strong); }
+.chip-ev[aria-expanded="true"] { outline: 2px solid var(--primary); outline-offset: 1px; }
+.chip-ev:focus-visible { outline: 2px solid var(--primary-focus); outline-offset: 2px; }
+.evidence[hidden] { display: none; }
+.why-chips .evidence { margin-top: 8px; }
 .why-years { font-weight: 500; }
 .evidence {
   display: block;
@@ -608,7 +631,7 @@ textarea { resize: vertical; min-height: 64px; line-height: 1.45; font: inherit;
 .confidence-explicit { background: var(--success-soft); color: var(--success-ink); border-color: transparent; }
 .confidence-seniority { background: var(--stretch-soft); color: var(--stretch-ink); border-color: transparent; }
 .confidence-unknown, .confidence-not_mentioned, .confidence-none { color: var(--ink-subtle); }
-.override { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin-left: auto; }
+.override { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; }
 .btn-override { min-height: 28px; padding: 2px 10px; font-size: 12px; }
 .override-done { font-size: 12px; color: var(--success-ink); }
 .link-btn {
@@ -630,6 +653,66 @@ textarea { resize: vertical; min-height: 64px; line-height: 1.45; font: inherit;
 .verdict-block[data-state="error"] .save-state { color: var(--danger-ink); font-weight: 500; }
 .verdict-block[data-state="saved"] .save-state { color: var(--success-ink); }
 .verdict-block { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
+/* ---------- quick actions, grouped postings, toast ---------- */
+
+table.data td.col-actions { overflow: visible; text-overflow: clip; }
+.qa-wrap { display: inline-flex; gap: 6px; }
+.qa, .chip-ev, .link-btn, .posting-status { touch-action: manipulation; }
+/* The undo toast floats over the bottom of the page: keep a focused row clear of it. */
+html { scroll-padding-bottom: 80px; }
+.qa {
+  min-height: 28px;
+  padding: 2px 10px;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  background: var(--surface-2);
+  color: var(--ink-subtle);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.qa:hover, tr.row:hover .qa { color: var(--ink-muted); }
+.qa:hover { background: var(--surface-3); color: var(--ink); border-color: var(--hairline-strong); }
+.qa:active { background: var(--surface-2); }
+.qa:focus-visible { outline: 2px solid var(--primary-focus); outline-offset: 2px; }
+.dept-multi { color: var(--link); font-weight: 500; }
+
+.postings { margin: 0 0 12px; }
+.postings h4 { margin: 0 0 6px; font-size: 12px; font-weight: 500; color: var(--ink-subtle); }
+.postings-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.posting {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 56px 180px 56px;
+  align-items: center;
+  gap: 6px 14px;
+  max-width: 720px;
+}
+.posting-place { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.posting-date { color: var(--ink-subtle); font-variant-numeric: tabular-nums; }
+select.posting-status { width: 180px; min-height: 32px; }
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: calc(100vw - 32px);
+  padding: 10px 16px;
+  border-radius: var(--r-md);
+  background: var(--surface-3);
+  color: var(--ink);
+  font-size: 13px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.toast[hidden] { display: none; }
+.toast .link-btn { font-size: 13px; font-weight: 500; }
+
 .explain-all { margin-top: 12px; color: var(--ink-subtle); font-size: 12px; }
 .explain-all summary { cursor: pointer; min-height: 28px; display: flex; align-items: center; }
 .explain-all summary:focus-visible { outline: 2px solid var(--primary-focus); outline-offset: 2px; }
@@ -753,7 +836,13 @@ textarea { resize: vertical; min-height: 64px; line-height: 1.45; font: inherit;
   .track-cv_url, .track-note { grid-column: 1 / -1; }
   .track-status { grid-column: 1 / -1; }
   .save-state { margin-left: 0; flex-basis: 100%; }
-  .verdict, .btn-retry, .btn-override, .link-btn { min-height: 44px; }
+  .verdict, .btn-retry, .btn-override, .link-btn, .qa, .posting-status { min-height: 44px; }
+  table.data td.col-actions { grid-column: 1 / -1; }
+  .posting { grid-template-columns: minmax(0, 1fr) auto; }
+  select.posting-status { width: 100%; }
+  table.data td.col-actions::before { display: none; }
+  table.data td.col-actions:empty { display: none; }
+  .chip-ev { min-height: 44px; }
   .why-grid { grid-template-columns: 1fr; }
   .override { margin-left: 0; }
   table.data td.col-status, table.data td.col-due, table.data td.col-date,

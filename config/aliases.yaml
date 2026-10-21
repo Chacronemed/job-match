@@ -47,7 +47,8 @@ gcp:
   - google cloud
   - google cloud platform
 
-gitlab ci:
+gitlab:
+  - gitlab ci
   - gitlab-ci
   - gitlabci
   - gitlab ci/cd
@@ -72,3 +73,8 @@ opentelemetry:
 
 vault:
   - hashicorp vault
+
+elk:
+  - elastic stack
+  - kibana
+  - logstash

@@ -63,16 +63,68 @@ describe("Aujourd'hui", () => {
   });
 });
 
+describe("Aujourd'hui count", () => {
+  test("a queued job with a follow-up due counts once", () => {
+    const items = T.todayItems(JOBS, APPS, TODAY);
+    // queue: apply, review, new; follow-ups: applied, gone, apply (already queued)
+    assert.equal(items.queue.length + items.followups.length, 6);
+    assert.equal(T.todayCount(items), 5);
+  });
+
+  test("a group counts once and is queued while its best status is active", () => {
+    const rows = T.groupJobs([
+      job("ft:a", 80, { group: "acme|ingenieur devops", department: "75" }),
+      job("ft:b", 90, { group: "acme|ingenieur devops", department: "69" }),
+      job("ft:c", 70, { group: "acme|ingenieur devops", department: "31" }),
+    ]);
+    assert.equal(rows.length, 1);
+    assert.equal(T.todayCount(T.todayItems(rows, {}, TODAY)), 1);
+    const applied = { "ft:c": { status: "applied" } };
+    assert.equal(T.todayItems(rows, applied, TODAY).queue.length, 0);
+  });
+});
+
+describe("grouping", () => {
+  const g = (key, score, department, extra = {}) =>
+    job(key, score, { group: "acme|ingenieur devops", department, ...extra });
+
+  test("one posting in three departments is one row led by the best score", () => {
+    const rows = T.groupJobs([g("ft:a", 80, "75"), job("ft:x", 50), g("ft:b", 90, "69"), g("ft:c", 70, "31")]);
+    assert.equal(rows.length, 2);
+    const row = rows.find((r) => r.postings);
+    assert.equal(row.key, "ft:b");
+    assert.deepEqual(row.postings.map((p) => p.key), ["ft:b", "ft:a", "ft:c"]);
+    assert.deepEqual(row.departments, ["31", "69", "75"]);
+  });
+
+  test("the same department twice, a single posting, or no company are never grouped", () => {
+    assert.equal(T.groupJobs([g("ft:a", 80, "75"), g("ft:b", 90, "75")]).length, 2);
+    assert.equal(T.groupJobs([g("ft:a", 80, "75")])[0].postings, undefined);
+    const anon = [job("ft:a", 80, { group: null, department: "75" }), job("ft:b", 90, { group: null, department: "69" })];
+    assert.equal(T.groupJobs(anon).length, 2);
+  });
+
+  test("the row shows the most advanced status of its postings", () => {
+    const [row] = T.groupJobs([g("ft:a", 80, "75"), g("ft:b", 90, "69")]);
+    assert.equal(T.rowStatus(row, {}), "to_review");
+    assert.equal(T.rowStatus(row, { "ft:a": { status: "ignored" } }), "to_review");
+    assert.equal(T.rowStatus(row, { "ft:a": { status: "to_apply" }, "ft:b": { status: "ignored" } }), "to_apply");
+    assert.equal(T.rowStatus(row, { "ft:a": { status: "applied" }, "ft:b": { status: "interview" } }), "interview");
+    assert.equal(T.rowStatus(row, { "ft:a": { status: "ignored" }, "ft:b": { status: "ignored" } }), "ignored");
+  });
+});
+
 describe("statuses", () => {
-  test("a job with no row, or an unknown status, shows as To review", () => {
+  test("a job with no row, or an unknown status, shows as À examiner", () => {
     assert.equal(T.statusOf(undefined), "to_review");
     assert.equal(T.statusOf({ status: "<img src=x onerror=alert(1)>" }), "to_review");
-    assert.equal(T.STATUS_TEXT[T.statusOf({ status: "interview" })], "Interview");
+    assert.equal(T.STATUS_TEXT[T.statusOf({ status: "interview" })], "Entretien");
   });
 
   test("every status has its text", () => {
-    for (const s of T.STATUSES) assert.match(T.STATUS_TEXT[s], /^[A-Z]/);
-    for (const l of T.LABELS) assert.match(T.LABEL_TEXT[l], /^[A-Z]/);
+    for (const s of T.STATUSES) assert.match(T.STATUS_TEXT[s], /^[A-ZÀ-Ý]/);
+    for (const l of T.LABELS) assert.match(T.LABEL_TEXT[l], /^[A-ZÀ-Ý]/);
+    assert.equal(T.STATUS_TEXT.to_apply, "À candidater");
   });
 
   test("blank fills every field for the form", () => {

@@ -215,3 +215,22 @@ def test_override_weight_is_read_and_validated(tmp_path):
     with pytest.raises(ConfigError, match="override_weight"):
         load_settings(path)
     assert load_settings(REPO / "config" / "settings.yaml").scoring.override_weight == 2
+
+
+def test_no_vocabulary_term_is_another_terms_alias():
+    from job_match.config.loader import load_aliases
+    from job_match.normalization.skills import skill_forms
+
+    aliases = load_aliases(REPO / "config" / "aliases.yaml")
+    vocab = load_skill_vocabulary(REPO / "config" / "skill_vocabulary.yaml")
+    for term in vocab:
+        others = {f for v in vocab if v != term for f in skill_forms(v, aliases)}
+        assert term not in others, term  # e.g. "kibana" is an alias of elk, not a term
+
+
+def test_gitlab_ci_and_kibana_resolve_to_the_profile_spelling():
+    from job_match.config.loader import load_aliases
+
+    aliases = load_aliases(REPO / "config" / "aliases.yaml")
+    assert find_skill("Pipelines GitLab-CI et GitLab CI/CD", "gitlab", aliases)
+    assert find_skill("Dashboards Kibana", "elk", aliases)

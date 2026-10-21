@@ -597,19 +597,38 @@ The components the dashboard page actually uses (`src/job_match/dashboard/assets
     - the error in danger ink, weight 500, followed by a Retry `button-secondary`.
   - Under 768px the fields go to two columns, the pills are 44px, and the save state takes its
     own line.
+- **`quick-actions`**: two small pills in their own column before Lien, "À candidater" and
+  "Ignorer". They sit on `{colors.surface-2}` with subtle ink and no outline at rest; hover
+  brightens the text and adds a `{colors.hairline-strong}` border. They show only what makes
+  sense (to review: both; to apply: Ignorer; ignored: À candidater) and never open the row. They
+  are 44px tall under 768px, on their own line of the card.
+- **`toast`**: fixed at the bottom centre, `{colors.surface-3}`, `{rounded.md}`, 13px, the one
+  shadowed element (it floats). It holds the message plus a link button (Annuler / Réessayer). It
+  disappears after 5 s and stays while hovered or focused (`role="status"`, polite).
+- **`grouped-row`**: the same employer and normalized title in several departments is one row.
+  The Dép. cell reads "3 dép." in link ink, with the list as its tooltip. The status shown is the
+  most advanced posting's. The details list every posting (location, short date, its own status
+  select, link) above the why-panel.
+- **Language**: the whole interface is in French (sentence case), units with a non-breaking space
+  ("3 ans", "21 j"), dates via `fr-FR`.
 - **`track-banner`**: `stretch-soft` field, 13px, `{rounded.lg}`. Shown when tracking cannot load
   (a page opened from a file, or the API refused), with Retry when a retry can help.
-- **`why-panel`** ("Pourquoi cette offre ?"): below the meta line of a `details-row`, title 13px
-  weight 600.
+- **`why-panel`** ("Pourquoi cette offre ?"): a `<details>` closed by default, below the track
+  form, the meta line and (for a group) the postings list. The summary is 13px weight 600,
+  followed by the counts in subtle ink ("16 compétences · 4 non trouvées · 1 malus").
   - Two columns: "Compétences détectées" on the left; "Non trouvé dans ton profil", "Expérience"
     and "Ce qui a baissé le score" stacked on the right. "Ton avis" (the four verdict pills, with
     their own save state) spans both. One column under 768px.
   - Block headings are 12px weight 500 in `{colors.ink-subtle}`.
-  - Each finding is a pill (`tag-pos` matched, `tag-miss` unlisted, `tag-neg` lowering) followed by
-    its weight in mono caption (+3, -2), then its `evidence-snippet`.
+  - Each block shows **chips only**, wrapped inline: `tag-pos` matched, `tag-miss` unlisted,
+    `tag-neg` lowering. A chip with a sentence is a button (`aria-expanded`); clicking it shows
+    that sentence under the list, one at a time per block.
+  - The weight reads "poids +3" in subtle ink with tabular figures; its tooltip and
+    `aria-label` say what it does ("Ajoute 3 points au score de cette offre").
+  - The experience sentence is behind a "voir la phrase" link button.
   - Missing preferred skills sit under the skills as `tag-miss` pills, labelled "sans effet sur le
     score": they never lower it.
-  - "Toutes les explications (N)" folds the raw explanation list in a `<details>` at the bottom.
+  - "Toutes les explications (N)" folds the raw explanation list, translated for display.
 - **`evidence-snippet`**: a `<q>` (French quotes from `lang="fr"`), 12px `{colors.ink-subtle}`,
   8px left padding behind a 2px `{colors.hairline-strong}` rule, wraps anywhere. Always text.
 - **`confidence-badge`**: pill, 12px weight 500, after "N ans requis".
