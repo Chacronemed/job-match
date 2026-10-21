@@ -3,11 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
 <meta name="color-scheme" content="dark light">
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#010102">
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
 <meta name="robots" content="noindex, nofollow">
+<!-- Cloudflare Access needs its cookie on the manifest request too. -->
+<link rel="manifest" href="manifest.webmanifest" crossorigin="use-credentials">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-title" content="job-match">
 <title>job-match</title>
 <style>
 __CSS__
@@ -21,10 +26,11 @@ __CSS__
     <span class="generated" id="generated-at"></span>
   </div>
   <nav class="tabs" role="tablist" aria-label="Sections">
-    <button class="tab" role="tab" id="tab-today" aria-controls="panel-today" aria-selected="true" data-tab="today">Aujourd'hui <span class="tab-count" id="count-today"></span></button>
-    <button class="tab" role="tab" id="tab-jobs" aria-controls="panel-jobs" aria-selected="false" tabindex="-1" data-tab="jobs">Offres <span class="tab-count" id="count-jobs"></span></button>
+    <button class="tab" role="tab" id="tab-tri" aria-controls="panel-tri" aria-selected="true" data-tab="tri">Tri <span class="tab-count" id="count-tri"></span></button>
+    <button class="tab" role="tab" id="tab-candidatures" aria-controls="panel-candidatures" aria-selected="false" tabindex="-1" data-tab="candidatures">Candidatures <span class="tab-count" id="count-candidatures"></span></button>
+    <button class="tab" role="tab" id="tab-offres" aria-controls="panel-offres" aria-selected="false" tabindex="-1" data-tab="offres">Offres <span class="tab-count" id="count-jobs"></span></button>
     <button class="tab" role="tab" id="tab-leads" aria-controls="panel-leads" aria-selected="false" tabindex="-1" data-tab="leads">Leads <span class="tab-count" id="count-leads"></span></button>
-    <button class="tab" role="tab" id="tab-runs" aria-controls="panel-runs" aria-selected="false" tabindex="-1" data-tab="runs">Exécutions <span class="tab-count" id="count-runs"></span></button>
+    <button class="tab" role="tab" id="tab-executions" aria-controls="panel-executions" aria-selected="false" tabindex="-1" data-tab="executions">Exécutions <span class="tab-count" id="count-runs"></span></button>
   </nav>
   <button class="theme-toggle" id="theme-toggle" type="button" aria-pressed="false">Mode clair</button>
 </header>
@@ -35,72 +41,40 @@ __CSS__
   <button type="button" class="btn" id="track-retry" hidden>Réessayer</button>
 </div>
 
-<section class="panel" id="panel-today" role="tabpanel" aria-labelledby="tab-today">
-  <h2 class="sr-only">Aujourd'hui</h2>
-  <div class="kpis kpis-today" aria-live="polite">
-    <div class="kpi kpi-apply"><span class="kpi-label">À candidater</span><span class="kpi-value" id="kpi-today-apply">0</span></div>
-    <div class="kpi"><span class="kpi-label">À examiner</span><span class="kpi-value" id="kpi-today-review">0</span></div>
-    <div class="kpi kpi-due"><span class="kpi-label">Relances dues</span><span class="kpi-value" id="kpi-today-due">0</span></div>
+<section class="panel panel-tri" id="panel-tri" role="tabpanel" aria-labelledby="tab-tri">
+  <h2 class="sr-only">Tri</h2>
+  <p class="sr-only" id="tri-live" aria-live="polite" aria-atomic="true"></p>
+  <p class="tri-off" id="tri-off" hidden>Le tri enregistre tes choix : il demande le tableau de bord hébergé, avec le suivi chargé.</p>
+  <div class="tri-pending" id="tri-pending" role="status" hidden>
+    <span id="tri-pending-text"></span>
+    <button type="button" class="link-btn" id="tri-pending-retry">Réessayer</button>
   </div>
-
-  <div class="followups" id="today-followups" hidden>
-    <h3 class="block-title">Relances du jour</h3>
-    <div class="table-wrap">
-      <table class="data fixed followups-table">
-        <colgroup>
-          <col class="w-title">
-          <col class="w-company">
-          <col class="w-status">
-          <col class="w-due">
-          <col class="w-link">
-        </colgroup>
-        <thead>
-          <tr>
-            <th scope="col">Titre</th>
-            <th scope="col">Entreprise</th>
-            <th scope="col">Statut</th>
-            <th scope="col">Relance</th>
-            <th scope="col" class="link-col">Lien</th>
-          </tr>
-        </thead>
-        <tbody id="today-followups-body"></tbody>
-      </table>
-    </div>
+  <div class="tri-progress" id="tri-progress" hidden>
+    <div class="tri-progress-bar" id="tri-progress-bar" role="progressbar" aria-label="Avancement du lot" aria-valuemin="0" aria-valuenow="0" aria-valuemax="20"><i id="tri-progress-fill"></i></div>
+    <span class="tri-progress-text" id="tri-progress-text"></span>
   </div>
-
-  <h3 class="block-title">À traiter</h3>
-  <p class="rowcount" id="today-rowcount" aria-live="polite"></p>
-  <div class="table-wrap">
-    <table class="data fixed jobs today" id="today-table">
-      <colgroup>
-        <col class="w-title">
-        <col class="w-company">
-        <col class="w-dept">
-        <col class="w-score">
-        <col class="w-status">
-        <col class="w-date">
-        <col class="w-actions">
-        <col class="w-link">
-      </colgroup>
-      <thead>
-        <tr>
-          <th scope="col">Titre</th>
-          <th scope="col">Entreprise</th>
-          <th scope="col">Dép.</th>
-          <th scope="col" class="num">Score</th>
-          <th scope="col">Statut</th>
-          <th scope="col">Publiée</th>
-          <th scope="col"><span class="sr-only">Actions rapides</span></th>
-          <th scope="col" class="link-col">Lien</th>
-        </tr>
-      </thead>
-      <tbody id="today-body"></tbody>
-    </table>
-    <p class="empty" id="today-empty" hidden>Plus rien à examiner : chaque offre listée a un statut.</p>
+  <div class="tri-stage" id="tri-stage"></div>
+  <div class="tri-end" id="tri-end" tabindex="-1" hidden></div>
+  <div class="tri-controls" id="tri-controls">
+    <button type="button" class="tri-btn tri-btn-drop" id="tri-drop" aria-keyshortcuts="ArrowLeft">Écarter <kbd aria-hidden="true">←</kbd></button>
+    <button type="button" class="tri-btn tri-btn-undo" id="tri-undo" aria-keyshortcuts="Z" disabled>Annuler <kbd aria-hidden="true">Z</kbd></button>
+    <button type="button" class="tri-btn tri-btn-keep" id="tri-keep" aria-keyshortcuts="ArrowRight">Garder <kbd aria-hidden="true">→</kbd></button>
+  </div>
+  <div class="tri-reasons-bar" id="tri-reasons-bar" role="group" aria-label="Pourquoi l’écarter ?" aria-keyshortcuts="Escape" hidden>
+    <span>Pourquoi ?</span>
+    <span class="tri-reason-chips" id="tri-reason-chips"></span>
+    <button type="button" class="link-btn" id="tri-reasons-close">Passer</button>
   </div>
 </section>
 
-<section class="panel" id="panel-jobs" role="tabpanel" aria-labelledby="tab-jobs" hidden>
+<section class="panel" id="panel-candidatures" role="tabpanel" aria-labelledby="tab-candidatures" hidden>
+  <h2 class="sr-only">Candidatures</h2>
+  <p class="tri-off" id="kb-off" hidden>Les candidatures viennent du suivi : il demande le tableau de bord hébergé.</p>
+  <div class="kb-due" id="kb-due" hidden></div>
+  <div class="kb-board" id="kb-board"></div>
+</section>
+
+<section class="panel" id="panel-offres" role="tabpanel" aria-labelledby="tab-offres" hidden>
   <h2 class="sr-only">Offres</h2>
   <div class="kpis" aria-live="polite">
     <div class="kpi kpi-strong"><span class="kpi-label">Fortes</span><span class="kpi-value" id="kpi-strong">0</span></div>
@@ -110,7 +84,7 @@ __CSS__
   </div>
 
   <details class="controls" id="jobs-controls" open>
-    <summary class="controls-summary">Filtres</summary>
+    <summary class="controls-summary">Filtres<span id="filters-count"></span></summary>
     <div class="controls-grid">
       <label class="field field-search">
         <span class="field-label">Recherche</span>
@@ -210,7 +184,7 @@ __CSS__
   </div>
 </section>
 
-<section class="panel" id="panel-runs" role="tabpanel" aria-labelledby="tab-runs" hidden>
+<section class="panel" id="panel-executions" role="tabpanel" aria-labelledby="tab-executions" hidden>
   <h2 class="sr-only">Exécutions</h2>
   <p class="rowcount" id="runs-rowcount"></p>
   <div class="legend" aria-hidden="true">
@@ -233,6 +207,9 @@ __CSS__
 <script type="application/json" id="data">__DATA__</script>
 <script>
 __TRACKING_JS__
+</script>
+<script>
+__TRIAGE_JS__
 </script>
 <script>
 __JS__

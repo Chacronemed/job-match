@@ -609,6 +609,48 @@ The components the dashboard page actually uses (`src/job_match/dashboard/assets
   The Dép. cell reads "3 dép." in link ink, with the list as its tooltip. The status shown is the
   most advanced posting's. The details list every posting (location, short date, its own status
   select, link) above the why-panel.
+- **`triage-card`** (Tri, density 6 / motion 4): one card, at most 720px, centred.
+  - Fill and border: `{colors.surface-1}`, 1px hairline, `{rounded.lg}`, 24px 28px padding.
+  - Top row: badges ("Nouveau" primary-soft, "À tenter" stretch-soft) and the score as a 28px
+    figure over "/100", in the section colour.
+  - The title is 22px weight 600, then one facts line in subtle ink.
+  - Then the top 3 reasons ("kubernetes · poids +3", success or stretch ink), the skill chips,
+    and the description excerpt: 15px / 1.55, three lines, "Lire la suite".
+  - "Voir l'offre" sits bottom right.
+  - The next card peeks 12px below, scaled 0.96 at 55 % opacity. Only these two cards exist.
+  - Dragging follows the pointer with at most 6° of tilt; a "Garder" or "Écarter" tag fades in
+    with the distance. Past 30 % of the width, or flicked, the card flies out in 200 ms; under
+    reduced motion it swaps instantly.
+- **`swipe-controls`**: three buttons, 52px (56px on phones, sticky at the bottom).
+  - Écarter: danger-soft. Annuler: neutral, disabled when there is nothing to undo. Garder:
+    success-soft, solid success on hover.
+  - Each shows its key (← Z →) in a quieter weight.
+- **Tri focus and keys**:
+  - When the card holding focus leaves (a swipe started from "Lire la suite" or "Voir l'offre"),
+    focus goes to the next card (`tabindex="-1"`, ring on `:focus-visible`) or to the end
+    screen.
+  - Escape closes the reason bar.
+  - The key hints in the buttons are `aria-hidden`; `aria-keyshortcuts` carries them.
+  - While tracking loads, the buttons are disabled under "Chargement du suivi…".
+- **`reason-bar`**: after a left swipe, a `{colors.surface-2}` strip with "Pourquoi ?", four
+  quick-action pills (Hors sujet, Trop senior, Compétence manquante, Lieu) and "Passer". It
+  closes after 6 s.
+- **`progress`**: a 6px primary bar with "Lot 1/8 · 7 / 20 · 134 restantes" in tabular figures.
+  The batch-end and "Tri terminé" screens reuse the card surface, with a 22px heading and one
+  primary button.
+- **`pending-banner`**: danger-soft, "N actions en attente de connexion · Réessayer".
+- **`kanban-column`**: four columns (two under 1100px, stacked under 768px):
+  - `{colors.surface-1}`, `{rounded.lg}`, a 13px heading with its count;
+  - the drop target tints primary-soft while a card is dragged over it.
+  - "Relances dues" sits above the board in a stretch-soft band.
+- **`kanban-card`**: `{colors.surface-2}`, `{rounded.md}`, 12px padding.
+  - Title 14px weight 500, meta and dates 12px (dates in stretch ink when due).
+  - Below them: the status menu, "J'ai postulé" (small primary) and the offer link.
+  - The follow-up prompt "Relance prévue ? Relancer le 28/10 · Autre date · Pas de relance" goes
+    under the card.
+  - Dragging lifts the card with the one floating shadow.
+- **`filters-bar`** (phones): the "Filtres (n)" summary is sticky at the top of the panel and
+  counts active filters.
 - **Language**: the whole interface is in French (sentence case), units with a non-breaking space
   ("3 ans", "21 j"), dates via `fr-FR`.
 - **`track-banner`**: `stretch-soft` field, 13px, `{rounded.lg}`. Shown when tracking cannot load

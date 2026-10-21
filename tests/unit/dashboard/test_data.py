@@ -19,6 +19,7 @@ JOB_KEYS = {
     "source",
     "score", "required_years", "experience_status", "collected_at", "published_at",
     "posted_at", "age_days", "url", "explanations", "positive", "negative", "missing", "why",
+    "description_excerpt",
 }
 RUN_KEYS = {
     "id", "pipeline", "started_at", "finished_at", "fetched", "normalized",
@@ -34,7 +35,7 @@ def _by_id(data, job_id):
 
 def test_top_level_shape_and_thresholds(dashboard_data):
     data, seed = dashboard_data
-    assert set(data) == {"generated_at", "thresholds", "jobs", "leads", "runs"}
+    assert set(data) == {"generated_at", "thresholds", "jobs", "tracked", "leads", "runs"}
     assert data["thresholds"] == {"strong": 70, "min_score": 60}
     assert data["generated_at"] == seed.now.isoformat()
     json.dumps(data)  # serialisable as-is
@@ -119,6 +120,9 @@ def test_unreadable_department_is_null(dashboard_data):
 
 def test_descriptions_and_search_keywords_never_leave_the_db(dashboard_data):
     data, seed = dashboard_data
+    # The triage card's capped excerpt is the one place description text may appear.
+    for job in data["jobs"] + data["tracked"]:
+        assert len(job.pop("description_excerpt")) <= 600
     blob = json.dumps(data, ensure_ascii=False)
     assert "Secret description" not in blob
     assert seed.secret_keyword not in blob

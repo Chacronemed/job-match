@@ -5,7 +5,9 @@
   "use strict";
 
   var SECTIONS = ["strong", "eligible", "stretch"];
-  var TABS = ["today", "jobs", "leads", "runs"];
+  var TABS = ["tri", "candidatures", "offres", "leads", "executions"];
+  /* Hashes from before M23 still open the right view. */
+  var TAB_ALIASES = { today: "tri", jobs: "offres", runs: "executions" };
   var HTTP = /^https?:\/\//i;
   var T = window.JMTracking;
 
@@ -18,6 +20,7 @@
     return;
   }
   var jobs = data.jobs || [];
+  var tracked = data.tracked || [];
   var rows = T.groupJobs(jobs);
   var SORT_TEXT = {
     title: "titre", company: "entreprise", department: "département", contract: "contrat",
@@ -150,8 +153,8 @@
   var tabButtons = Array.prototype.slice.call(document.querySelectorAll(".tab"));
 
   function showTab(name, focus) {
-    if (TABS.indexOf(name) < 0) name = "today";
-    if (name === "today" && currentTab !== "today") renderToday();
+    if (TABS.indexOf(name) < 0) name = "tri";
+    var entering = name !== currentTab;
     tabButtons.forEach(function (b) {
       var on = b.getAttribute("data-tab") === name;
       b.setAttribute("aria-selected", on ? "true" : "false");
@@ -162,18 +165,20 @@
       byId("panel-" + t).hidden = t !== name;
     });
     currentTab = name;
+    if (entering) renderCurrent();
     syncHash();
   }
 
   var currentTab = "";
   var applyingHash = false;
 
-  /* The hash carries the tab and the job filters (#jobs?q=...&hide=...), so a view can be
-     shared or reloaded. Every value is validated before it touches the state. */
+  /* The hash carries the tab and the Offres filters (#offres?q=...&hide=...), whatever the
+     tab: switching to Tri and back, or reloading, keeps them. Every value is validated before
+     it touches the state. */
   function syncHash() {
     if (applyingHash) return;
     var parts = [];
-    if (currentTab === "jobs") {
+    {
       if (state.q) parts.push("q=" + encodeURIComponent(state.q));
       var off = SECTIONS.filter(function (s) { return !state.sections[s]; });
       if (off.length) parts.push("hide=" + off.join(","));
@@ -202,7 +207,8 @@
         try { params[kv.slice(0, i)] = decodeURIComponent(kv.slice(i + 1)); } catch (e) { /* bad escape */ }
       });
     }
-    return { tab: TABS.indexOf(tab) >= 0 ? tab : "today", params: params };
+    tab = TAB_ALIASES[tab] || tab;
+    return { tab: TABS.indexOf(tab) >= 0 ? tab : "tri", params: params };
   }
 
   tabButtons.forEach(function (b, i) {
@@ -238,7 +244,6 @@
     sortDir: "desc",
     expanded: {}
   };
-  var todayExpanded = {};
 
   var searchInput = byId("f-search");
   var deptSelect = byId("f-department");
@@ -269,6 +274,19 @@
     T.STATUSES.forEach(function (s) {
       statusSelect.appendChild(el("option", { value: s, text: T.STATUS_TEXT[s] }));
     });
+  }
+
+  /* How many Offres filters differ from their default: shown on the phone's "Filtres" bar. */
+  function activeFilters() {
+    var n = 0;
+    if (state.q) n += 1;
+    if (SECTIONS.some(function (s) { return !state.sections[s]; })) n += 1;
+    if (state.department) n += 1;
+    if (state.status) n += 1;
+    if (state.minScore) n += 1;
+    if (state.from) n += 1;
+    if (state.to) n += 1;
+    return n;
   }
 
   function matches(j) {
@@ -344,7 +362,7 @@
 
   /* A note typed in the last moment, or a save still in flight, is not stored yet. */
   window.addEventListener("beforeunload", function (ev) {
-    if (track.pending > 0) { ev.preventDefault(); ev.returnValue = ""; }
+    if (track.pending > 0 || (typeof retry !== "undefined" && retry.size() > 0)) { ev.preventDefault(); ev.returnValue = ""; }
   });
   /* posting key -> status badges on screen ({node, row}); a grouped row's badge is listed
      under every posting key, so a save on any of them updates it. */
@@ -370,7 +388,7 @@
       entry.node.className = "status status-" + s;
       entry.node.textContent = T.STATUS_TEXT[s];
     });
-    updateTodayCounts();
+    updateCounts();
   }
 
   function trackBanner() {
@@ -389,6 +407,7 @@
     if (!api || !/^https?:$/.test(location.protocol)) { track.status = "off"; trackBanner(); return; }
     track.status = "loading";
     trackBanner();
+    renderCurrent();  /* Tri and Candidatures say they are loading, buttons off */
     api.list().then(function (res) {
       var apps = {};
       (res.applications || []).forEach(function (a) { if (a && a.job_key) apps[a.job_key] = a; });
@@ -401,14 +420,18 @@
       track.confirmed = Object.assign({}, apps);
       track.decisions = decisions;
       track.status = "ready";
+      overlayPending();
       trackBanner();
+      tri.built = false;  /* the queue depends on the statuses just loaded */
+      renderPending();
+      flushRetry();
       renderJobs();
-      renderToday();
+      renderCurrent();
     }).catch(function () {
       track.status = "error";
       trackBanner();
       renderJobs();
-      renderToday();
+      renderCurrent();
     });
   }
 
@@ -868,7 +891,7 @@
 
   function rerenderLists() {
     renderJobs();
-    if (currentTab === "today") renderToday(); else updateTodayCounts();
+    renderCurrent();
   }
 
   /* changes: [{key, next}]; undo: the records to put back, or null (an undo is not undone). */
@@ -1028,7 +1051,6 @@
     link: function (j) { return cell("link-col", "Lien", link(j.url, "Ouvrir")); }
   };
   var JOB_COLUMNS = ["title", "company", "department", "contract", "score", "required_years", "status", "posted_at", "age_days", "actions", "link"];
-  var TODAY_COLUMNS = ["title", "company", "department", "score", "status", "posted_at", "actions", "link"];
 
   function jobRows(list, prefix, columns, expandedMap) {
     var frag = document.createDocumentFragment();
@@ -1081,46 +1103,567 @@
     dropBadges(jobsBody);
     clear(jobsBody);
     byId("jobs-empty").hidden = shown.length > 0;
+    byId("filters-count").textContent = activeFilters() ? " (" + activeFilters() + ")" : "";
     jobsBody.appendChild(jobRows(shown, "jobs", JOB_COLUMNS, state.expanded));
   }
 
-  /* ---------- aujourd'hui ---------- */
+  /* ---------- counts in the tab bar ---------- */
 
-  function updateTodayCounts() {
-    var items = T.todayItems(rows, track.apps, T.localDay());
-    var toApply = items.queue.filter(function (j) { return statusOfJob(j) === "to_apply"; }).length;
-    byId("kpi-today-apply").textContent = toApply;
-    byId("kpi-today-review").textContent = items.queue.length - toApply;
-    byId("kpi-today-due").textContent = items.followups.length;
-    byId("count-today").textContent = T.todayCount(items);
+  var X = window.JMTriage;
+  var runAt = X.latestRunAt(runs);
+  var BOARD = ["to_apply", "applied", "interview", "rejected"];
+  var BOARD_TEXT = { to_apply: "À candidater", applied: "Envoyée", interview: "Entretien", rejected: "Refus" };
+
+  /* Every posting the page knows, listed or only tracked (closed or old offers). */
+  var postingByKey = {};
+  rows.forEach(function (r) { T.postingsOf(r).forEach(function (p) { postingByKey[p.key] = p; }); });
+  tracked.forEach(function (p) { if (!postingByKey[p.key]) postingByKey[p.key] = p; });
+
+  function boardKeys() {
+    return Object.keys(track.apps).filter(function (k) { return BOARD.indexOf(T.statusOf(track.apps[k])) >= 0; });
   }
 
-  function followupRow(f) {
-    var j = f.job;
-    var row = el("tr", { class: "row row-followup" + (j ? " row-" + j.section : "") });
-    var title = j
-      ? el("span", { class: "followup-title" }, [el("span", { class: "dot dot-" + j.section, "aria-hidden": "true" }), el("span", { class: "title-text", text: j.title || "—" })])
-      : el("span", { class: "unknown", text: f.key + " · offre plus affichée" });
-    var titleCell = cell("col-title", "Titre", title);
-    if (j && j.title) titleCell.title = j.title;
-    row.appendChild(titleCell);
-    row.appendChild(cell("col-company", "Entreprise", j ? (j.company || "—") : "—"));
-    row.appendChild(cell("col-status", "Statut", statusBadge(j || { key: f.key })));
-    var due = el("span", { class: "due" + (f.late > 0 ? " due-late" : "") }, [
-      fmtShortDate(f.app.follow_up_at), el("span", { class: "due-late-text", text: f.late > 0 ? " · " + f.late + " j de retard" : " · aujourd’hui" })
-    ]);
-    row.appendChild(cell("col-due", "Relance", due));
-    row.appendChild(cell("link-col", "Lien", j ? link(j.url, "Ouvrir") : el("span", { class: "unknown", text: "—" })));
-    if (j) {
-      /* Opens the job in the queue below or, when it has left the queue, in Jobs. */
-      row.setAttribute("tabindex", "0");
-      var go = function () { openInJobs(j); };
-      row.addEventListener("click", function (ev) { if (!ev.target.closest("a")) go(); });
-      row.addEventListener("keydown", function (ev) {
-        if (ev.target === row && (ev.key === "Enter" || ev.key === " ")) { ev.preventDefault(); go(); }
+  function updateCounts() {
+    byId("count-tri").textContent = X.triageQueue(rows, track.apps, runAt).length;
+    byId("count-candidatures").textContent = boardKeys().length;
+  }
+
+  /* ---------- Tri ---------- */
+
+  var tri = {
+    items: [],      /* the session's queue, fixed when it starts so positions stay put */
+    pos: 0,
+    kept: 0,
+    dropped: 0,
+    built: false,
+    pausedAt: -1    /* batch boundary already acknowledged */
+  };
+  var undo = X.undoStack();
+  /* Read at each move: the setting can change while the page is open. */
+  function reduceMotion() {
+    return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  }
+  var triLive = byId("tri-live");
+  var reasonTimer = null;
+
+  var retry = X.retryQueue(function (op) {
+    var p = op.payload;
+    if (op.kind === "save") return api.save(p.key, p.rec).then(function (res) { track.confirmed[p.key] = res.application; });
+    if (op.kind === "decide") {
+      return api.decide(p.key, p.label, p.score).then(function (res) {
+        if (res && res.decision) undo.attach(p.key, res.decision.id);
       });
     }
-    return row;
+    return api.undecide(p.id);
+  }, function (op, err) {
+    announce("Action refusée par le serveur (" + failureText(err) + ") : rien n’a été enregistré, refais-la depuis l’onglet Offres.");
+    renderPending();
+  }, X.localStore("jm.pending.v1"));
+
+  /* Saves still waiting from an earlier visit win over what the API says until they are
+     sent: the page shows the decision I made, not the one it replaces. */
+  function overlayPending() {
+    retry.list().forEach(function (op) {
+      if (op.kind === "save") track.apps[op.payload.key] = Object.assign({ job_key: op.payload.key }, track.apps[op.payload.key] || {}, op.payload.rec);
+    });
+  }
+
+  function announce(text) {
+    triLive.textContent = "";
+    /* A new node each time so the same words are read twice in a row. */
+    setTimeout(function () { triLive.textContent = text; }, 30);
+  }
+
+  function renderPending() {
+    var n = retry.size();
+    var bar = byId("tri-pending");
+    bar.hidden = n === 0;
+    byId("tri-pending-text").textContent = n + (n > 1 ? " actions en attente" : " action en attente") + " de connexion";
+  }
+
+  function flushRetry() {
+    if (!api || !retry.size()) return;
+    retry.flush().then(renderPending, renderPending);
+  }
+  window.addEventListener("online", flushRetry);
+  setInterval(flushRetry, 15000);
+  byId("tri-pending-retry").addEventListener("click", flushRetry);
+
+  /* Send now; a network or server failure waits in the retry queue, the page keeps the new
+     state (it is what I decided). A refusal (4xx) puts the old record back. */
+  function triSave(key, rec, prev) {
+    track.apps[key] = Object.assign({ job_key: key }, track.apps[key] || {}, rec);
+    refreshBadges(key);
+    return api.save(key, rec).then(function (res) {
+      track.apps[key] = track.confirmed[key] = res.application;
+    }, function (err) {
+      if (X.retryable(err)) { retry.add({ kind: "save", payload: { key: key, rec: rec } }); renderPending(); return; }
+      if (prev) track.apps[key] = prev; else delete track.apps[key];
+      refreshBadges(key);
+      announce("Non enregistré (" + failureText(err) + ") : recharge la page puis refais ce choix.");
+    });
+  }
+
+  function triDecide(key, label, score) {
+    track.decisions[key] = label;
+    return api.decide(key, label, score).then(function (res) {
+      if (res && res.decision) undo.attach(key, res.decision.id);
+    }, function (err) {
+      if (X.retryable(err)) { retry.add({ kind: "decide", payload: { key: key, label: label, score: score } }); renderPending(); }
+    });
+  }
+
+  function buildTri() {
+    tri.items = X.triageQueue(rows, track.apps, runAt);
+    tri.pos = 0;
+    tri.built = true;
+    tri.pausedAt = -1;
+  }
+
+  function canTriage() { return track.status === "ready" && !!api; }
+
+  function reasonText(r) {
+    return r.name + " · poids " + (r.weight > 0 ? "+" + r.weight : String(r.weight));
+  }
+
+  /* One card. Everything from the data goes through textContent (el). */
+  function triCard(item, isNext) {
+    var j = item.row;
+    var w = j.why || { skills: [], unlisted: [], lowered: [] };
+    var card = el("article", {
+      class: "tri-card" + (isNext ? " is-next" : ""),
+      tabindex: isNext ? null : "-1",
+      "aria-hidden": isNext ? "true" : null,
+      "aria-label": isNext ? null : (j.title || "Offre")
+    });
+    var badges = el("div", { class: "tri-badges" });
+    if (item.isNew) badges.appendChild(el("span", { class: "badge badge-new", text: "Nouveau" }));
+    if (j.section === "stretch") badges.appendChild(el("span", { class: "badge badge-stretch", text: "À tenter" }));
+    if (j.postings) badges.appendChild(el("span", { class: "badge", text: j.departments.length + " départements" }));
+    card.appendChild(el("div", { class: "tri-top" }, [
+      badges,
+      el("span", { class: "tri-score score-" + j.section, "aria-label": "Score " + (j.score === null ? "inconnu" : j.score) }, [
+        el("b", { text: j.score === null ? "—" : String(j.score) }), el("span", { text: "/100" })
+      ])
+    ]));
+    card.appendChild(el("h3", { class: "tri-title", text: j.title || "—" }));
+    var facts = [j.company || "Entreprise non communiquée", j.location || "—", j.contract || "INCONNU"];
+    if (typeof j.age_days === "number") facts.push("publiée il y a " + j.age_days + " j");
+    card.appendChild(el("p", { class: "tri-facts", text: facts.join(" · ") }));
+    if (isNext) return card;
+
+    var reasons = X.topReasons(w);
+    if (reasons.length) {
+      card.appendChild(el("ul", { class: "tri-reasons", "aria-label": "Ce qui pèse le plus" }, reasons.map(function (r) {
+        return el("li", { class: r.weight > 0 ? "up" : "down", text: reasonText(r) });
+      })));
+    }
+    var chips = el("div", { class: "tri-chips" });
+    (j.positive || []).forEach(function (s) { chips.appendChild(el("span", { class: "tag tag-pos", text: s })); });
+    if ((w.unlisted || []).length) {
+      chips.appendChild(el("span", { class: "tri-chips-label", text: "Non trouvé dans ton profil :" }));
+      w.unlisted.forEach(function (u) { chips.appendChild(el("span", { class: "tag tag-miss", text: u.name })); });
+    }
+    card.appendChild(chips);
+
+    if (j.description_excerpt) {
+      var excerpt = el("p", { class: "tri-excerpt is-clamped", id: "tri-excerpt", text: j.description_excerpt });
+      var more = el("button", { type: "button", class: "link-btn", "aria-expanded": "false", "aria-controls": "tri-excerpt", text: "Lire la suite" });
+      more.addEventListener("click", function () {
+        var open = excerpt.classList.toggle("is-clamped") === false;
+        more.setAttribute("aria-expanded", open ? "true" : "false");
+        more.textContent = open ? "Réduire" : "Lire la suite";
+      });
+      card.appendChild(excerpt);
+      card.appendChild(more);
+    }
+    var foot = el("div", { class: "tri-foot" });
+    if (j.url && HTTP.test(j.url)) foot.appendChild(el("a", { class: "tri-link", href: j.url, target: "_blank", rel: "noopener noreferrer", text: "Voir l’offre" }));
+    card.appendChild(foot);
+    card.appendChild(el("span", { class: "tri-hint tri-hint-keep", "aria-hidden": "true", text: "Garder" }));
+    card.appendChild(el("span", { class: "tri-hint tri-hint-drop", "aria-hidden": "true", text: "Écarter" }));
+    if (canTriage()) attachSwipe(card);
+    return card;
+  }
+
+  /* Pointer Events: the card follows the finger; past 30 % of its width, or flicked, it goes. */
+  function attachSwipe(card) {
+    var start = null;
+    card.addEventListener("pointerdown", function (ev) {
+      if (ev.button !== 0 || ev.target.closest("a, button")) return;
+      start = { x: ev.clientX, y: ev.clientY, t: performance.now(), id: ev.pointerId, dx: 0 };
+      card.setPointerCapture(ev.pointerId);
+      card.classList.add("is-dragging");
+    });
+    card.addEventListener("pointermove", function (ev) {
+      if (!start || ev.pointerId !== start.id) return;
+      start.dx = ev.clientX - start.x;
+      if (reduceMotion()) return;
+      var ratio = Math.max(-1, Math.min(1, start.dx / (card.offsetWidth * 0.3)));
+      card.style.transform = "translateX(" + start.dx + "px) rotate(" + (ratio * 6) + "deg)";
+      card.style.setProperty("--swipe", String(ratio));
+    });
+    function end(ev) {
+      if (!start || ev.pointerId !== start.id) return;
+      var dx = start.dx;
+      var speed = Math.abs(dx) / Math.max(1, performance.now() - start.t);
+      start = null;
+      card.classList.remove("is-dragging");
+      if (Math.abs(dx) > card.offsetWidth * 0.3 || (Math.abs(dx) > 24 && speed > 0.5)) {
+        commit(dx > 0 ? "right" : "left");
+        return;
+      }
+      card.style.transform = "";
+      card.style.setProperty("--swipe", "0");
+    }
+    card.addEventListener("pointerup", end);
+    card.addEventListener("pointercancel", end);
+  }
+
+  function hideReasons() {
+    clearTimeout(reasonTimer);
+    byId("tri-reasons-bar").hidden = true;
+  }
+
+  /* After a left swipe: why, in one tap, for 6 seconds. */
+  function showReasons(item) {
+    var bar = byId("tri-reasons-bar");
+    var list = byId("tri-reason-chips");
+    clear(list);
+    X.REASONS.forEach(function (label) {
+      var b = el("button", { type: "button", class: "qa reason-chip", text: T.LABEL_TEXT[label] });
+      b.addEventListener("click", function () {
+        hideReasons();
+        T.postingsOf(item.row).slice(0, 1).forEach(function (p) {
+          triDecide(p.key, label, typeof item.row.score === "number" ? item.row.score : null);
+        });
+        announce("Raison enregistrée : " + T.LABEL_TEXT[label]);
+      });
+      list.appendChild(b);
+    });
+    bar.hidden = false;
+    announce("Pourquoi l’écarter ? 4 raisons au choix, Échap pour passer.");
+    clearTimeout(reasonTimer);
+    reasonTimer = setTimeout(hideReasons, 6000);
+  }
+
+  /* right = keep (to_apply + good_fit), left = drop (ignored; the reason is optional).
+     A group: keep its best posting, drop all of them (as the row's quick actions do). */
+  var flying = null;  /* the card still flying out: a new action finishes it first */
+
+  function commit(direction) {
+    if (flying) { clearTimeout(flying.timer); flying.advance(); }
+    if (!canTriage() || tri.pos >= tri.items.length) return;
+    hideReasons();
+    var item = tri.items[tri.pos];
+    var targets = direction === "right" ? [item.row] : T.postingsOf(item.row);
+    var entry = { key: item.row.key, pos: tri.pos, direction: direction, prev: [], decisionIds: [] };
+    targets.forEach(function (p) {
+      var prev = track.apps[p.key];
+      entry.prev.push({ key: p.key, rec: prev ? Object.assign({}, prev) : null });
+      triSave(p.key, X.swipeRecord(prev, direction), prev);
+    });
+    undo.push(entry);
+    var rule = X.SWIPE[direction];
+    if (rule.label) triDecide(item.row.key, rule.label, typeof item.row.score === "number" ? item.row.score : null);
+    if (direction === "right") tri.kept += 1; else tri.dropped += 1;
+    announce((direction === "right" ? "Gardée : " : "Écartée : ") + (item.row.title || "offre"));
+    var stage = byId("tri-stage");
+    var card = stage.querySelector(".tri-card:not(.is-next)");
+    var hadFocus = !!(card && card.contains(document.activeElement));
+    function advance() {
+      flying = null;
+      tri.pos += 1;
+      renderTri();
+      if (direction === "left") showReasons(item);
+      updateCounts();
+      /* Focus was on a link or button of the card that just left: give it to the new card
+         rather than dropping it on the page. */
+      var next = stage.querySelector(".tri-card:not(.is-next)");
+      if (hadFocus && next) next.focus({ preventScroll: true });
+      else if (hadFocus) byId("tri-end").focus({ preventScroll: true });
+    }
+    if (card && !reduceMotion()) {
+      card.classList.add(direction === "right" ? "fly-right" : "fly-left");
+      flying = { advance: advance, timer: setTimeout(advance, 200) };
+    } else {
+      advance();
+    }
+  }
+
+  function undoLast() {
+    var entry = undo.pop();
+    if (!entry) { announce("Rien à annuler."); return; }
+    hideReasons();
+    if (entry.direction === "right") tri.kept -= 1; else tri.dropped -= 1;
+    entry.prev.forEach(function (p) {
+      triSave(p.key, T.blank(p.rec), track.apps[p.key]);
+      if (!p.rec) delete track.decisions[p.key];
+    });
+    entry.decisionIds.forEach(function (id) {
+      api.undecide(id).catch(function (err) {
+        if (X.retryable(err)) { retry.add({ kind: "undecide", payload: { id: id } }); renderPending(); }
+      });
+    });
+    var item = tri.items[entry.pos];
+    if (item && T.rowStatus(item.row, track.apps) === "to_review") {
+      tri.pos = entry.pos;
+      tri.pausedAt = -1;
+    }
+    announce("Annulé.");
+    renderTri();
+    updateCounts();
+  }
+
+  function renderTri() {
+    if (!tri.built) buildTri();
+    var stage = byId("tri-stage");
+    var end = byId("tri-end");
+    var total = tri.items.length;
+    clear(stage);
+    var off = byId("tri-off");
+    off.hidden = canTriage();
+    off.textContent = track.status === "loading"
+      ? "Chargement du suivi…"
+      : "Le tri enregistre tes choix : il demande le tableau de bord hébergé, avec le suivi chargé.";
+    ["tri-keep", "tri-drop"].forEach(function (id) { byId(id).disabled = !canTriage(); });
+    var b = X.batchOf(Math.min(tri.pos, Math.max(total - 1, 0)), total, X.BATCH);
+    var atBoundary = tri.pos > 0 && tri.pos < total && tri.pos % X.BATCH === 0 && tri.pausedAt !== tri.pos;
+    var done = tri.pos >= total;
+    byId("tri-progress").hidden = total === 0;
+    if (total) {
+      var inBatch = done ? b.size : (atBoundary ? X.BATCH : tri.pos - b.start);
+      var size = done ? b.size : (atBoundary ? X.BATCH : b.size);
+      byId("tri-progress-fill").style.transform = "scaleX(" + (inBatch / Math.max(size, 1)) + ")";
+      byId("tri-progress-text").textContent = "Lot " + (atBoundary ? b.index : b.index + 1) + "/" + b.count +
+        " · " + inBatch + " / " + size + " · " + Math.max(total - tri.pos, 0) + " restantes";
+      byId("tri-progress-bar").setAttribute("aria-valuenow", String(inBatch));
+      byId("tri-progress-bar").setAttribute("aria-valuemax", String(size));
+      byId("tri-progress-bar").setAttribute("aria-valuetext", inBatch + " sur " + size);
+    }
+    byId("tri-controls").hidden = done || atBoundary || total === 0;
+    byId("tri-undo").disabled = undo.size() === 0;
+    end.hidden = !(done || atBoundary);
+    if (done || atBoundary) {
+      clear(end);
+      if (atBoundary) {
+        end.appendChild(el("h3", { text: "Lot terminé" }));
+        end.appendChild(el("p", { text: tri.kept + " gardées · " + tri.dropped + " écartées depuis le début. " + (total - tri.pos) + " restantes." }));
+        var next = el("button", { type: "button", class: "btn btn-primary", text: "Lot suivant" });
+        next.addEventListener("click", function () { tri.pausedAt = tri.pos; renderTri(); });
+        var later = el("button", { type: "button", class: "btn", text: "Plus tard" });
+        later.addEventListener("click", function () { showTab("candidatures", false); });
+        end.appendChild(el("div", { class: "tri-end-actions" }, [next, later]));
+        announce("Lot " + b.index + "/" + b.count + " terminé.");
+      } else {
+        end.appendChild(el("h3", { text: "Tri terminé" }));
+        end.appendChild(el("p", { text: total === 0
+          ? "Aucune offre à examiner : tout est trié."
+          : tri.kept + " gardées · " + tri.dropped + " écartées." }));
+        var go = el("button", { type: "button", class: "btn btn-primary", text: "Voir les candidatures" });
+        go.addEventListener("click", function () { showTab("candidatures", false); });
+        end.appendChild(el("div", { class: "tri-end-actions" }, [go]));
+      }
+      return;
+    }
+    stage.appendChild(triCard(tri.items[tri.pos], false));
+    if (tri.items[tri.pos + 1]) stage.appendChild(triCard(tri.items[tri.pos + 1], true));
+  }
+
+  byId("tri-keep").addEventListener("click", function () { commit("right"); });
+  byId("tri-drop").addEventListener("click", function () { commit("left"); });
+  byId("tri-undo").addEventListener("click", undoLast);
+  byId("tri-reasons-close").addEventListener("click", hideReasons);
+
+  document.addEventListener("keydown", function (ev) {
+    if (currentTab !== "tri" || ev.altKey || ev.ctrlKey || ev.metaKey) return;
+    var tag = ev.target && ev.target.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    if (ev.key === "Escape" && !byId("tri-reasons-bar").hidden) { ev.preventDefault(); hideReasons(); }
+    else if (ev.key === "ArrowRight") { ev.preventDefault(); commit("right"); }
+    else if (ev.key === "ArrowLeft") { ev.preventDefault(); commit("left"); }
+    else if (ev.key === "z" || ev.key === "Z") { ev.preventDefault(); undoLast(); }
+    else if (ev.key === "Enter" && !(ev.target && ev.target.closest && ev.target.closest("a, button"))) {
+      var link = byId("tri-stage").querySelector(".tri-card:not(.is-next) .tri-link");
+      if (link) { ev.preventDefault(); window.open(link.href, "_blank", "noopener"); }
+    }
+  });
+
+  /* ---------- Candidatures ---------- */
+
+  var appsUi = { prompt: null, changing: null };
+  var drag = null;
+
+  function addDays(day, n) {
+    var d = new Date(day + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  }
+
+  var DAY_SHORT = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit", timeZone: "UTC" });
+  /* A calendar day (YYYY-MM-DD) as "28/10": read as UTC so no time zone moves it a day. */
+  function shortDay(day) { return T.isDay(day) ? DAY_SHORT.format(new Date(day + "T00:00:00Z")) : ""; }
+
+  function setRecord(key, patch, done) {
+    var prev = T.blank(track.apps[key]);
+    applyChanges([{ key: key, next: Object.assign({}, prev, patch) }], done, [{ key: key, next: prev }]);
+  }
+
+  function appCard(key, today) {
+    var app = track.apps[key];
+    var status = T.statusOf(app);
+    var j = postingByKey[key];
+    var card = el("article", { class: "kb-card", "data-key": key, tabindex: "-1" });
+    card.appendChild(el("h4", { class: "kb-title", text: j ? (j.title || "—") : key }));
+    card.appendChild(el("p", { class: "kb-meta", text: j ? [j.company || "—", j.location || ""].filter(Boolean).join(" · ") : "offre plus affichée" }));
+    var dates = [];
+    if (app.applied_at) dates.push("Envoyée le " + shortDay(app.applied_at));
+    if (app.follow_up_at) {
+      var late = T.isDue(app, today) ? T.daysBetween(app.follow_up_at, today) : 0;
+      dates.push("Relance le " + shortDay(app.follow_up_at) + (late > 0 ? " (" + late + " j de retard)" : T.isDue(app, today) ? " (aujourd’hui)" : ""));
+    }
+    if (dates.length) card.appendChild(el("p", { class: "kb-dates" + (T.isDue(app, today) ? " is-due" : ""), text: dates.join(" · ") }));
+
+    var actions = el("div", { class: "kb-actions" });
+    var sel = el("select", { class: "kb-status", name: "status", "aria-label": "Statut de " + (j ? j.title : key) });
+    T.STATUSES.forEach(function (s) { sel.appendChild(el("option", { value: s, text: BOARD_TEXT[s] || T.STATUS_TEXT[s] })); });
+    sel.value = status;
+    sel.addEventListener("change", function () {
+      setRecord(key, { status: sel.value }, "Déplacée vers « " + (BOARD_TEXT[sel.value] || T.STATUS_TEXT[sel.value]) + " »");
+    });
+    actions.appendChild(sel);
+    if (status === "to_apply") {
+      var applied = el("button", { type: "button", class: "btn btn-primary btn-small", text: "J’ai postulé" });
+      applied.addEventListener("click", function () {
+        appsUi.prompt = key;
+        setRecord(key, { status: "applied", applied_at: today }, "Candidature envoyée le " + shortDay(today));
+      });
+      actions.appendChild(applied);
+    }
+    if (j && j.url && HTTP.test(j.url)) actions.appendChild(el("a", { href: j.url, target: "_blank", rel: "noopener noreferrer", "aria-label": "Voir l’offre : " + (j.title || key), text: "Offre" }));
+    card.appendChild(actions);
+
+    if (appsUi.prompt === key && status === "applied") {
+      var suggested = addDays(app.applied_at || today, 7);
+      var line = el("div", { class: "kb-prompt", role: "group", "aria-label": "Date de relance" });
+      if (appsUi.changing === key) {
+        var input = el("input", { type: "date", name: "follow_up_at", value: suggested, "aria-label": "Relance le", autocomplete: "off" });
+        input.addEventListener("change", function () {
+          if (!T.isDay(input.value)) return;
+          appsUi.prompt = appsUi.changing = null;
+          setRecord(key, { follow_up_at: input.value }, "Relance prévue le " + shortDay(input.value));
+        });
+        line.appendChild(input);
+      } else {
+        line.appendChild(el("span", { text: "Relance prévue ?" }));
+        var yes = el("button", { type: "button", class: "link-btn", text: "Relancer le " + shortDay(suggested) });
+        yes.addEventListener("click", function () {
+          appsUi.prompt = null;
+          setRecord(key, { follow_up_at: suggested }, "Relance prévue le " + shortDay(suggested));
+        });
+        var change = el("button", { type: "button", class: "link-btn", text: "Autre date" });
+        change.addEventListener("click", function () { appsUi.changing = key; renderApps(); });
+        var no = el("button", { type: "button", class: "link-btn", text: "Pas de relance" });
+        no.addEventListener("click", function () { appsUi.prompt = null; renderApps(); });
+        [yes, change, no].forEach(function (b) { line.appendChild(b); });
+      }
+      card.appendChild(line);
+    }
+    if (window.matchMedia("(pointer: fine)").matches) attachDrag(card, key);
+    return card;
+  }
+
+  /* Desktop drag between columns, Pointer Events (no HTML5 drag and drop). The status menu
+     on each card does the same with the keyboard or a finger. */
+  function attachDrag(card, key) {
+    card.addEventListener("pointerdown", function (ev) {
+      if (ev.button !== 0 || ev.target.closest("a, button, select, input")) return;
+      drag = { key: key, card: card, x: ev.clientX, y: ev.clientY, id: ev.pointerId, moved: false };
+      card.setPointerCapture(ev.pointerId);
+    });
+    card.addEventListener("pointermove", function (ev) {
+      if (!drag || drag.card !== card) return;
+      var dx = ev.clientX - drag.x, dy = ev.clientY - drag.y;
+      if (!drag.moved && Math.abs(dx) + Math.abs(dy) < 6) return;
+      drag.moved = true;
+      document.body.classList.add("is-dragging-card");
+      card.classList.add("is-dragging");
+      card.style.transform = "translate(" + dx + "px," + dy + "px)";
+      card.style.pointerEvents = "none";
+      var under = document.elementFromPoint(ev.clientX, ev.clientY);
+      var col = under && under.closest ? under.closest(".kb-col") : null;
+      document.querySelectorAll(".kb-col.is-over").forEach(function (c) { if (c !== col) c.classList.remove("is-over"); });
+      if (col) col.classList.add("is-over");
+      card.style.pointerEvents = "";
+    });
+    function end(ev) {
+      if (!drag || drag.card !== card) return;
+      var was = drag;
+      drag = null;
+      document.body.classList.remove("is-dragging-card");
+      card.classList.remove("is-dragging");
+      card.style.transform = "";
+      var col = document.querySelector(".kb-col.is-over");
+      document.querySelectorAll(".kb-col.is-over").forEach(function (c) { c.classList.remove("is-over"); });
+      if (!was.moved || !col || ev.type === "pointercancel") return;
+      var status = col.getAttribute("data-status");
+      if (status && status !== T.statusOf(track.apps[key])) {
+        setRecord(key, { status: status }, "Déplacée vers « " + BOARD_TEXT[status] + " »");
+      }
+    }
+    card.addEventListener("pointerup", end);
+    card.addEventListener("pointercancel", end);
+  }
+
+  function renderApps() {
+    var today = T.localDay();
+    var board = byId("kb-board");
+    var due = byId("kb-due");
+    clear(board);
+    clear(due);
+    byId("kb-off").hidden = canTriage() || track.status === "loading";
+    var keys = boardKeys();
+    var dueKeys = Object.keys(track.apps).filter(function (k) { return T.isDue(track.apps[k], today); })
+      .sort(function (a, b) { return track.apps[a].follow_up_at < track.apps[b].follow_up_at ? -1 : 1; });
+    due.hidden = dueKeys.length === 0;
+    if (dueKeys.length) {
+      due.appendChild(el("h3", { class: "kb-due-title", text: "Relances dues (" + dueKeys.length + ")" }));
+      var list = el("ul", { class: "kb-due-list" });
+      dueKeys.forEach(function (k) {
+        var app = track.apps[k];
+        var j = postingByKey[k];
+        var late = T.daysBetween(app.follow_up_at, today);
+        var go = el("button", { type: "button", class: "link-btn", text: j ? (j.title || k) : k });
+        go.addEventListener("click", function () {
+          var target = board.querySelector('.kb-card[data-key="' + (window.CSS && CSS.escape ? CSS.escape(k) : k) + '"]');
+          if (target) { target.scrollIntoView({ block: "center" }); target.focus({ preventScroll: true }); }
+        });
+        list.appendChild(el("li", null, [go, el("span", { class: "kb-due-late", text: late > 0 ? late + " j de retard" : "aujourd’hui" })]));
+      });
+      due.appendChild(list);
+    }
+    BOARD.forEach(function (status) {
+      var inCol = keys.filter(function (k) { return T.statusOf(track.apps[k]) === status; })
+        .sort(function (a, b) {
+          var da = T.isDue(track.apps[a], today) ? 0 : 1, db = T.isDue(track.apps[b], today) ? 0 : 1;
+          if (da !== db) return da - db;
+          return String(track.apps[b].updated_at || "").localeCompare(String(track.apps[a].updated_at || ""));
+        });
+      var col = el("section", { class: "kb-col kb-" + status, "data-status": status, "aria-label": BOARD_TEXT[status] });
+      col.appendChild(el("h3", { class: "kb-col-title" }, [BOARD_TEXT[status] + " ", el("span", { class: "tab-count", text: String(inCol.length) })]));
+      var body = el("div", { class: "kb-col-body" });
+      inCol.forEach(function (k) { body.appendChild(appCard(k, today)); });
+      if (!inCol.length) body.appendChild(el("p", { class: "kb-empty", text: status === "to_apply" ? "Garde des offres dans Tri pour les voir ici." : "Aucune." }));
+      col.appendChild(body);
+      board.appendChild(col);
+    });
+    updateCounts();
+  }
+
+  function renderCurrent() {
+    if (currentTab === "tri") renderTri();
+    else if (currentTab === "candidatures") renderApps();
+    updateCounts();
   }
 
   function openInJobs(posting) {
@@ -1132,28 +1675,9 @@
     state.status = ""; statusSelect.value = "";
     state.expanded[j.id] = true;
     renderJobs();
-    showTab("jobs", false);
+    showTab("offres", false);
     var row = byId("jobs-details-" + j.id);
     if (row) row.scrollIntoView({ block: "center" });
-  }
-
-  function renderToday() {
-    var today = T.localDay();
-    var items = T.todayItems(rows, track.apps, today);
-    updateTodayCounts();
-
-    var fBody = byId("today-followups-body");
-    dropBadges(fBody);
-    clear(fBody);
-    byId("today-followups").hidden = items.followups.length === 0;
-    items.followups.forEach(function (f) { fBody.appendChild(followupRow(f)); });
-
-    var qBody = byId("today-body");
-    dropBadges(qBody);
-    clear(qBody);
-    byId("today-empty").hidden = items.queue.length > 0;
-    byId("today-rowcount").textContent = items.queue.length + " offres à examiner ou à candidater · « À candidater » d’abord, puis par score";
-    qBody.appendChild(jobRows(items.queue, "today", TODAY_COLUMNS, todayExpanded));
   }
 
   var debounce;
@@ -1435,6 +1959,8 @@
   renderLeads();
   renderRuns();
   if (window.innerWidth <= 768) byId("jobs-controls").removeAttribute("open");
+  updateCounts();
+  renderPending();  /* actions left from an earlier visit show at once */
   applyHash();
   loadTracking();
 })();

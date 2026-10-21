@@ -6,6 +6,10 @@ from job_match.tracking.constants import LABELS, NOTE_MAX, SKILL_MAX, SKILL_RE, 
 
 ROOT = Path(__file__).parent.parent.parent.parent
 D1 = (ROOT / "worker" / "migrations" / "0001_tracking.sql").read_text(encoding="utf-8")
+# The label CHECK list lives in the latest migration that rebuilt `decisions`.
+D1_LABELS = (ROOT / "worker" / "migrations" / "0003_decision_location.sql").read_text(
+    encoding="utf-8"
+)
 D1_OVERRIDES = (ROOT / "worker" / "migrations" / "0002_skill_overrides.sql").read_text(
     encoding="utf-8"
 )
@@ -15,8 +19,8 @@ DASHBOARD = (ROOT / "src" / "job_match" / "dashboard" / "assets" / "tracking.js"
 )
 
 
-def _check_list(column: str) -> tuple[str, ...]:
-    m = re.search(rf"{column}\s+IN\s*\(([^)]*)\)", D1)
+def _check_list(column: str, sql: str = D1) -> tuple[str, ...]:
+    m = re.search(rf"{column}\s+IN\s*\(([^)]*)\)", sql)
     assert m, column
     return tuple(re.findall(r"'([a-z_]+)'", m.group(1)))
 
@@ -34,7 +38,7 @@ def test_statuses_agree_everywhere():
 
 
 def test_labels_agree_everywhere():
-    assert _check_list("label") == LABELS
+    assert _check_list("label", D1_LABELS) == LABELS
     assert _js_array(WORKER, "LABELS") == LABELS
     assert _js_array(DASHBOARD, "LABELS") == LABELS
 

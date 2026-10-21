@@ -352,3 +352,37 @@ describe("skill overrides", () => {
     assert.equal((await call(SKILL, { method: "POST", body: {} })).status, 405);
   });
 });
+
+describe("decision undo", () => {
+  async function decide(label) {
+    const res = await call("/api/decisions", { method: "POST", body: { job_key: KEY, label, score_at_decision: 70 } });
+    return res;
+  }
+
+  test("the location verdict is accepted (migration 0003)", async () => {
+    const res = await decide("location");
+    assert.equal(res.status, 201);
+    assert.equal((await res.json()).decision.label, "location");
+  });
+
+  test("DELETE removes one decision; an unknown id is 404", async () => {
+    const id = (await (await decide("good_fit")).json()).decision.id;
+    let res = await call(`/api/decisions/${id}`, { method: "DELETE" });
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).deleted, id);
+    assert.equal(rows("decisions"), 0);
+    res = await call(`/api/decisions/${id}`, { method: "DELETE" });
+    assert.equal(res.status, 404);
+  });
+
+  test("a bad id is 400, a foreign origin 403, another method 405", async () => {
+    for (const bad of ["0", "-1", "abc", "1.5", "99999999999999999"]) {
+      assert.equal((await call(`/api/decisions/${bad}`, { method: "DELETE" })).status, 400, bad);
+    }
+    const id = (await (await decide("good_fit")).json()).decision.id;
+    const foreign = await call(`/api/decisions/${id}`, { method: "DELETE", origin: "https://evil.example" });
+    assert.equal(foreign.status, 403);
+    assert.equal(rows("decisions"), 1);
+    assert.equal((await call(`/api/decisions/${id}`)).status, 405);
+  });
+});

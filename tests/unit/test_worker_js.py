@@ -17,7 +17,7 @@ TESTS = sorted((ROOT / "worker" / "test").glob("*.test.mjs"))
 
 def test_node_test_files_exist():
     names = {p.name for p in TESTS}
-    assert {"api.test.mjs", "dashboard-tracking.test.mjs"} <= names
+    assert {"api.test.mjs", "dashboard-tracking.test.mjs", "triage.test.mjs"} <= names
 
 
 def test_worker_and_dashboard_tracking_node_tests_pass():
@@ -33,4 +33,4 @@ def test_worker_and_dashboard_tracking_node_tests_pass():
     assert result.returncode == 0, result.stdout[-4000:] + result.stderr[-2000:]
     assert "# fail 0" in result.stdout
     passed = int(result.stdout.split("# pass ", 1)[1].split()[0])
-    assert passed >= 70  # the suites really ran
+    assert passed >= 90  # the suites really ran

@@ -7,7 +7,7 @@ the dashboard script and these tuples name the same values.
 import re
 
 STATUSES = ("to_review", "to_apply", "applied", "interview", "rejected", "ignored")
-LABELS = ("good_fit", "off_topic", "too_senior", "missing_skill")
+LABELS = ("good_fit", "off_topic", "too_senior", "missing_skill", "location")
 # Jobs still waiting for me: shown in the digest. Every other status is handled.
 ACTIVE_STATUSES = ("to_review", "to_apply")
 # A follow-up stops mattering once the application is closed either way.

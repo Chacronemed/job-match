@@ -13,12 +13,13 @@
     rejected: "Refusée",
     ignored: "Ignorée"
   };
-  var LABELS = ["good_fit", "off_topic", "too_senior", "missing_skill"];
+  var LABELS = ["good_fit", "off_topic", "too_senior", "missing_skill", "location"];
   var LABEL_TEXT = {
     good_fit: "Bon match",
     off_topic: "Hors sujet",
     too_senior: "Trop senior",
-    missing_skill: "Compétence manquante"
+    missing_skill: "Compétence manquante",
+    location: "Lieu"
   };
   /* How far an application got: a grouped row shows its most advanced posting. */
   var STATUS_RANK = { ignored: 0, to_review: 1, to_apply: 2, applied: 3, interview: 4, rejected: 5 };
@@ -187,6 +188,8 @@
       decide: function (key, label, score) {
         return call("POST", "decisions", { job_key: key, label: label, score_at_decision: score });
       },
+      /* Undo of a verdict given in the triage view. */
+      undecide: function (id) { return call("DELETE", "decisions/" + encodeURIComponent(String(id))); },
       /* "je maîtrise" (on) or its undo (off). The name is a vocabulary term. */
       overrideSkill: function (skill, on) {
         return call(on ? "PUT" : "DELETE", "skill-overrides/" + encodeURIComponent(skill));
