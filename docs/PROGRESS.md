@@ -10,6 +10,54 @@ production rows. Still pending: the M21 Cloudflare setup, the data-repo cleanup 
 two Cloudflare secrets, M9 manual GitHub setup, `PROFILE_YAML` re-encoding, `SMTP_PORT` variable.
 
 ## Done
+- **M23 — Tri (swipe) + Candidatures + PWA** (2026-10-21, ADR 0014):
+  - **Navigation:** Tri · Candidatures · Offres · Leads · Exécutions; the old `#today`, `#jobs`
+    and `#runs` hashes are aliased. The Offres filters travel in the hash whatever the tab;
+    phones get a sticky "Filtres (n)" bar.
+  - **Tri:**
+    - `assets/triage.js` (pure, Node-tested): `triageQueue` keeps to_review rows, the latest
+      jobs run first, then collected_at descending, then score;
+    - batches of 20, `topReasons`, `swipeRecord`, an undo stack of 5, and a retry queue
+      (5xx/network retried, 4xx dropped);
+    - Pointer Events swipe (30 % or a flick), ← → Z and Entrée keys, the buttons;
+    - only the current and next cards are rendered; reduced motion is read live;
+    - an `aria-live` region announces each action;
+    - the reason bar (4 verdicts, `location` new) attaches to the swipe; undo also deletes its
+      decisions.
+  - **Candidatures:**
+    - a kanban (to_apply, applied, interview, rejected): Pointer Events drag on fine pointers,
+      a status menu everywhere;
+    - "J'ai postulé" → applied + applied_at, then the prompt "Relance le +7 ? Oui · Changer ·
+      Non";
+    - due follow-ups on top;
+    - `data.json` `tracked` holds applications whose offer is closed or old
+      (`JobRepository.list_tracked`).
+  - **Worker/D1:**
+    - migration `0003_decision_location.sql` rebuilds `decisions` with `location`;
+    - new route `DELETE /api/decisions/:id` (400 bad id, 404 unknown, 403 foreign origin);
+    - `LABELS` updated in four places.
+  - **data.json:** `description_excerpt` (tags and entities removed, 600 characters or less, cut
+    at a word); a test checks that no dashboard script uses an HTML sink.
+  - **PWA:**
+    - `manifest.webmanifest` (standalone, `./#tri`), icons from `scripts/build_icons.py` (pure
+      Python PNG), `crossorigin="use-credentials"` for Access, CSP `manifest-src`;
+    - no service worker, so nothing caches data.json.
+  - **Verified** with wrangler dev, a local D1 and the Access proxy, using playwright-cli at
+    1440 and 390, dark and light:
+    - → keep (to_apply + good_fit in D1);
+    - ← drop + "Lieu" (location verdict);
+    - Z Z undo (both records back, decisions deleted);
+    - a mouse-drag swipe;
+    - offline → "2 actions en attente" → Réessayer flushes;
+    - 20 cards → "Lot terminé";
+    - J'ai postulé + Oui → applied_at today, follow_up +7;
+    - a drag to Entretien;
+    - filters kept across Tri → Offres;
+    - Filtres (2) at 390; the manifest loads; reduced motion swaps instantly;
+    - 0 console errors (apart from the deliberate offline aborts), no overflow, 56px buttons.
+    - Fixes from the screenshots: the next card peeks, reason chips lost the section dot, the
+      kanban select is sized to its content, undo corrects the session counts. The scratch D1
+      was emptied afterwards.
 - **Dashboard refinements** (2026-10-21, post-M22):
   - **Aujourd'hui:** the rule was already "canonical, not closed, strong/eligible/stretch,
     to_review or to_apply, plus follow-ups due". The local build shows 154, not the 387 that was

@@ -2,7 +2,7 @@
 // applies the same rules to the rows it imports; tests check both lists of values agree.
 
 export const STATUSES = ["to_review", "to_apply", "applied", "interview", "rejected", "ignored"];
-export const LABELS = ["good_fit", "off_topic", "too_senior", "missing_skill"];
+export const LABELS = ["good_fit", "off_topic", "too_senior", "missing_skill", "location"];
 export const NOTE_MAX = 2000;
 export const URL_MAX = 500;
 

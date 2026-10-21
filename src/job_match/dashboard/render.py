@@ -15,6 +15,27 @@ from importlib.resources import files
 from pathlib import Path
 
 _ASSETS = files("job_match.dashboard").joinpath("assets")
+ICONS = ("icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png")
+THEME = "#010102"  # DESIGN.md colors.canvas (dark)
+
+# Installable from the browser (Chrome, Edge, iOS "Sur l'écran d'accueil"). No service worker:
+# nothing may cache data.json or the page, every open shows the latest snapshot.
+MANIFEST = {
+    "name": "job-match",
+    "short_name": "job-match",
+    "lang": "fr",
+    "start_url": "./#tri",
+    "scope": "./",
+    "display": "standalone",
+    "background_color": THEME,
+    "theme_color": THEME,
+    "icons": [
+        {"src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png"},
+        {"src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png"},
+        {"src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png",
+         "purpose": "maskable"},
+    ],
+}
 
 
 def embed_json(data: dict) -> str:
@@ -30,19 +51,29 @@ def render_index(data: dict) -> str:
     template = _ASSETS.joinpath("index.template.html").read_text(encoding="utf-8")
     css = _ASSETS.joinpath("dashboard.css").read_text(encoding="utf-8")
     tracking_js = _ASSETS.joinpath("tracking.js").read_text(encoding="utf-8")
+    triage_js = _ASSETS.joinpath("triage.js").read_text(encoding="utf-8")
     js = _ASSETS.joinpath("dashboard.js").read_text(encoding="utf-8")
     # str.replace, not str.format: the CSS and JS are full of braces.
     return (
         template.replace("__CSS__", css)
         .replace("__TRACKING_JS__", tracking_js)
+        .replace("__TRIAGE_JS__", triage_js)
         .replace("__JS__", js)
         .replace("__DATA__", embed_json(data))
     )
 
 
 def write_site(data: dict, out_dir: Path) -> tuple[Path, Path]:
-    """Write `index.html` and `data.json` into `out_dir`; returns both paths."""
+    """Write `index.html`, `data.json`, the web app manifest and its icons into `out_dir`;
+    returns the first two paths."""
     out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "manifest.webmanifest").write_text(
+        json.dumps(MANIFEST, ensure_ascii=False, indent=1), encoding="utf-8"
+    )
+    icons = out_dir / "icons"
+    icons.mkdir(exist_ok=True)
+    for name in ICONS:
+        (icons / name).write_bytes(_ASSETS.joinpath("icons", name).read_bytes())
     index = out_dir / "index.html"
     data_file = out_dir / "data.json"
     index.write_text(render_index(data), encoding="utf-8")

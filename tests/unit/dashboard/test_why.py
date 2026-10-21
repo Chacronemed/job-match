@@ -79,3 +79,37 @@ def test_group_key_joins_employer_and_normalized_title():
     assert group_key(a) == group_key(b) and group_key(a).startswith("acme|")
     assert group_key(replace(a, company="")) is None
     assert group_key(replace(a, company="Other")) != group_key(a)
+
+
+def test_description_excerpt_is_plain_text_and_capped():
+    from job_match.dashboard.data import EXCERPT_MAX, description_excerpt
+
+    raw = ("<p>Rejoignez   notre <b>équipe</b> DevOps.</p><script>alert(1)</script>"
+           "<img src=x onerror=alert(2)> &lt;b&gt;gras&lt;/b&gt; &amp; Kubernetes\n\n"
+           + "mot " * 300)
+    out = description_excerpt(raw)
+    assert len(out) <= EXCERPT_MAX and out.endswith("…")
+    assert "<" not in out and ">" not in out
+    assert out.startswith("Rejoignez notre équipe DevOps. alert(1) gras & Kubernetes mot")
+    assert description_excerpt("Court.") == "Court."
+    assert description_excerpt(None) == ""
+
+
+def test_the_excerpt_reaches_the_page_escaped():
+    from job_match.dashboard.render import render_index
+
+    job = {"id": 1, "key": "ft:1", "description_excerpt": "</script><img src=x onerror=alert(1)>"}
+    html = render_index({"generated_at": "", "thresholds": {}, "jobs": [job], "tracked": [],
+                         "leads": [], "runs": []})
+    block = html.split('<script type="application/json" id="data">')[1].split("</script>")[0]
+    assert "<" not in block and "onerror" in block
+
+
+def test_scripts_never_parse_html():
+    from pathlib import Path
+
+    assets = Path(__file__).resolve().parents[3] / "src" / "job_match" / "dashboard" / "assets"
+    for name in ("dashboard.js", "tracking.js", "triage.js"):
+        source = (assets / name).read_text(encoding="utf-8")
+        for sink in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write"):
+            assert sink not in source, (name, sink)

@@ -2,13 +2,15 @@
 
 Everything the page shows comes from this one dict, so this module is the allow-list of what
 leaves the DB: job descriptions, the profile's search keywords (`by_keyword`, `queries`), raw
-payloads and anything personal never appear here. The one exception to "no description" is
-the "Pourquoi cette offre ?" panel: the single sentence each skill or experience requirement
-was found in, capped at `EVIDENCE_MAX` (ADR 0013). Numbers are copied, never recomputed from
+payloads and anything personal never appear here. Two exceptions to "no description": the
+"Pourquoi cette offre ?" panel's single sentence per finding, capped at `EVIDENCE_MAX` (ADR
+0013), and the triage card's `description_excerpt`, plain text capped at `EXCERPT_MAX` (ADR
+0014). Numbers are copied, never recomputed from
 today's config: a job's required years are the parser's own number or the gate's own words.
 """
 from __future__ import annotations
 
+import html
 import re
 from datetime import datetime, timedelta
 from urllib.parse import urlsplit
@@ -52,6 +54,10 @@ RUN_KEYS: tuple[str, ...] = (
 
 _STRETCH_YEARS_RE = re.compile(r"requires (\d+(?:\.\d+)?)y")
 EVIDENCE_MAX = 240
+EXCERPT_MAX = 600
+_TAG_RE = re.compile(r"<[^>]*>")
+# Statuses a job keeps its place in the Candidatures board for, closed offer or not.
+TRACKED_STATUSES: tuple[str, ...] = ("to_apply", "applied", "interview", "rejected")
 
 
 def safe_url(url: str | None) -> str | None:
@@ -149,6 +155,24 @@ def why_entry(job: Job) -> dict:
     }
 
 
+def description_excerpt(text: str | None) -> str:
+    """The start of the description as plain text: markup and entities removed, whitespace
+    collapsed, at most `EXCERPT_MAX` characters, cut at a word with "…". The page sets it with
+    textContent; this only keeps tags from showing up as text."""
+    if not text:
+        return ""
+    plain = " ".join(html.unescape(_TAG_RE.sub(" ", text)).split())
+    plain = _TAG_RE.sub(" ", plain)  # entities that decoded into tags
+    plain = " ".join(plain.split())
+    if len(plain) <= EXCERPT_MAX:
+        return plain
+    cut = plain[: EXCERPT_MAX - 1]
+    space = cut.rfind(" ")
+    if space > EXCERPT_MAX * 0.6:
+        cut = cut[:space]
+    return cut.rstrip(" ,;:.") + "…"
+
+
 def group_key(job: Job) -> str | None:
     """Same employer + same normalized title: the page shows one row when such postings sit in
     several departments. No employer name, no group (two hidden employers are not one)."""
@@ -186,6 +210,7 @@ def job_entry(job: Job, strong_threshold: int, now: datetime) -> dict:
         "negative": list(bd.negative_matches) if bd else [],
         "missing": list(bd.missing_preferences) if bd else [],
         "why": why_entry(job),
+        "description_excerpt": description_excerpt(job.description),
     }
 
 
@@ -237,6 +262,7 @@ def build_dashboard_data(db: Database, settings: Settings, now: datetime) -> dic
     jobs_since = now - timedelta(days=settings.dedup_window_days)
     leads = LeadRepository(db.conn).list_details(jobs_since)
     runs = RunRepository(db.conn).list_recent(RUN_PIPELINES, limit=RUN_LIMIT)
+    listed = {j.id for j in jobs}
     return {
         "generated_at": now.isoformat(),
         "thresholds": {
@@ -244,6 +270,12 @@ def build_dashboard_data(db: Database, settings: Settings, now: datetime) -> dic
             "min_score": settings.digest.min_score,
         },
         "jobs": [job_entry(j, settings.strong_threshold, now) for j in jobs],
+        # Offers behind a Candidatures card that the job list no longer shows (closed or old).
+        "tracked": [
+            job_entry(j, settings.strong_threshold, now)
+            for j in JobRepository(db.conn).list_tracked(TRACKED_STATUSES)
+            if j.id not in listed
+        ],
         "leads": [lead_entry(lead) for lead in leads],
         "runs": [run_entry(r) for r in runs],
     }

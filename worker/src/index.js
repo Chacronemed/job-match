@@ -3,6 +3,7 @@
 //   GET  /api/applications       -> {applications, decisions, skill_overrides}
 //   PUT  /api/applications/:key  -> {application}
 //   POST /api/decisions          -> {decision}
+//   DELETE /api/decisions/:id    -> {deleted}  (undo in the triage view)
 //   PUT    /api/skill-overrides/:skill -> {skill_override}  ("je maîtrise", no body)
 //   DELETE /api/skill-overrides/:skill -> {deleted}         (undo)
 // Every API call needs a valid Access JWT and a same-origin request. JSON only, no CORS.
@@ -68,6 +69,11 @@ async function listApplications(env) {
 }
 
 // Idempotent: marking a skill twice keeps the first date.
+async function deleteDecision(env, id) {
+  const row = await env.DB.prepare("DELETE FROM decisions WHERE id = ? RETURNING id").bind(id).first();
+  return row ? json(200, { deleted: row.id }) : fail(404, "decision: not found");
+}
+
 async function putSkillOverride(env, skill) {
   const row = await env.DB.prepare(
     "INSERT INTO skill_overrides (skill, created_at) VALUES (?, ?)" +
@@ -138,6 +144,11 @@ async function route(request, env, url) {
   }
   if (path === "/api/decisions") {
     return request.method === "POST" ? postDecision(request, env) : fail(405, "method not allowed");
+  }
+  if (path.startsWith("/api/decisions/")) {
+    const raw = path.slice("/api/decisions/".length);
+    if (!/^[1-9][0-9]{0,15}$/.test(raw)) return fail(400, "id: invalid");
+    return request.method === "DELETE" ? deleteDecision(env, Number(raw)) : fail(405, "method not allowed");
   }
   if (path.startsWith("/api/skill-overrides/")) {
     const skill = decodeKey(path.slice("/api/skill-overrides/".length));

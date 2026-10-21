@@ -63,7 +63,7 @@ def test_write_site_writes_both_files(tmp_path, dashboard_data):
     assert data_file == tmp_path / "site" / "data.json" and data_file.exists()
     on_disk = json.loads(data_file.read_text(encoding="utf-8"))
     assert on_disk == json.loads(json.dumps(data))
-    assert set(on_disk) == {"generated_at", "thresholds", "jobs", "leads", "runs"}
+    assert set(on_disk) == {"generated_at", "thresholds", "jobs", "tracked", "leads", "runs"}
 
 
 def test_light_and_dark_tokens_are_both_defined():
@@ -88,17 +88,43 @@ def test_jobs_table_has_posted_and_age_columns_and_no_collected_column():
     assert '"status", "posted_at", "age_days"]' in html  # SORT_KEYS allow-list for the hash
 
 
-def test_today_is_the_default_tab_and_jobs_has_a_status_column_and_filter():
+def test_tri_is_the_default_tab_and_the_nav_is_in_french():
     html = render_index(_EMPTY)
-    assert 'id="tab-today" aria-controls="panel-today" aria-selected="true"' in html
-    assert 'id="tab-jobs" aria-controls="panel-jobs" aria-selected="false" tabindex="-1"' in html
-    assert 'id="panel-today" role="tabpanel" aria-labelledby="tab-today">' in html
-    assert 'id="panel-jobs" role="tabpanel" aria-labelledby="tab-jobs" hidden>' in html
-    assert 'var TABS = ["today", "jobs", "leads", "runs"];' in html
-    assert 'data-key="status">Statut<' in html
-    assert '<select id="f-status" name="status">' in html
-    assert "Relances du jour" in html and "À traiter" in html
+    assert 'id="tab-tri" aria-controls="panel-tri" aria-selected="true"' in html
+    for tab, label in (("candidatures", "Candidatures"), ("offres", "Offres"), ("leads", "Leads"),
+                       ("executions", "Exécutions")):
+        assert f'id="tab-{tab}" aria-controls="panel-{tab}" aria-selected="false"' in html
+        assert f'data-tab="{tab}">{label} <span' in html
+        assert f'id="panel-{tab}" role="tabpanel" aria-labelledby="tab-{tab}" hidden>' in html
+    assert 'var TABS = ["tri", "candidatures", "offres", "leads", "executions"];' in html
+    assert 'today: "tri", jobs: "offres", runs: "executions"' in html  # old links still work
+    assert 'id="tri-stage"' in html and 'id="kb-board"' in html and 'id="tri-live"' in html
     assert 'id="track-banner"' in html
+
+
+def test_every_offres_filter_is_present_and_wired():
+    html = render_index(_EMPTY)
+    for control in ('id="f-search"', 'id="f-department"', 'id="f-status"', 'id="f-min-score"',
+                    'id="f-from"', 'id="f-to"', 'id="f-reset"', 'data-section="strong"',
+                    'data-section="eligible"', 'data-section="stretch"', 'id="filters-count"'):
+        assert control in html, control
+    for key in ("title", "company", "department", "contract", "score", "required_years",
+                "status", "posted_at", "age_days"):
+        assert f'data-key="{key}"' in html, key
+    script = html.split("function applyHash()")[1].split("/* ---------- leads")[0]
+    for param in ("p.q", "p.hide", "p.dept", "p.st", "p.min", "p.from", "p.to", "p.sort"):
+        assert param in script, param
+    for listener in ('searchInput.addEventListener("input"',
+                     'deptSelect.addEventListener("change"',
+                     'statusSelect.addEventListener("change"',
+                     'minScoreInput.addEventListener("input"',
+                     'fromInput.addEventListener("change"',
+                     'toInput.addEventListener("change"',
+                     'byId("f-reset").addEventListener("click"'):
+        assert listener in html, listener
+    # The filters travel in the hash whatever the tab (Tri -> Offres keeps them).
+    sync = html.split("function syncHash()")[1].split("function parseHash()")[0]
+    assert 'currentTab === "jobs"' not in sync and 'currentTab === "offres"' not in sync
 
 
 def test_tracking_script_is_inlined_before_the_dashboard_script():
@@ -120,3 +146,22 @@ def test_the_interface_is_in_french():
     for phrase in ('"Saving…"', '"Saved"', '"Retry"', '"Open"', '"Not saved', '"Verdict saved"',
                    '"To review"', '"Applied"', '"Good fit"'):
         assert phrase not in scripts, phrase
+
+
+def test_write_site_adds_an_installable_manifest_and_no_service_worker(tmp_path):
+    import json as _json
+
+    from job_match.dashboard.render import ICONS, write_site
+
+    write_site(_EMPTY, tmp_path)
+    manifest = _json.loads((tmp_path / "manifest.webmanifest").read_text(encoding="utf-8"))
+    assert manifest["display"] == "standalone" and manifest["start_url"] == "./#tri"
+    sizes = {i["sizes"] for i in manifest["icons"]}
+    assert {"192x192", "512x512"} <= sizes
+    assert any(i.get("purpose") == "maskable" for i in manifest["icons"])
+    for name in ICONS:
+        assert (tmp_path / "icons" / name).read_bytes().startswith(b"\x89PNG")
+    html = (tmp_path / "index.html").read_text(encoding="utf-8")
+    assert '<link rel="manifest" href="manifest.webmanifest" crossorigin="use-credentials">' in html
+    assert "manifest-src 'self'" in html
+    assert "serviceWorker" not in html  # data.json and the page are never cached

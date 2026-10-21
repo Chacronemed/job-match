@@ -455,6 +455,22 @@ class JobRepository:
         ).fetchall()
         return [_row_to_job(r) for r in rows]
 
+    def list_tracked(self, statuses: tuple[str, ...]) -> list[Job]:
+        """Jobs I have acted on (mirrored `applications` row with one of `statuses`), closed
+        or past the age cut-off included: an application outlives its offer."""
+        placeholders = ",".join("?" * len(statuses))
+        rows = self._conn.execute(
+            f"""
+            SELECT j.*
+            FROM jobs j
+            JOIN applications a ON a.job_key = j.source_id || ':' || j.source_job_id
+            WHERE a.status IN ({placeholders})
+            ORDER BY a.updated_at DESC
+            """,
+            statuses,
+        ).fetchall()
+        return [_row_to_job(r) for r in rows]
+
     # -- closure check (M20) ------------------------------------------------
 
     def list_to_check(
