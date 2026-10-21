@@ -44,6 +44,7 @@ class TestEnums:
             RejectionReason.LOCATION,
             RejectionReason.TITLE,
             RejectionReason.NOT_RELEVANT,
+            RejectionReason.RESERVED_RQTH,
         }
 
     def test_workplace_type_members(self):

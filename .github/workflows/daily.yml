@@ -85,7 +85,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           WRANGLER_SEND_METRICS: "false"
-        run: npx --yes wrangler@4 d1 migrations apply job-match-tracking --remote > /dev/null
+        run: npx --yes wrangler@4 d1 migrations apply job-match --remote > /dev/null
 
       - name: Export tracking
         id: tracking
@@ -100,7 +100,7 @@ jobs:
           dir="$RUNNER_TEMP/tracking"
           mkdir -p "$dir"
           trap 'rm -rf "$dir"' EXIT
-          d1() { npx --yes wrangler@4 d1 execute job-match-tracking --remote --json --command "$1"; }
+          d1() { npx --yes wrangler@4 d1 execute job-match --remote --json --command "$1"; }
           d1 "SELECT job_key, status, applied_at, follow_up_at, note, cv_url, updated_at FROM applications" > "$dir/applications.json"
           d1 "SELECT id, job_key, label, score_at_decision, created_at FROM decisions" > "$dir/decisions.json"
           d1 "SELECT skill, created_at FROM skill_overrides" > "$dir/skill_overrides.json"

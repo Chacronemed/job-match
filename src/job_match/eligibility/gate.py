@@ -8,6 +8,7 @@ from job_match.domain.models import (
     Job,
     RejectionReason,
 )
+from job_match.eligibility.reserved import rqth_reserved
 from job_match.experience.parser import infer_seniority
 from job_match.normalization.location import (
     departments_for,
@@ -70,6 +71,15 @@ def evaluate(
         or not is_relevant(job, profile, settings.relevance.target_title_keywords, aliases)
     ):
         reasons.append(RejectionReason.NOT_RELEVANT)
+
+    # 0b. Reserved for RQTH / BOETH holders: a job I cannot apply to. Inclusive wording
+    # ("ouvert aux personnes en situation de handicap") never matches.
+    if (
+        settings
+        and settings.eligibility.exclude_rqth_reserved
+        and rqth_reserved(f"{job.title}. {job.description}")
+    ):
+        reasons.append(RejectionReason.RESERVED_RQTH)
 
     # 1. Experience hard gate
     # Seniority keywords (title or description) set a minimum when no explicit number exists.

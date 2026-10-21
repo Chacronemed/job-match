@@ -16,7 +16,7 @@ Three constraints shaped the answer:
 
 ## Decision
 
-1. **Store my actions in D1** (`job-match-tracking`, free tier). D1 is the source of truth for my
+1. **Store my actions in D1** (`job-match`, free tier; first planned as `job-match-tracking`). D1 is the source of truth for my
    actions; the jobs SQLite DB stays the source of truth for offers.
    - Tables: `applications`, keyed by `job_key` = `<source>:<source_job_id>` (the natural key,
      never the SQLite surrogate id), and `decisions`, a verdict log.

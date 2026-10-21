@@ -15,18 +15,13 @@
 	},
 	"d1_databases": [
 		{
+			// The Worker reads env.DB. The id comes from `wrangler d1 create job-match` (not a
+			// secret: it is useless without an API token on the account). No "remote" key:
+			// `wrangler dev` must use a local D1, never the production one.
 			"binding": "DB",
-			"database_name": "job-match-tracking",
-			// Filled in once from `wrangler d1 create job-match-tracking` (not a secret: it is
-			// useless without an API token on the account).
-			"database_id": "00000000-0000-0000-0000-000000000000",
-			"migrations_dir": "worker/migrations"
-		},
-		{
-			"binding": "job_match",
 			"database_name": "job-match",
 			"database_id": "6239cf4b-0d6f-42aa-9736-3ef901a64956",
-			"remote": true
+			"migrations_dir": "worker/migrations"
 		}
 	]
 }

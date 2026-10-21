@@ -3,6 +3,7 @@
 The Access identifiers are Worker secrets, never config; site/ and .dev.vars are never committed.
 """
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent.parent
@@ -28,8 +29,13 @@ def test_assets_are_served_first_and_the_worker_only_runs_on_the_api():
 
 def test_one_d1_database_with_the_repo_migrations():
     (db,) = _config()["d1_databases"]
-    assert db["binding"] == "DB"
-    assert db["database_name"] == "job-match-tracking"
+    assert db["binding"] == "DB"  # the Worker reads env.DB
+    assert db["database_name"] == "job-match"
+    assert re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+                        db["database_id"])
+    assert set(db["database_id"]) != {"0", "-"}  # not the placeholder
+    # `wrangler dev` must never reach the production D1.
+    assert "remote" not in db
     assert db["migrations_dir"] == "worker/migrations"
     assert (ROOT / db["migrations_dir"] / "0001_tracking.sql").is_file()
 

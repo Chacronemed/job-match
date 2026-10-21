@@ -35,6 +35,12 @@ SNIPPET_MAX = 160
 _BOUNDARY_RE = re.compile(r"[.!?;](?=\s|$)|[\u2022\n\r]")
 
 
+def sentences(text: str) -> list[str]:
+    """`text` cut at the same boundaries as `snippet`, whitespace collapsed, empties dropped."""
+    parts = _BOUNDARY_RE.split(text)
+    return [" ".join(p.split()) for p in parts if p.strip()]
+
+
 def snippet(text: str, start: int, end: int, max_len: int = SNIPPET_MAX) -> str:
     """The sentence around text[start:end], whitespace collapsed, at most `max_len` chars.
 

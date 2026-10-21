@@ -132,6 +132,15 @@ class ExperienceConfig:
 
 
 @dataclass
+class EligibilityConfig:
+    """`exclude_rqth_reserved`: reject offers reserved for RQTH / BOETH holders (a hard
+    gate, reason RESERVED_RQTH). Inclusive wording ("ouvert aux personnes en situation de
+    handicap") never rejects."""
+
+    exclude_rqth_reserved: bool = False
+
+
+@dataclass
 class DigestConfig:
     min_score: int = 60  # eligible jobs below this stay in the DB but are not emailed
     max_leads: int = 10  # leads beyond this roll over to the next digest
@@ -190,5 +199,6 @@ class Settings:
     relevance: RelevanceConfig = field(default_factory=RelevanceConfig)
     digest: DigestConfig = field(default_factory=DigestConfig)
     experience: ExperienceConfig = field(default_factory=ExperienceConfig)
+    eligibility: EligibilityConfig = field(default_factory=EligibilityConfig)
     jobs: JobsConfig = field(default_factory=JobsConfig)
     raw_payloads: RawPayloadsConfig = field(default_factory=RawPayloadsConfig)

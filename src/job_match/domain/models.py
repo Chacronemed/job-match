@@ -51,6 +51,7 @@ class RejectionReason(StrEnum):
     LOCATION = "LOCATION"
     TITLE = "TITLE"
     NOT_RELEVANT = "NOT_RELEVANT"  # no preferred skill and no target-role title keyword
+    RESERVED_RQTH = "RESERVED_RQTH"  # reserved for RQTH / BOETH holders
 
 
 class WorkplaceType(StrEnum):

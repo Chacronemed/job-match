@@ -10,6 +10,7 @@ from job_match.config.schema import (
     Candidate,
     ConfigError,
     DigestConfig,
+    EligibilityConfig,
     ExperienceConfig,
     Filters,
     FTSearch,
@@ -134,6 +135,7 @@ def load_settings(path: Path) -> Settings:
         },
         sources=_parse_sources(raw.get("sources"), path),
         experience=_parse_experience(raw.get("experience"), path),
+        eligibility=_parse_eligibility(raw.get("eligibility"), path),
         scoring=ScoringConfig(
             jms=JMSConfig(
                 enabled=bool(jms_raw.get("enabled", False)),
@@ -283,6 +285,14 @@ def _parse_experience(value: object, path: Path) -> ExperienceConfig:
     if isinstance(years, bool) or not isinstance(years, int | float) or years < 0:
         raise ConfigError(f"experience.stretch_years must be a number >= 0 (in {path})")
     return ExperienceConfig(stretch_years=float(years))
+
+
+def _parse_eligibility(value: object, path: Path) -> EligibilityConfig:
+    raw = _mapping(value, "eligibility", path)
+    flag = raw.get("exclude_rqth_reserved", EligibilityConfig().exclude_rqth_reserved)
+    if not isinstance(flag, bool):
+        raise ConfigError(f"eligibility.exclude_rqth_reserved must be true or false (in {path})")
+    return EligibilityConfig(exclude_rqth_reserved=flag)
 
 
 def _parse_digest(value: object, path: Path) -> DigestConfig:

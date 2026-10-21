@@ -10,6 +10,26 @@ production rows. Still pending: the M21 Cloudflare setup, the data-repo cleanup 
 two Cloudflare secrets, M9 manual GitHub setup, `PROFILE_YAML` re-encoding, `SMTP_PORT` variable.
 
 ## Done
+- **One D1 entry + RQTH-reserved gate** (2026-10-21, post-M22):
+  - `wrangler.jsonc` has a single D1 entry: binding `DB`, `database_name` `job-match`, the
+    real id, no `remote` key. `daily.yml`, README and ADR 0012 say `job-match`. The wrangler
+    test checks the name, a non-placeholder UUID and the absence of `remote`.
+  - **Measured first** (local DB, read-only, 337 eligible/stretch jobs):
+    - 0 restrictive in eligible/stretch, and 0 in all 1670 rows; there is no RQTH or BOETH
+      mention at all.
+    - 122 inclusive only: Talents Handicap boilerplate 106, "ouvert(s) aux" 22,
+      handi-accueillant 7, "accessibles aux" 1.
+    - 15 more with other inclusive wording ("nous valorisons et encourageons les
+      candidatures…", "référente handicap").
+  - `eligibility/reserved.rqth_reserved` tests each sentence on its own
+    (`normalization/skills.sentences`) against the restrictive patterns.
+    - Negations do not count ("n'est pas réservé").
+    - "uniquement aux bénéficiaires" counts only with a disability word in the same sentence.
+  - `RejectionReason.RESERVED_RQTH`, applied by the gate when `settings.yaml`
+    `eligibility.exclude_rqth_reserved: true` (`EligibilityConfig`, bool only, default off).
+  - 33 tests, using real-looking restrictive, inclusive and guard sentences.
+  - Local reprocess: no RESERVED_RQTH; eligible 231, strong 53, stretch 106, unchanged.
+  - 1353 tests, ruff clean.
 - **"Pourquoi cette offre ?" + calibration** (2026-10-21, M22, ADR 0013):
   - **Evidence in the breakdown JSON** (no migration; old rows load with empty defaults):
     - `normalization/skills.find_skill` and `snippet`: the sentence around a match, at most 160
@@ -571,15 +591,6 @@ two Cloudflare secrets, M9 manual GitHub setup, `PROFILE_YAML` re-encoding, `SMT
   - `src/job_match/cli.py` — stub entry point
   - 26 tests green, `ruff check .` clean
 
-## Known issues
-- `tests/unit/test_wrangler_config.py::test_one_d1_database_with_the_repo_migrations` fails.
-  `wrangler.jsonc` now has a second D1 binding (`job_match` → database `job-match`, `remote:
-  true`), added outside M22. It looks like `wrangler d1 create` was run with the name
-  `job-match` and appended its own binding, while the first binding (`job-match-tracking`) still
-  has the zero `database_id`. Decide which database is the tracking one:
-  - either put its id into the `DB` binding and delete the extra entry;
-  - or rename the `DB` binding's `database_name` and update `daily.yml` and the test.
-
 ## Next step
 - **M22 in production:** after the M21 Cloudflare setup, trigger "Daily run" once with
   `reprocess_since` = today minus 45 days and `reprocess_scope` = `jobs`, so the visible rows get
@@ -587,8 +598,10 @@ two Cloudflare secrets, M9 manual GitHub setup, `PROFILE_YAML` re-encoding, `SMT
   badge, not "non recalculé". After about 10 verdicts, run `job-match calibrate` locally on a
   restored DB.
 - **Cloudflare setup for M21 (one-time, before the next daily run uses it):**
-  1. `npx wrangler@4 d1 create job-match-tracking`, then put the printed `database_id` into
-     `wrangler.jsonc` in place of the zeros, and commit it (not a secret).
+  1. **Done:** the D1 database is `job-match` (`wrangler.jsonc`, binding `DB`, real id, no
+     `remote` key). Apply its migrations once:
+     `npx wrangler@4 d1 migrations apply job-match --remote` (check first with
+     `npx wrangler@4 d1 migrations list job-match --remote`).
   2. API token (`CLOUDFLARE_API_TOKEN`): add **Account → D1 → Edit** next to **Workers Scripts
      → Edit**.
   3. Zero Trust → Access → Applications → the `job-match` app → copy the **Application Audience

@@ -144,6 +144,13 @@ relevance:
 experience:
   stretch_years: 1
 
+# Offers reserved for RQTH / BOETH holders ("Poste réservé aux travailleurs handicapés",
+# "RQTH obligatoire") are rejected with RESERVED_RQTH. Inclusive wording ("nos postes sont
+# ouverts aux personnes en situation de handicap", Talents Handicap) never rejects.
+# Measured 2026-10-21 on 337 local eligible/stretch jobs: 0 reserved, 122 inclusive only.
+eligibility:
+  exclude_rqth_reserved: true
+
 digest:
   min_score: 60   # eligible jobs below this stay in the DB, not emailed
   max_leads: 10   # hiring first, then pre-seed..series B, then most recent; the rest roll over

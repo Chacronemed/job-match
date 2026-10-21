@@ -297,6 +297,12 @@ but more boilerplate) or a plugin registry (unneeded with 2 sources).
 > `relevance.target_title_keywords` entry (accent-insensitive word prefix). Keywords live in the committed
 > `settings.yaml`, not the private profile. Matching helpers are shared with the scorer
 > (`normalization/skills.py`). The digest only emails eligible jobs with `score >= digest.min_score`.
+>
+> **Reserved offers (2026-10-21).** With `eligibility.exclude_rqth_reserved: true`, a sentence
+> reserving the offer for RQTH / BOETH holders (`eligibility/reserved.py`: "réservé aux travailleurs
+> handicapés", "RQTH obligatoire", "titulaire d'une RQTH"…) rejects it as `RESERVED_RQTH`. Each sentence
+> is tested alone, negations do not count, and inclusive wording ("ouvert aux personnes en situation de
+> handicap", Talents Handicap) never rejects.
 
 Two separate modules:
 
