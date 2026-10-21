@@ -292,7 +292,12 @@ def _parse_eligibility(value: object, path: Path) -> EligibilityConfig:
     flag = raw.get("exclude_rqth_reserved", EligibilityConfig().exclude_rqth_reserved)
     if not isinstance(flag, bool):
         raise ConfigError(f"eligibility.exclude_rqth_reserved must be true or false (in {path})")
-    return EligibilityConfig(exclude_rqth_reserved=flag)
+    return EligibilityConfig(
+        exclude_rqth_reserved=flag,
+        rqth_recruiters=_str_list(
+            raw.get("rqth_recruiters"), "eligibility.rqth_recruiters", path
+        ),
+    )
 
 
 def _parse_digest(value: object, path: Path) -> DigestConfig:

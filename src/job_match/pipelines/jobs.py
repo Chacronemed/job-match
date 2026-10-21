@@ -7,7 +7,16 @@ from job_match.adapters.jobs.base import source_payload
 from job_match.config.schema import Profile, Settings
 from job_match.dedup.engine import DedupEngine
 from job_match.dedup.fingerprint import compute_fingerprint
-from job_match.domain.models import Company, Eligibility, Job, RawPayload, RunSummary
+from job_match.domain.models import (
+    Company,
+    Eligibility,
+    EligibilityResult,
+    ExperienceRequirement,
+    Job,
+    RawPayload,
+    RunSummary,
+    ScoringBreakdown,
+)
 from job_match.eligibility import gate
 from job_match.experience import parser as exp_parser
 from job_match.normalization.company import normalize_company
@@ -66,6 +75,7 @@ def run_jobs(
     eligible = 0
     strong = 0
     stretch = 0
+    rqth = {"recruiter": 0, "end_client": 0}
     errors = 0
     raw_stored = 0
     by_source: dict[str, dict[str, int]] = {}
@@ -131,7 +141,13 @@ def run_jobs(
             )
             if not elig.eligible:
                 rejection = ", ".join(str(r) for r in elig.reasons)
-                job = replace(job, eligibility=Eligibility.REJECTED, rejection_reason=rejection)
+                job = replace(
+                    job,
+                    eligibility=Eligibility.REJECTED,
+                    rejection_reason=rejection,
+                    scoring_breakdown=_rejected_breakdown(elig, exp),
+                )
+                _count_rqth(elig, rqth)
                 rejected_jobs += 1  # one per job, regardless of how many reasons
                 for r in elig.reasons:
                     rejected_by_reason[str(r)] = rejected_by_reason.get(str(r), 0) + 1
@@ -223,6 +239,8 @@ def run_jobs(
         eligible=eligible,
         strong=strong,
         stretch=stretch,
+        rqth_recruiter=rqth["recruiter"],
+        rqth_end_client=rqth["end_client"],
         checked=closure.checked,
         closed=closure.closed,
         raw_stored=raw_stored,
@@ -240,6 +258,23 @@ def run_jobs(
         RunRepository(db.conn).save(summary, started_at, datetime.now(UTC))
 
     return summary
+
+
+def _rejected_breakdown(
+    elig: EligibilityResult, exp: ExperienceRequirement
+) -> ScoringBreakdown | None:
+    """A rejected job keeps the gate's notes (e.g. the end client of an RQTH recruiter's
+    offer) in its breakdown; with no note it has none, as before."""
+    if not elig.notes:
+        return None
+    return ScoringBreakdown(eligible=False, experience=exp.status, explanations=elig.notes)
+
+
+def _count_rqth(elig: EligibilityResult, counts: dict[str, int]) -> None:
+    if elig.rqth_recruiter:
+        counts["recruiter"] += 1
+        if elig.end_client:
+            counts["end_client"] += 1
 
 
 def reprocess_jobs(
@@ -284,6 +319,7 @@ def reprocess_jobs(
     eligible = 0
     strong = 0
     stretch = 0
+    rqth = {"recruiter": 0, "end_client": 0}
     errors = 0
     new_links = 0
     removed_links = 0
@@ -305,8 +341,9 @@ def reprocess_jobs(
                     eligibility=Eligibility.REJECTED,
                     rejection_reason=rejection,
                     score=None,
-                    scoring_breakdown=None,
+                    scoring_breakdown=_rejected_breakdown(elig, exp),
                 )
+                _count_rqth(elig, rqth)
                 rejected_jobs += 1
                 for r in elig.reasons:
                     rejected_by_reason[str(r)] = rejected_by_reason.get(str(r), 0) + 1
@@ -364,6 +401,8 @@ def reprocess_jobs(
         eligible=eligible,
         strong=strong,
         stretch=stretch,
+        rqth_recruiter=rqth["recruiter"],
+        rqth_end_client=rqth["end_client"],
         errors=errors,
         by_department=by_department,
     )

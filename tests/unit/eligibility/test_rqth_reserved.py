@@ -3,6 +3,7 @@
 The inclusive sentences are the forms measured on the local DB (2026-10-21: 122 of 337
 eligible/stretch jobs carry one, none carries a restrictive one), company names removed.
 """
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -128,3 +129,90 @@ def test_committed_settings_turn_it_on_and_the_value_must_be_a_bool(tmp_path):
         load_settings(path)
     path.write_text("strong_threshold: 70\n", encoding="utf-8")
     assert load_settings(path).eligibility.exclude_rqth_reserved is False
+
+
+# --- RQTH-specialised recruiters ---------------------------------------------------------
+
+from job_match.eligibility.reserved import end_client, rqth_recruiter  # noqa: E402
+
+TH_BOILERPLATE = (
+    "Description du poste : En tant qu'organisateur de forums de recrutement, Talents Handicap "
+    "accompagne de très nombreuses entreprises & organisations en France dans leurs "
+    "recrutements de collaborateurs en situation de handicap. Participant actuellement à l'un "
+    "de nos forums. L'entreprise Sopra Steria recherche actuellement des profils Ingénieur "
+    "DevOps H/F en CDI."
+)
+RECRUITERS = ["Talents Handicap"]
+
+
+def _recruiter_settings(names=RECRUITERS, on=True) -> Settings:
+    return Settings(eligibility=EligibilityConfig(exclude_rqth_reserved=on, rqth_recruiters=names))
+
+
+def test_the_recruiter_boilerplate_rejects_and_names_the_end_client():
+    result = evaluate(_job(TH_BOILERPLATE), REQ, PROFILE, _recruiter_settings())
+    assert RejectionReason.RESERVED_RQTH in result.reasons
+    assert (result.rqth_recruiter, result.end_client) == ("Talents Handicap", "Sopra Steria")
+    assert result.notes == (
+        "publié par Talents Handicap (recruteur spécialisé RQTH)"
+        " — le poste peut exister en direct chez Sopra Steria",
+    )
+
+
+def test_the_company_name_alone_rejects_and_the_note_has_no_client():
+    job = replace(_job("Ingénieur DevOps pour nos clients du secteur bancaire."),
+                  company="Forums Talents Handicap")
+    result = evaluate(job, REQ, PROFILE, _recruiter_settings())
+    assert RejectionReason.RESERVED_RQTH in result.reasons
+    assert result.end_client is None
+    assert result.notes == ("publié par Talents Handicap (recruteur spécialisé RQTH)",)
+
+
+def test_the_list_is_configurable():
+    text = ("HandiRecrut accompagne les entreprises dans le recrutement de personnes en "
+            "situation de handicap. Pour le compte de notre client Thales, nous recherchons un "
+            "ingénieur DevOps.")
+    assert rqth_recruiter("Acme", text, ["HandiRecrut"]) == "HandiRecrut"
+    assert rqth_recruiter("Acme", text, RECRUITERS) is None
+    assert end_client(text) == "Thales"
+
+
+@pytest.mark.parametrize("text", [
+    "Nous participons au forum Talents Handicap le 12 novembre.",  # cited, not the publisher
+    "Retrouvez-nous sur Talents Handicap. Nos postes sont ouverts aux personnes en situation "
+    "de handicap.",
+])
+def test_an_employer_citing_the_recruiter_is_kept(text):
+    result = evaluate(_job(text), REQ, PROFILE, _recruiter_settings())
+    assert RejectionReason.RESERVED_RQTH not in result.reasons
+
+
+def test_empty_list_or_flag_off_keeps_the_recruiter_offer():
+    for settings in (_recruiter_settings(names=[]), _recruiter_settings(on=False)):
+        result = evaluate(_job(TH_BOILERPLATE), REQ, PROFILE, settings)
+        assert RejectionReason.RESERVED_RQTH not in result.reasons
+        assert result.notes == ()
+
+
+def test_committed_settings_list_talents_handicap_and_the_list_is_validated(tmp_path):
+    settings = load_settings(REPO / "config" / "settings.yaml")
+    assert settings.eligibility.rqth_recruiters == ["Talents Handicap"]
+    path = tmp_path / "settings.yaml"
+    path.write_text("eligibility:\n  rqth_recruiters: Talents Handicap\n", encoding="utf-8")
+    with pytest.raises(ConfigError, match="rqth_recruiters"):
+        load_settings(path)
+
+
+def test_reprocess_keeps_the_note_on_the_rejected_row_and_counts_it(tmp_path):
+    from job_match.persistence.db import Database
+    from job_match.persistence.repositories import JobRepository
+    from job_match.pipelines.jobs import reprocess_jobs
+
+    with Database(path=":memory:") as db:
+        repo = JobRepository(db.conn)
+        repo.save(_job(TH_BOILERPLATE))
+        summary = reprocess_jobs(PROFILE, _recruiter_settings(), db, {})
+        (row,) = repo.list_all()
+        assert row.rejection_reason == "RESERVED_RQTH"
+        assert row.scoring_breakdown.explanations[0].endswith("en direct chez Sopra Steria")
+        assert (summary.rqth_recruiter, summary.rqth_end_client) == (1, 1)

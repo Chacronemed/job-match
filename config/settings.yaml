@@ -150,6 +150,13 @@ experience:
 # Measured 2026-10-21 on 337 local eligible/stretch jobs: 0 reserved, 122 inclusive only.
 eligibility:
   exclude_rqth_reserved: true
+  # Recruiters specialised in placing RQTH candidates: their offers are rejected the same way
+  # (company name, or their "<name> accompagne … recrutements de collaborateurs en situation de
+  # handicap" sentence). Measured 2026-10-21: Talents Handicap forums, 117 of 337 local
+  # eligible/stretch jobs, the end client named in 106. The note keeps the client's name: the
+  # same job may exist directly at that company.
+  rqth_recruiters:
+    - Talents Handicap
 
 digest:
   min_score: 60   # eligible jobs below this stay in the DB, not emailed

@@ -211,6 +211,11 @@ def _print_reprocess_summary(
     print(f"  eligible:   {summary.eligible}")
     print(f"  strong:     {summary.strong}")
     print(f"  stretch:    {summary.stretch}  (experience within stretch_years; never strong)")
+    if summary.rqth_recruiter:
+        print(
+            f"  RQTH recruiter offers: {summary.rqth_recruiter}"
+            f" (end client named: {summary.rqth_end_client})"
+        )
     print(f"  new duplicate links: {summary.duplicates}")
     print(f"  links removed:       {summary.stale_links_dropped}  (rules no longer match)")
     if summary.self_links_dropped:
@@ -604,6 +609,11 @@ def _print_summary(summary: RunSummary, *, dry_run: bool = False) -> None:
     print(f"  eligible:   {summary.eligible}")
     print(f"  strong:     {summary.strong}")
     print(f"  stretch:    {summary.stretch}  (experience within stretch_years; never strong)")
+    if summary.rqth_recruiter:
+        print(
+            f"  RQTH recruiter offers: {summary.rqth_recruiter}"
+            f" (end client named: {summary.rqth_end_client})"
+        )
     if summary.pipeline == "jobs":
         print(f"  checked:    {summary.checked}  (stored offers re-checked at the source)")
         print(f"  closed:     {summary.closed}  (hidden from the digest and the dashboard)")

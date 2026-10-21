@@ -380,11 +380,26 @@ table.data td {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-table.data td.col-title { max-width: none; min-width: 240px; width: 34%; }
-table.data td.col-company { width: 18%; }
-table.data td.col-dept { width: 60px; }
-table.data td.col-date { min-width: 96px; }
-table.data td.col-score { min-width: 108px; }
+table.data td.col-title { max-width: none; }
+
+/* Job tables: fixed layout, so a number never loses a digit. The numeric columns have
+   fixed widths sized for their longest value; Title and Company share what is left and
+   ellipsize (full text in the cell's tooltip). */
+table.data.fixed { table-layout: fixed; }
+table.data.fixed col.w-company { width: 20%; }
+table.data.fixed col.w-dept { width: 56px; }
+table.data.fixed col.w-contract { width: 96px; }
+table.data.fixed col.w-score { width: 112px; }
+table.data.fixed col.w-years { width: 72px; }
+table.data.fixed col.w-status { width: 116px; }
+table.data.fixed col.w-date { width: 80px; }
+table.data.fixed col.w-age { width: 64px; }
+table.data.fixed col.w-due { width: 160px; }
+table.data.fixed col.w-link { width: 68px; }
+table.data td.num, table.data td.col-date, table.data td.col-due, table.data td.col-age {
+  font-variant-numeric: tabular-nums;
+  text-overflow: clip;
+}
 
 tr.row { cursor: pointer; transition: background var(--t-fast); }
 tr.row:hover { background: var(--surface-2); }
@@ -502,8 +517,6 @@ tr.details td {
 .status-interview { background: var(--success); color: #ffffff; }
 .status-rejected { background: var(--danger-soft); color: var(--danger-ink); }
 .status-ignored { background: transparent; color: var(--ink-subtle); text-decoration: line-through; }
-table.data td.col-status { width: 104px; min-width: 104px; }
-table.data td.col-due { width: 170px; min-width: 170px; }
 .due-late .due-late-text { color: var(--stretch-ink); font-weight: 500; }
 .due-late-text { color: var(--ink-subtle); }
 .followup-title { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; }

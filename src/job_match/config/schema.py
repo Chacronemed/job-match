@@ -138,6 +138,10 @@ class EligibilityConfig:
     handicap") never rejects."""
 
     exclude_rqth_reserved: bool = False
+    # Recruiters whose job is placing RQTH candidates (a Talents Handicap forum offer never
+    # says "réservé"). Matched on the company name or on their own boilerplate sentence; same
+    # RESERVED_RQTH rejection, only while `exclude_rqth_reserved` is on.
+    rqth_recruiters: list[str] = field(default_factory=list)
 
 
 @dataclass

@@ -64,6 +64,20 @@
     return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
   }
 
+  /* "19/10" for the tables; the full date goes in the cell's tooltip and the details. */
+  function fmtShortDate(iso) {
+    if (!iso) return "—";
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return iso.slice(0, 10);
+    return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
+  }
+
+  function dateCell(cls, label, iso) {
+    var td = cell(cls, label, fmtShortDate(iso));
+    if (iso) td.title = fmtDate(iso);
+    return td;
+  }
+
   function fmtDateTime(iso) {
     if (!iso) return "—";
     var d = new Date(iso);
@@ -734,6 +748,7 @@
     if (j.location) meta.push(j.location);
     if (j.source) meta.push("source: " + j.source);
     if (!j.published_at) meta.push("no posting date from the source");
+    if (j.posted_at) meta.push("posted " + fmtDate(j.posted_at));
     if (j.collected_at) meta.push("collected " + fmtDate(j.collected_at));
     var stretchLine = null;
     var others = [];
@@ -762,9 +777,13 @@
       return cell("col-title", "Title", el("button", {
         type: "button", class: "expand", "aria-expanded": expanded ? "true" : "false",
         "aria-controls": prefix + "-details-" + j.id
-      }, [el("span", { class: "dot dot-" + j.section, "aria-hidden": "true" }), el("span", { class: "title-text", text: j.title || "—" })]));
+      }, [el("span", { class: "dot dot-" + j.section, "aria-hidden": "true" }), el("span", { class: "title-text", text: j.title || "—", title: j.title || null })]));
     },
-    company: function (j) { return cell("col-company", "Company", j.company || "—"); },
+    company: function (j) {
+      var td = cell("col-company", "Company", j.company || "—");
+      if (j.company) td.title = j.company;
+      return td;
+    },
     department: function (j) { return cell("col-dept", "Dept", j.department || "?"); },
     contract: function (j) { return cell("col-contract", "Contract", j.contract || "UNKNOWN"); },
     score: function (j) { return cell("num col-score", "Score", scoreCell(j)); },
@@ -773,7 +792,7 @@
       return cell("num col-years", "Years", el("span", { class: years === null ? "unknown years" : "years", text: years === null ? "—" : years + "y" }));
     },
     status: function (j) { return cell("col-status", "Status", statusBadge(j.key)); },
-    posted_at: function (j) { return cell("col-date", "Posted", fmtDate(j.posted_at)); },
+    posted_at: function (j) { return dateCell("col-date", "Posted", j.posted_at); },
     age_days: function (j) {
       var age = typeof j.age_days === "number" ? j.age_days : null;
       return cell("num col-age", "Age", el("span", { class: age === null ? "unknown" : "", text: age === null ? "—" : age + "d" }));
@@ -854,11 +873,13 @@
     var title = j
       ? el("span", { class: "followup-title" }, [el("span", { class: "dot dot-" + j.section, "aria-hidden": "true" }), el("span", { class: "title-text", text: j.title || "—" })])
       : el("span", { class: "unknown", text: f.key + " · offer no longer listed" });
-    row.appendChild(cell("col-title", "Title", title));
+    var titleCell = cell("col-title", "Title", title);
+    if (j && j.title) titleCell.title = j.title;
+    row.appendChild(titleCell);
     row.appendChild(cell("col-company", "Company", j ? (j.company || "—") : "—"));
     row.appendChild(cell("col-status", "Status", statusBadge(f.key)));
     var due = el("span", { class: "due" + (f.late > 0 ? " due-late" : "") }, [
-      fmtDate(f.app.follow_up_at), el("span", { class: "due-late-text", text: f.late > 0 ? " · " + f.late + "d late" : " · today" })
+      fmtShortDate(f.app.follow_up_at), el("span", { class: "due-late-text", text: f.late > 0 ? " · " + f.late + "d late" : " · today" })
     ]);
     row.appendChild(cell("col-due", "Follow up", due));
     row.appendChild(cell("link-col", "Link", j ? link(j.url, "Open") : el("span", { class: "unknown", text: "—" })));

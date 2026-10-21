@@ -98,6 +98,13 @@ class EligibilityResult:
     # or the one holding the seniority keyword).
     basis: ExperienceBasis = ExperienceBasis.NOT_MENTIONED
     basis_evidence: str | None = None
+    # Why a rule fired, worth keeping on a rejected job (e.g. the RQTH recruiter and the end
+    # client the job may exist at directly).
+    notes: tuple[str, ...] = ()
+    # Set when a listed RQTH-specialised recruiter published the offer, with the end client
+    # it names (if any).
+    rqth_recruiter: str | None = None
+    end_client: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -301,6 +308,10 @@ class RunSummary:
     eligible: int = 0
     strong: int = 0
     stretch: int = 0  # jobs kept by the experience stretch band; not in eligible or strong
+    # Rejected as published by an RQTH-specialised recruiter, and how many of those name the
+    # end client (the same job may exist there directly). Counts only: names stay in the DB.
+    rqth_recruiter: int = 0
+    rqth_end_client: int = 0
     # Closure check after collection: stored offers asked at the source, and how many it
     # said were gone. A check that got no clear answer counts in `errors`, never in `closed`.
     checked: int = 0

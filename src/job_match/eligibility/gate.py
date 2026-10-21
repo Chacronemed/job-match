@@ -8,7 +8,12 @@ from job_match.domain.models import (
     Job,
     RejectionReason,
 )
-from job_match.eligibility.reserved import rqth_reserved
+from job_match.eligibility.reserved import (
+    end_client,
+    recruiter_note,
+    rqth_recruiter,
+    rqth_reserved,
+)
 from job_match.experience.parser import infer_seniority
 from job_match.normalization.location import (
     departments_for,
@@ -74,12 +79,17 @@ def evaluate(
 
     # 0b. Reserved for RQTH / BOETH holders: a job I cannot apply to. Inclusive wording
     # ("ouvert aux personnes en situation de handicap") never matches.
-    if (
-        settings
-        and settings.eligibility.exclude_rqth_reserved
-        and rqth_reserved(f"{job.title}. {job.description}")
-    ):
-        reasons.append(RejectionReason.RESERVED_RQTH)
+    # A recruiter specialised in RQTH placements counts the same, wording or not.
+    notes: tuple[str, ...] = ()
+    recruiter = client = None
+    if settings and settings.eligibility.exclude_rqth_reserved:
+        text = f"{job.title}. {job.description}"
+        recruiter = rqth_recruiter(job.company, text, settings.eligibility.rqth_recruiters)
+        if recruiter:
+            client = end_client(job.description)
+            notes = (recruiter_note(recruiter, client),)
+        if recruiter or rqth_reserved(text):
+            reasons.append(RejectionReason.RESERVED_RQTH)
 
     # 1. Experience hard gate
     # Seniority keywords (title or description) set a minimum when no explicit number exists.
@@ -127,6 +137,9 @@ def evaluate(
         required_years=effective_min,
         basis=basis,
         basis_evidence=basis_evidence,
+        notes=notes,
+        rqth_recruiter=recruiter,
+        end_client=client,
     )
 
 

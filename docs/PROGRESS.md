@@ -10,6 +10,42 @@ production rows. Still pending: the M21 Cloudflare setup, the data-repo cleanup 
 two Cloudflare secrets, M9 manual GitHub setup, `PROFILE_YAML` re-encoding, `SMTP_PORT` variable.
 
 ## Done
+- **Fixed table columns + RQTH-specialised recruiters** (2026-10-21, post-M22):
+  - **Dashboard:** at about 1800px the Score and Posted cells clipped ("8" for 87, "19 Oct 2…").
+    - Cause: every `td` has `max-width: 0; overflow: hidden`, and `min-width` on table cells
+      is ignored with the automatic layout.
+    - The three job tables are now `data fixed` with a `<colgroup>`: fixed widths for dept,
+      contract, score, years, status, date, age, due and link; Company 20 %; Title takes the
+      rest.
+    - Numeric and date cells use tabular figures.
+    - Posted and follow-up dates are short (`fmtShortDate`, "19/10") with the full date as a
+      tooltip; the details meta line shows "posted"/"collected" in full.
+    - Title and Company carry a `title` tooltip.
+    - playwright-cli at 1280, 1440, 1800 and 390: 0 clipped numeric cells out of 616, no
+      horizontal overflow, 0 console errors. Not fixed (already there before this change):
+      at 1280 the third section chip ("Stretch") is hidden under the Department select in
+      the filter panel.
+  - **`eligibility.rqth_recruiters`** (`settings.yaml`: Talents Handicap):
+    - `reserved.rqth_recruiter` matches the company name (whole term, accent-insensitive:
+      "Forums Talents Handicap"), or one sentence naming the recruiter together with
+      "accompagn… recrut… handicap/RQTH". Merely citing the forum does not count.
+    - `end_client` reads "L'entreprise X recherche|recrute" or "pour le compte de (notre
+      client) X".
+    - The gate adds `RESERVED_RQTH` plus the note "publié par Talents Handicap (recruteur
+      spécialisé RQTH) — le poste peut exister en direct chez <client>". It is active only
+      while `exclude_rqth_reserved` is on.
+    - Rejected rows keep the note in a breakdown made only of explanations
+      (`pipelines/jobs._rejected_breakdown`). `RunSummary.rqth_recruiter` /
+      `rqth_end_client` hold counts only, and the CLI prints them.
+  - **Measured before the change** (337 eligible/stretch): 117 jobs, made of 106 with the
+    boilerplate sentence (83 eligible, 23 stretch) and 11 with the company name only;
+    16 of them strong. Only one recruiter name was found (Talents Handicap); the end client was
+    named in all 106 sentence matches.
+  - **Local reprocess:**
+    - RESERVED_RQTH 377 rows across the whole DB, 310 of them with the end client named;
+    - eligible 231 → 142, stretch 106 → 78, strong 53 → 35;
+    - dashboard 265 → 154 jobs.
+  - 8 new tests; the full suite (1361) is green.
 - **One D1 entry + RQTH-reserved gate** (2026-10-21, post-M22):
   - `wrangler.jsonc` has a single D1 entry: binding `DB`, `database_name` `job-match`, the
     real id, no `remote` key. `daily.yml`, README and ADR 0012 say `job-match`. The wrangler

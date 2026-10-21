@@ -46,7 +46,14 @@ __CSS__
   <div class="followups" id="today-followups" hidden>
     <h3 class="block-title">Relances du jour</h3>
     <div class="table-wrap">
-      <table class="data followups-table">
+      <table class="data fixed followups-table">
+        <colgroup>
+          <col class="w-title">
+          <col class="w-company">
+          <col class="w-status">
+          <col class="w-due">
+          <col class="w-link">
+        </colgroup>
         <thead>
           <tr>
             <th scope="col">Title</th>
@@ -64,7 +71,16 @@ __CSS__
   <h3 class="block-title">À traiter</h3>
   <p class="rowcount" id="today-rowcount" aria-live="polite"></p>
   <div class="table-wrap">
-    <table class="data jobs today" id="today-table">
+    <table class="data fixed jobs today" id="today-table">
+      <colgroup>
+        <col class="w-title">
+        <col class="w-company">
+        <col class="w-dept">
+        <col class="w-score">
+        <col class="w-status">
+        <col class="w-date">
+        <col class="w-link">
+      </colgroup>
       <thead>
         <tr>
           <th scope="col">Title</th>
@@ -135,7 +151,19 @@ __CSS__
 
   <p class="rowcount" id="jobs-rowcount" aria-live="polite"></p>
   <div class="table-wrap">
-    <table class="data jobs" id="jobs-table">
+    <table class="data fixed jobs" id="jobs-table">
+      <colgroup>
+        <col class="w-title">
+        <col class="w-company">
+        <col class="w-dept">
+        <col class="w-contract">
+        <col class="w-score">
+        <col class="w-years">
+        <col class="w-status">
+        <col class="w-date">
+        <col class="w-age">
+        <col class="w-link">
+      </colgroup>
       <thead>
         <tr>
           <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="title">Title</button></th>
