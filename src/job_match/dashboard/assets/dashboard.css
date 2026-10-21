@@ -710,8 +710,12 @@ select.posting-status { width: 180px; min-height: 32px; }
   font-size: 13px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
-.toast[hidden] { display: none; }
-.toast .link-btn { font-size: 13px; font-weight: 500; }
+.toast[hidden], .toast-actions[hidden] { display: none; }
+/* width: max-content, or `left: 50%` caps a wrapping toast at half the screen. */
+.toast { flex-wrap: wrap; row-gap: 6px; width: max-content; }
+.toast-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
+.toast .link-btn { font-size: 13px; font-weight: 500; min-height: 32px; }
+.toast input[type="date"] { min-height: 32px; padding: 4px 8px; }
 
 .explain-all { margin-top: 12px; color: var(--ink-subtle); font-size: 12px; }
 .explain-all summary { cursor: pointer; min-height: 28px; display: flex; align-items: center; }
@@ -958,7 +962,8 @@ select.posting-status { width: 180px; min-height: 32px; }
 .tri-btn-undo { padding: 0 18px; color: var(--ink-subtle); font-weight: 500; }
 .tri-btn-undo:disabled { opacity: 0.45; cursor: default; }
 .tri-btn kbd { font: inherit; font-size: 12px; font-weight: 400; color: inherit; opacity: 0.7; margin-left: 6px; }
-.tri-reasons-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 14px; padding: 10px 14px; border-radius: var(--r-md); background: var(--surface-2); font-size: 13px; }
+.tri-reasons-title { flex-basis: 100%; font-weight: 500; color: var(--ink); text-wrap: balance; overflow-wrap: anywhere; }
+.tri-reasons-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 18px; padding: 10px 14px; border-radius: var(--r-md); background: var(--surface-2); font-size: 13px; }
 .tri-reason-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .reason-chip { min-height: 36px; }
 .tri-end { padding: 40px 28px; border-radius: var(--r-lg); background: var(--surface-1); }
@@ -996,7 +1001,6 @@ body.is-dragging-card { user-select: none; -webkit-user-select: none; }
 .kb-dates.is-due { color: var(--stretch-ink); font-weight: 500; }
 .kb-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .kb-status { width: auto; min-height: 30px; max-width: 100%; font-size: 12px; }
-.kb-prompt { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin-top: 8px; font-size: 13px; }
 .kb-empty { margin: 0; font-size: 12px; color: var(--ink-tertiary); }
 
 @media (max-width: 1100px) {
@@ -1007,7 +1011,7 @@ body.is-dragging-card { user-select: none; -webkit-user-select: none; }
   .tri-card { padding: 18px 16px 16px; }
   .tri-title { font-size: 19px; }
   .tri-btn { min-height: 56px; }
-  .tri-controls { position: sticky; bottom: max(8px, env(safe-area-inset-bottom)); z-index: 5; }
+  .tri-controls, .tri-reasons-bar { position: sticky; bottom: max(8px, env(safe-area-inset-bottom)); z-index: 5; }
   .kb-board { grid-template-columns: 1fr; }
   .kb-col { min-height: 0; }
   .kb-status, .btn-small { min-height: 44px; }

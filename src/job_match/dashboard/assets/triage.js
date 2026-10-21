@@ -97,6 +97,17 @@
     return !err || !err.status || err.status >= 500;
   }
 
+  /* How many offers the waiting calls are about: a keep is two calls (status + verdict) for one
+     offer. An undone verdict carries no key; it still counts as one when nothing else waits. */
+  function pendingOffers(ops) {
+    var keys = {};
+    (ops || []).forEach(function (op) {
+      if (op && op.payload && typeof op.payload.key === "string") keys[op.payload.key] = true;
+    });
+    var n = Object.keys(keys).length;
+    return n || ((ops || []).length ? 1 : 0);
+  }
+
   var PENDING_MAX = 200;
   var JOB_KEY = /^[a-z0-9_]{1,32}:[A-Za-z0-9._-]{1,64}$/;
   var KINDS = { save: true, decide: true, undecide: true };
@@ -190,6 +201,7 @@
     retryQueue: retryQueue,
     localStore: localStore,
     validOp: validOp,
+    pendingOffers: pendingOffers,
     PENDING_MAX: PENDING_MAX
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;

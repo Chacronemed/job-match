@@ -127,6 +127,23 @@ def test_every_offres_filter_is_present_and_wired():
     assert 'currentTab === "jobs"' not in sync and 'currentTab === "offres"' not in sync
 
 
+def test_audit_p1_fixes_are_in_the_page():
+    """docs/design/AUDIT.md P1-1 to P1-3 and P2-16, at the markup level."""
+    html = render_index(_EMPTY)
+    # P1-1: the follow-up question lives in the toast, never in a board card.
+    assert 'id="toast-actions"' in html and "kb-prompt" not in html
+    assert "followUpAsk(key, today)" in html
+    # P1-2: a word search, with an example query.
+    assert 'placeholder="ex. orbital kubernetes"' in html
+    assert "T.matchesWords(j, searchWords())" in html
+    # P1-3: the reason step names the offer.
+    assert 'id="tri-reasons-title"' in html and "Pourquoi écarter « " in html
+    # P2-16: the KPI cards are not a live region (the row count is).
+    kpis = re.search(r'<div class="kpis"[^>]*>', html).group(0)
+    assert "aria-live" not in kpis
+    assert '<p class="rowcount" id="jobs-rowcount" aria-live="polite">' in html
+
+
 def test_tracking_script_is_inlined_before_the_dashboard_script():
     html = render_index(_EMPTY)
     assert html.index("root.JMTracking = api") < html.index("var T = window.JMTracking;")

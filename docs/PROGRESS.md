@@ -10,6 +10,24 @@ production rows. Still pending: the M21 Cloudflare setup, the data-repo cleanup 
 two Cloudflare secrets, M9 manual GitHub setup, `PROFILE_YAML` re-encoding, `SMTP_PORT` variable.
 
 ## Done
+- **UX audit + P1 fixes** (2026-10-21): `docs/design/AUDIT.md`. The views and 3 journeys were
+  walked on fake data (1440 and 390, dark and light) and the findings ranked P1/P2/P3. Fixed:
+  - **P1-1:** the follow-up question after "J'ai postulé" is asked in a held toast ("Relancer
+    le 28/10 · Autre date · Non · Annuler"), focused, with Escape = Non. It was inside the
+    moved card, off-screen. "Autre date" saves only on Enregistrer or Enter.
+    - `showToast(text, actions, opts)` now takes several actions;
+    - `applyChanges` / `setRecord` take an optional `ask`.
+  - **P1-2:** the Offres search is word-based and accent-folded, any order, over title +
+    company + every posting's location (`tracking.js` `fold` / `queryWords` / `matchesWords`).
+    Placeholder: "ex. orbital kubernetes".
+  - **P1-3:** after a drop, « Pourquoi écarter « titre » ? » plus the chips replace the Tri
+    buttons (sticky on phones), and never show at batch end.
+  - **P1-4:** the Tri card meta line shows "N ans requis" or "années non précisées".
+  - **P2-11:** the pending banner counts offers (`triage.pendingOffers`), not calls.
+  - **P2-16:** no `aria-live` on `.kpis`.
+  - **Tests:** Node tests for the search (3) and `pendingOffers` (1); one render test. Journeys
+    re-run (counts in AUDIT.md "Fix status").
+  - **Open:** P1-5 to P1-7, and every P2/P3 except the two above.
 - **M23 follow-up: guidelines pass + persistent pending queue** (2026-10-21):
   - **Pending actions survive a reload:**
     - `triage.retryQueue(send, onDrop, storage)` + `localStore("jm.pending.v1")`, every

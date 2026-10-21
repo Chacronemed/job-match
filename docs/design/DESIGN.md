@@ -632,13 +632,19 @@ The components the dashboard page actually uses (`src/job_match/dashboard/assets
   - Escape closes the reason bar.
   - The key hints in the buttons are `aria-hidden`; `aria-keyshortcuts` carries them.
   - While tracking loads, the buttons are disabled under "Chargement du suivi…".
-- **`reason-bar`**: after a left swipe, a `{colors.surface-2}` strip with "Pourquoi ?", four
-  quick-action pills (Hors sujet, Trop senior, Compétence manquante, Lieu) and "Passer". It
-  closes after 6 s.
+- **`reason-bar`**: after a left swipe, a `{colors.surface-2}` strip in the buttons' place
+  (sticky like them on phones), with:
+  - the question « Pourquoi écarter « <titre> » ? » (13px, weight 500);
+  - four quick-action pills (Hors sujet, Trop senior, Compétence manquante, Lieu) and "Passer".
+  - It closes after 6 s, on a pill, on "Passer" or on Escape, and the buttons come back.
+  - It never shows on a batch-end screen. ← → and swipes still work while it is open.
+- **Card meta line**: company · location · contract · "3 ans requis" (or "années non
+  précisées") · age.
 - **`progress`**: a 6px primary bar with "Lot 1/8 · 7 / 20 · 134 restantes" in tabular figures.
   The batch-end and "Tri terminé" screens reuse the card surface, with a 22px heading and one
   primary button.
-- **`pending-banner`**: danger-soft, "N actions en attente de connexion · Réessayer".
+- **`pending-banner`**: danger-soft, "N offres en attente de connexion · Réessayer" (offers,
+  not API calls: a keep is two calls).
 - **`kanban-column`**: four columns (two under 1100px, stacked under 768px):
   - `{colors.surface-1}`, `{rounded.lg}`, a 13px heading with its count;
   - the drop target tints primary-soft while a card is dragged over it.
@@ -646,8 +652,12 @@ The components the dashboard page actually uses (`src/job_match/dashboard/assets
 - **`kanban-card`**: `{colors.surface-2}`, `{rounded.md}`, 12px padding.
   - Title 14px weight 500, meta and dates 12px (dates in stretch ink when due).
   - Below them: the status menu, "J'ai postulé" (small primary) and the offer link.
-  - The follow-up prompt "Relance prévue ? Relancer le 28/10 · Autre date · Pas de relance" goes
-    under the card.
+  - The follow-up question is asked in the toast, never in the card (the card has just moved,
+    often off-screen): "Candidature envoyée le 21/10. Relance ? Relancer le 28/10 · Autre date ·
+    Non · Annuler".
+    - The toast is held until answered, focus starts on "Relancer le …", and Escape = Non.
+    - "Autre date" turns it into a date input + "Enregistrer": the date is saved on Enregistrer
+      or Enter, never on change.
   - Dragging lifts the card with the one floating shadow.
 - **`filters-bar`** (phones): the "Filtres (n)" summary is sticky at the top of the panel and
   counts active filters.

@@ -120,6 +120,15 @@ describe("retry queue", () => {
     assert.deepEqual(dropped, ["bad"]);
   });
 
+  test("the banner counts offers, not calls", () => {
+    const save = (key) => ({ kind: "save", payload: { key, rec: { status: "to_apply" } } });
+    const decide = (key) => ({ kind: "decide", payload: { key, label: "good_fit" } });
+    assert.equal(X.pendingOffers([save("ft:1"), decide("ft:1")]), 1); // one keep = two calls
+    assert.equal(X.pendingOffers([save("ft:1"), decide("ft:1"), save("ft:2")]), 2);
+    assert.equal(X.pendingOffers([{ kind: "undecide", payload: { id: 7 } }]), 1);
+    assert.equal(X.pendingOffers([]), 0);
+  });
+
   test("a 5xx is retried, a 4xx is not", () => {
     assert.ok(X.retryable({ status: 503 }));
     assert.ok(X.retryable(new TypeError("offline")));

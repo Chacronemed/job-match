@@ -102,6 +102,14 @@
     return Number.isInteger(y) ? String(y) : String(y);
   }
 
+  var YEARS_NUM = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 1 });
+  /* The triage card's experience fact: "3 ans requis", "1,5 an requis" (French: singular
+     below 2), or that the posting states no number. */
+  function yearsText(y) {
+    if (typeof y !== "number" || !isFinite(y)) return "années non précisées";
+    return YEARS_NUM.format(y) + (y < 2 ? " an" : " ans") + " requis";
+  }
+
   function fmtAmount(amount, currency) {
     if (amount === null || amount === undefined) return null;
     var unit = "";
@@ -300,11 +308,14 @@
     var day = dayOf(j.posted_at);
     if (state.from && day < state.from) return false;
     if (state.to && day > state.to) return false;
-    if (state.q) {
-      var hay = ((j.title || "") + " " + (j.company || "")).toLowerCase();
-      if (hay.indexOf(state.q) < 0) return false;
-    }
-    return true;
+    return T.matchesWords(j, searchWords());
+  }
+
+  /* The query's words, split once per query rather than once per row. */
+  var wordsFor = { q: null, words: [] };
+  function searchWords() {
+    if (wordsFor.q !== state.q) wordsFor = { q: state.q, words: T.queryWords(state.q) };
+    return wordsFor.words;
   }
 
   function sortValue(j, k) {
@@ -838,28 +849,54 @@
 
   var toast = byId("toast");
   var toastText = byId("toast-text");
-  var toastAction = byId("toast-action");
+  var toastActions = byId("toast-actions");
   var toastTimer = null;
+  var toastHeld = false;  /* a question waits for an answer: no auto-hide */
+  var toastOnEscape = null;
   var TOAST_MS = 5000;
 
   function hideToast() {
     clearTimeout(toastTimer);
+    toastHeld = false;
+    toastOnEscape = null;
     toast.hidden = true;
   }
 
   function armToast() {
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(hideToast, TOAST_MS);
+    if (!toastHeld) toastTimer = setTimeout(hideToast, TOAST_MS);
   }
 
-  function showToast(text, actionText, onAction) {
-    toastText.textContent = text;
-    toastAction.hidden = !actionText;
-    toastAction.textContent = actionText || "";
-    toastAction.onclick = onAction ? function () { hideToast(); onAction(); } : null;
-    toast.hidden = false;
-    armToast();
+  function toastButton(a) {
+    var b = el("button", { type: a.type || "button", class: "link-btn", text: a.text });
+    b.addEventListener("click", function () { if (!a.keep) hideToast(); a.run(); });
+    return b;
   }
+
+  /* `actions`: [{text, run, keep}] (keep: the toast stays, for a step inside it).
+     opts.hold keeps it until answered, opts.focus moves focus to its first button,
+     opts.onEscape runs on Escape. */
+  function showToast(text, actions, opts) {
+    opts = opts || {};
+    toastText.textContent = text;
+    clear(toastActions);
+    (actions || []).forEach(function (a) { toastActions.appendChild(toastButton(a)); });
+    toastActions.hidden = !toastActions.childNodes.length;
+    toast.hidden = false;
+    toastHeld = !!opts.hold;
+    toastOnEscape = opts.onEscape || null;
+    armToast();
+    if (opts.focus && toastActions.firstChild) toastActions.firstChild.focus({ preventScroll: true });
+  }
+
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key !== "Escape" || toast.hidden || !toastOnEscape) return;
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+    var run = toastOnEscape;
+    hideToast();
+    run();
+  }, true);
 
   /* Hovering or focusing the toast holds it: the undo stays reachable. */
   toast.addEventListener("mouseenter", function () { clearTimeout(toastTimer); });
@@ -895,13 +932,19 @@
   }
 
   /* changes: [{key, next}]; undo: the records to put back, or null (an undo is not undone). */
-  function applyChanges(changes, done, undo) {
+  /* `ask`: an optional question in the toast ({text, actions}), shown before "Annuler" and
+     held until answered. */
+  function applyChanges(changes, done, undo, ask) {
     var saving = Promise.all(changes.map(function (c) { return saveRecord(c.key, c.next); }));
     rerenderLists();
-    showToast(done, undo ? "Annuler" : null, undo ? function () { applyChanges(undo, "Modification annulée", null); } : null);
+    var actions = ask ? ask.actions.slice() : [];
+    if (undo) actions.push({ text: "Annuler", run: function () { applyChanges(undo, "Modification annulée", null); } });
+    showToast(ask ? done + ". " + ask.text : done, actions,
+      ask ? { hold: true, focus: true, onEscape: ask.onEscape } : null);
     saving.catch(function (err) {
       rerenderLists();
-      showToast("Non enregistré (" + failureText(err) + ")", "Réessayer", function () { applyChanges(changes, done, undo); });
+      showToast("Non enregistré (" + failureText(err) + ")",
+        [{ text: "Réessayer", run: function () { applyChanges(changes, done, undo, ask); } }]);
     });
   }
 
@@ -1175,10 +1218,10 @@
   }
 
   function renderPending() {
-    var n = retry.size();
     var bar = byId("tri-pending");
-    bar.hidden = n === 0;
-    byId("tri-pending-text").textContent = n + (n > 1 ? " actions en attente" : " action en attente") + " de connexion";
+    bar.hidden = retry.size() === 0;
+    var n = X.pendingOffers(retry.list());
+    byId("tri-pending-text").textContent = n + (n > 1 ? " offres en attente" : " offre en attente") + " de connexion";
   }
 
   function flushRetry() {
@@ -1247,7 +1290,7 @@
       ])
     ]));
     card.appendChild(el("h3", { class: "tri-title", text: j.title || "—" }));
-    var facts = [j.company || "Entreprise non communiquée", j.location || "—", j.contract || "INCONNU"];
+    var facts = [j.company || "Entreprise non communiquée", j.location || "—", j.contract || "INCONNU", yearsText(j.required_years)];
     if (typeof j.age_days === "number") facts.push("publiée il y a " + j.age_days + " j");
     card.appendChild(el("p", { class: "tri-facts", text: facts.join(" · ") }));
     if (isNext) return card;
@@ -1320,15 +1363,27 @@
     card.addEventListener("pointercancel", end);
   }
 
+  /* The reason step takes the buttons' place; closing it gives them back (unless the batch
+     or the queue has ended: the end screen owns that space then). */
   function hideReasons() {
     clearTimeout(reasonTimer);
-    byId("tri-reasons-bar").hidden = true;
+    var bar = byId("tri-reasons-bar");
+    if (bar.hidden) return;
+    var hadFocus = bar.contains(document.activeElement);
+    bar.hidden = true;
+    var controls = byId("tri-controls");
+    controls.hidden = !byId("tri-end").hidden;
+    if (hadFocus && !controls.hidden) byId("tri-drop").focus({ preventScroll: true });
   }
 
-  /* After a left swipe: why, in one tap, for 6 seconds. */
+  /* After a left swipe: why, in one tap, for 6 seconds, named after the offer it is about. */
   function showReasons(item) {
     var bar = byId("tri-reasons-bar");
     var list = byId("tri-reason-chips");
+    var controls = byId("tri-controls");
+    var question = "Pourquoi écarter « " + (item.row.title || "cette offre") + " » ?";
+    byId("tri-reasons-title").textContent = question;
+    bar.setAttribute("aria-label", question);
     clear(list);
     X.REASONS.forEach(function (label) {
       var b = el("button", { type: "button", class: "qa reason-chip", text: T.LABEL_TEXT[label] });
@@ -1341,8 +1396,11 @@
       });
       list.appendChild(b);
     });
+    var hadFocus = controls.contains(document.activeElement);
+    controls.hidden = true;
     bar.hidden = false;
-    announce("Pourquoi l’écarter ? 4 raisons au choix, Échap pour passer.");
+    if (hadFocus) list.firstChild.focus({ preventScroll: true });
+    announce(question + " 4 raisons au choix, Échap pour passer.");
     clearTimeout(reasonTimer);
     reasonTimer = setTimeout(hideReasons, 6000);
   }
@@ -1375,7 +1433,8 @@
       flying = null;
       tri.pos += 1;
       renderTri();
-      if (direction === "left") showReasons(item);
+      /* No reason step on the end screen: it would ask about an offer no longer in view. */
+      if (direction === "left" && !byId("tri-controls").hidden) showReasons(item);
       updateCounts();
       /* Focus was on a link or button of the card that just left: give it to the new card
          rather than dropping it on the page. */
@@ -1441,9 +1500,10 @@
       byId("tri-progress-bar").setAttribute("aria-valuemax", String(size));
       byId("tri-progress-bar").setAttribute("aria-valuetext", inBatch + " sur " + size);
     }
-    byId("tri-controls").hidden = done || atBoundary || total === 0;
-    byId("tri-undo").disabled = undo.size() === 0;
     end.hidden = !(done || atBoundary);
+    if (!end.hidden) hideReasons();
+    byId("tri-controls").hidden = done || atBoundary || total === 0 || !byId("tri-reasons-bar").hidden;
+    byId("tri-undo").disabled = undo.size() === 0;
     if (done || atBoundary) {
       clear(end);
       if (atBoundary) {
@@ -1491,7 +1551,6 @@
 
   /* ---------- Candidatures ---------- */
 
-  var appsUi = { prompt: null, changing: null };
   var drag = null;
 
   function addDays(day, n) {
@@ -1504,9 +1563,43 @@
   /* A calendar day (YYYY-MM-DD) as "28/10": read as UTC so no time zone moves it a day. */
   function shortDay(day) { return T.isDay(day) ? DAY_SHORT.format(new Date(day + "T00:00:00Z")) : ""; }
 
-  function setRecord(key, patch, done) {
+  function setRecord(key, patch, done, ask) {
     var prev = T.blank(track.apps[key]);
-    applyChanges([{ key: key, next: Object.assign({}, prev, patch) }], done, [{ key: key, next: prev }]);
+    applyChanges([{ key: key, next: Object.assign({}, prev, patch) }], done, [{ key: key, next: prev }], ask);
+  }
+
+  /* The follow-up question after "J'ai postulé". It lives in the toast: the card has already
+     moved to another column, often off-screen. */
+  function followUpAsk(key, appliedOn) {
+    var suggested = addDays(appliedOn, 7);
+    function plan(day) {
+      setRecord(key, { follow_up_at: day }, "Relance prévue le " + shortDay(day));
+    }
+    function otherDate() {
+      var input = el("input", { type: "date", name: "follow_up_at", value: suggested, min: appliedOn, "aria-label": "Date de relance", autocomplete: "off" });
+      function save() {
+        if (!T.isDay(input.value)) { input.focus(); return; }
+        plan(input.value);
+      }
+      input.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter") { ev.preventDefault(); save(); }
+      });
+      showToast("Relance le", [
+        { text: "Enregistrer", run: save, keep: true },
+        { text: "Non", run: function () {} }
+      ], { hold: true, onEscape: function () {} });
+      toastActions.insertBefore(input, toastActions.firstChild);
+      input.focus();
+    }
+    return {
+      text: "Relance ?",
+      actions: [
+        { text: "Relancer le " + shortDay(suggested), run: function () { plan(suggested); } },
+        { text: "Autre date", run: otherDate, keep: true },
+        { text: "Non", run: function () {} }
+      ],
+      onEscape: function () {}
+    };
   }
 
   function appCard(key, today) {
@@ -1535,40 +1628,13 @@
     if (status === "to_apply") {
       var applied = el("button", { type: "button", class: "btn btn-primary btn-small", text: "J’ai postulé" });
       applied.addEventListener("click", function () {
-        appsUi.prompt = key;
-        setRecord(key, { status: "applied", applied_at: today }, "Candidature envoyée le " + shortDay(today));
+        setRecord(key, { status: "applied", applied_at: today }, "Candidature envoyée le " + shortDay(today),
+          followUpAsk(key, today));
       });
       actions.appendChild(applied);
     }
     if (j && j.url && HTTP.test(j.url)) actions.appendChild(el("a", { href: j.url, target: "_blank", rel: "noopener noreferrer", "aria-label": "Voir l’offre : " + (j.title || key), text: "Offre" }));
     card.appendChild(actions);
-
-    if (appsUi.prompt === key && status === "applied") {
-      var suggested = addDays(app.applied_at || today, 7);
-      var line = el("div", { class: "kb-prompt", role: "group", "aria-label": "Date de relance" });
-      if (appsUi.changing === key) {
-        var input = el("input", { type: "date", name: "follow_up_at", value: suggested, "aria-label": "Relance le", autocomplete: "off" });
-        input.addEventListener("change", function () {
-          if (!T.isDay(input.value)) return;
-          appsUi.prompt = appsUi.changing = null;
-          setRecord(key, { follow_up_at: input.value }, "Relance prévue le " + shortDay(input.value));
-        });
-        line.appendChild(input);
-      } else {
-        line.appendChild(el("span", { text: "Relance prévue ?" }));
-        var yes = el("button", { type: "button", class: "link-btn", text: "Relancer le " + shortDay(suggested) });
-        yes.addEventListener("click", function () {
-          appsUi.prompt = null;
-          setRecord(key, { follow_up_at: suggested }, "Relance prévue le " + shortDay(suggested));
-        });
-        var change = el("button", { type: "button", class: "link-btn", text: "Autre date" });
-        change.addEventListener("click", function () { appsUi.changing = key; renderApps(); });
-        var no = el("button", { type: "button", class: "link-btn", text: "Pas de relance" });
-        no.addEventListener("click", function () { appsUi.prompt = null; renderApps(); });
-        [yes, change, no].forEach(function (b) { line.appendChild(b); });
-      }
-      card.appendChild(line);
-    }
     if (window.matchMedia("(pointer: fine)").matches) attachDrag(card, key);
     return card;
   }
