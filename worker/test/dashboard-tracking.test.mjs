@@ -210,3 +210,35 @@ describe("API client", () => {
     assert.equal(f.calls[1].init.method, "DELETE");
   });
 });
+
+describe("Offres search", () => {
+  const row = { title: "Ingénieur plateforme Kubernetes", company: "Orbital Data", location: "Nantes 44" };
+  const find = (q, r = row) => T.matchesWords(r, T.queryWords(q));
+
+  test("words are folded: case and accents never matter", () => {
+    assert.equal(T.fold("Ingénieur Élève ÇA"), "ingenieur eleve ca");
+    assert.deepEqual(T.queryWords("  Orbital   KUBERNETES "), ["orbital", "kubernetes"]);
+    assert.deepEqual(T.queryWords(""), []);
+  });
+
+  test("every word must match, in any order, across title, company and location", () => {
+    assert.ok(find("orbital kubernetes"));
+    assert.ok(find("kubernetes orbital"));
+    assert.ok(find("ingenieur"));
+    assert.ok(find("INGÉNIEUR nantes"));
+    assert.ok(find("plateforme kube"));
+    assert.ok(!find("orbital azure"));
+    assert.ok(find("")); // no words: everything
+  });
+
+  test("a group matches on any of its postings' locations", () => {
+    const grouped = T.groupJobs([
+      { key: "ft:a", id: "ft:a", score: 80, title: "DevOps", company: "Nordwind", location: "Paris 75", group: "nordwind|devops", department: "75" },
+      { key: "ft:b", id: "ft:b", score: 70, title: "DevOps", company: "Nordwind", location: "Lyon 69", group: "nordwind|devops", department: "69" },
+    ]);
+    assert.equal(grouped.length, 1);
+    assert.ok(find("nordwind lyon", grouped[0]));
+    assert.ok(find("paris devops", grouped[0]));
+    assert.ok(!find("nordwind lille", grouped[0]));
+  });
+});

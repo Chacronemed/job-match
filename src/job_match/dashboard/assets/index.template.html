@@ -61,7 +61,7 @@ __CSS__
     <button type="button" class="tri-btn tri-btn-keep" id="tri-keep" aria-keyshortcuts="ArrowRight">Garder <kbd aria-hidden="true">→</kbd></button>
   </div>
   <div class="tri-reasons-bar" id="tri-reasons-bar" role="group" aria-label="Pourquoi l’écarter ?" aria-keyshortcuts="Escape" hidden>
-    <span>Pourquoi ?</span>
+    <span class="tri-reasons-title" id="tri-reasons-title">Pourquoi l’écarter ?</span>
     <span class="tri-reason-chips" id="tri-reason-chips"></span>
     <button type="button" class="link-btn" id="tri-reasons-close">Passer</button>
   </div>
@@ -76,7 +76,7 @@ __CSS__
 
 <section class="panel" id="panel-offres" role="tabpanel" aria-labelledby="tab-offres" hidden>
   <h2 class="sr-only">Offres</h2>
-  <div class="kpis" aria-live="polite">
+  <div class="kpis">
     <div class="kpi kpi-strong"><span class="kpi-label">Fortes</span><span class="kpi-value" id="kpi-strong">0</span></div>
     <div class="kpi kpi-eligible"><span class="kpi-label">Éligibles</span><span class="kpi-value" id="kpi-eligible">0</span></div>
     <div class="kpi kpi-stretch"><span class="kpi-label">À tenter</span><span class="kpi-value" id="kpi-stretch">0</span></div>
@@ -88,7 +88,7 @@ __CSS__
     <div class="controls-grid">
       <label class="field field-search">
         <span class="field-label">Recherche</span>
-        <input type="search" id="f-search" name="q" placeholder="Titre ou entreprise…" autocomplete="off" spellcheck="false">
+        <input type="search" id="f-search" name="q" placeholder="ex. orbital kubernetes" autocomplete="off" spellcheck="false">
       </label>
       <div class="field field-sections" role="group" aria-label="Sections">
         <span class="field-label">Section</span>
@@ -201,7 +201,7 @@ __CSS__
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden>
   <span id="toast-text"></span>
-  <button type="button" class="link-btn" id="toast-action" hidden></button>
+  <span class="toast-actions" id="toast-actions" hidden></span>
 </div>
 
 <script type="application/json" id="data">__DATA__</script>

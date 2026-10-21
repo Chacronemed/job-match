@@ -66,6 +66,23 @@
     return row.postings || [row];
   }
 
+  /* Search text: lowercase, accents removed ("Ingénieur" and "ingenieur" are the same word). */
+  function fold(s) {
+    return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  }
+
+  function queryWords(q) {
+    return fold(q).split(/\s+/).filter(Boolean);
+  }
+
+  /* Every word of the query, in any order, somewhere in the title, the company or a
+     location (each posting's, for a group). No words: everything matches. */
+  function matchesWords(row, words) {
+    if (!words || !words.length) return true;
+    var hay = fold([row.title, row.company].concat(postingsOf(row).map(function (p) { return p.location; })).join(" "));
+    return words.every(function (w) { return hay.indexOf(w) >= 0; });
+  }
+
   /* Same company + same normalized title (`group`, from the data) in more than one
      department: one row, the best-scored posting as its face, `postings` holding them all
      (best first). Anything else stays as it is. */
@@ -214,6 +231,9 @@
     groupJobs: groupJobs,
     rowStatus: rowStatus,
     postingsOf: postingsOf,
+    fold: fold,
+    queryWords: queryWords,
+    matchesWords: matchesWords,
     STATUS_RANK: STATUS_RANK,
     isHttpsUrl: isHttpsUrl,
     validateRecord: validateRecord,
