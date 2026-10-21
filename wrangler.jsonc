@@ -1,8 +1,32 @@
 {
-  "name": "job-match",
-  "compatibility_date": "2026-09-01",
-  "assets": {
-    "directory": "./site",
-    "not_found_handling": "none"
-  }
+	"name": "job-match",
+	"compatibility_date": "2026-09-01",
+	// /api/* runs the Worker (application tracking over D1); every other path is the static
+	// dashboard. Cloudflare Access protects both. CF_ACCESS_AUD and CF_ACCESS_TEAM_DOMAIN are
+	// Worker secrets (`wrangler secret put`), never vars: vars missing here are wiped on deploy.
+	"main": "worker/src/index.js",
+	"assets": {
+		"directory": "./site",
+		"binding": "ASSETS",
+		"not_found_handling": "none",
+		"run_worker_first": [
+			"/api/*"
+		]
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "job-match-tracking",
+			// Filled in once from `wrangler d1 create job-match-tracking` (not a secret: it is
+			// useless without an API token on the account).
+			"database_id": "00000000-0000-0000-0000-000000000000",
+			"migrations_dir": "worker/migrations"
+		},
+		{
+			"binding": "job_match",
+			"database_name": "job-match",
+			"database_id": "6239cf4b-0d6f-42aa-9736-3ef901a64956",
+			"remote": true
+		}
+	]
 }

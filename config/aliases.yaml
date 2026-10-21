@@ -1,6 +1,6 @@
 # Centralized skill/term aliases used by the NativeRuleScorer.
-# Key: canonical name (must match skills.preferred/negative in profile.yaml).
-# Values: list of aliases that resolve to the canonical name.
+# Key: canonical name, as written in skills.preferred/negative in profile.yaml or in
+# skill_vocabulary.yaml. Values: list of aliases that resolve to the canonical name.
 
 kubernetes:
   - k8s
@@ -38,3 +38,37 @@ linux:
 
 ansible:
   - ansible-playbook
+
+# Vocabulary skills (skill_vocabulary.yaml)
+aws:
+  - amazon web services
+
+gcp:
+  - google cloud
+  - google cloud platform
+
+gitlab ci:
+  - gitlab-ci
+  - gitlabci
+  - gitlab ci/cd
+
+github actions:
+  - github action
+
+argocd:
+  - argo cd
+
+fluxcd:
+  - flux cd
+
+postgresql:
+  - postgres
+
+elasticsearch:
+  - elastic search
+
+opentelemetry:
+  - open telemetry
+
+vault:
+  - hashicorp vault

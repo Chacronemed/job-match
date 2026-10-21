@@ -12,11 +12,12 @@ from job_match.dashboard.data import (
     safe_url,
 )
 from job_match.persistence.db import Database
+from job_match.tracking.constants import JOB_KEY_RE
 
 JOB_KEYS = {
-    "id", "section", "title", "company", "department", "location", "contract", "source",
+    "id", "key", "section", "title", "company", "department", "location", "contract", "source",
     "score", "required_years", "experience_status", "collected_at", "published_at",
-    "posted_at", "age_days", "url", "explanations", "positive", "negative", "missing",
+    "posted_at", "age_days", "url", "explanations", "positive", "negative", "missing", "why",
 }
 RUN_KEYS = {
     "id", "pipeline", "started_at", "finished_at", "fetched", "normalized",
@@ -69,6 +70,15 @@ def test_job_entry_keys_and_fields(dashboard_data):
     assert strong["positive"] == ["kubernetes", "terraform"]
     assert strong["missing"] == ["aws"]
     assert strong["collected_at"] == seed.now.isoformat()
+
+
+def test_job_key_is_the_natural_source_key(dashboard_data):
+    data, _ = dashboard_data
+    keys = [j["key"] for j in data["jobs"]]
+    assert len(keys) == len(set(keys))
+    for job in data["jobs"]:
+        assert JOB_KEY_RE.match(job["key"]), job["key"]
+        assert job["key"].split(":", 1)[0] == job["source"]
 
 
 def test_posted_at_is_the_posting_date_or_the_collection_date_and_age_counts_days(

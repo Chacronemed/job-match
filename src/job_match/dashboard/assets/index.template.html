@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; base-uri 'none'; form-action 'none'">
 <meta name="color-scheme" content="dark light">
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#010102">
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
@@ -21,7 +21,8 @@ __CSS__
     <span class="generated" id="generated-at"></span>
   </div>
   <nav class="tabs" role="tablist" aria-label="Sections">
-    <button class="tab" role="tab" id="tab-jobs" aria-controls="panel-jobs" aria-selected="true" data-tab="jobs">Jobs <span class="tab-count" id="count-jobs"></span></button>
+    <button class="tab" role="tab" id="tab-today" aria-controls="panel-today" aria-selected="true" data-tab="today">Aujourd'hui <span class="tab-count" id="count-today"></span></button>
+    <button class="tab" role="tab" id="tab-jobs" aria-controls="panel-jobs" aria-selected="false" tabindex="-1" data-tab="jobs">Jobs <span class="tab-count" id="count-jobs"></span></button>
     <button class="tab" role="tab" id="tab-leads" aria-controls="panel-leads" aria-selected="false" tabindex="-1" data-tab="leads">Leads <span class="tab-count" id="count-leads"></span></button>
     <button class="tab" role="tab" id="tab-runs" aria-controls="panel-runs" aria-selected="false" tabindex="-1" data-tab="runs">Runs <span class="tab-count" id="count-runs"></span></button>
   </nav>
@@ -29,7 +30,59 @@ __CSS__
 </header>
 
 <main id="main">
-<section class="panel" id="panel-jobs" role="tabpanel" aria-labelledby="tab-jobs">
+<div class="track-banner" id="track-banner" role="status" hidden>
+  <span id="track-banner-text"></span>
+  <button type="button" class="btn" id="track-retry" hidden>Retry</button>
+</div>
+
+<section class="panel" id="panel-today" role="tabpanel" aria-labelledby="tab-today">
+  <h2 class="sr-only">Aujourd'hui</h2>
+  <div class="kpis kpis-today" aria-live="polite">
+    <div class="kpi kpi-apply"><span class="kpi-label">To apply</span><span class="kpi-value" id="kpi-today-apply">0</span></div>
+    <div class="kpi"><span class="kpi-label">To review</span><span class="kpi-value" id="kpi-today-review">0</span></div>
+    <div class="kpi kpi-due"><span class="kpi-label">Follow-ups due</span><span class="kpi-value" id="kpi-today-due">0</span></div>
+  </div>
+
+  <div class="followups" id="today-followups" hidden>
+    <h3 class="block-title">Relances du jour</h3>
+    <div class="table-wrap">
+      <table class="data followups-table">
+        <thead>
+          <tr>
+            <th scope="col">Title</th>
+            <th scope="col">Company</th>
+            <th scope="col">Status</th>
+            <th scope="col">Follow up</th>
+            <th scope="col" class="link-col">Link</th>
+          </tr>
+        </thead>
+        <tbody id="today-followups-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <h3 class="block-title">À traiter</h3>
+  <p class="rowcount" id="today-rowcount" aria-live="polite"></p>
+  <div class="table-wrap">
+    <table class="data jobs today" id="today-table">
+      <thead>
+        <tr>
+          <th scope="col">Title</th>
+          <th scope="col">Company</th>
+          <th scope="col">Dept</th>
+          <th scope="col" class="num">Score</th>
+          <th scope="col">Status</th>
+          <th scope="col">Posted</th>
+          <th scope="col" class="link-col">Link</th>
+        </tr>
+      </thead>
+      <tbody id="today-body"></tbody>
+    </table>
+    <p class="empty" id="today-empty" hidden>Nothing left to review. Every listed job has a status.</p>
+  </div>
+</section>
+
+<section class="panel" id="panel-jobs" role="tabpanel" aria-labelledby="tab-jobs" hidden>
   <h2 class="sr-only">Jobs</h2>
   <div class="kpis" aria-live="polite">
     <div class="kpi kpi-strong"><span class="kpi-label">Strong</span><span class="kpi-value" id="kpi-strong">0</span></div>
@@ -56,6 +109,10 @@ __CSS__
       <label class="field">
         <span class="field-label">Department</span>
         <select id="f-department" name="department"><option value="">All</option></select>
+      </label>
+      <label class="field">
+        <span class="field-label">Status</span>
+        <select id="f-status" name="status"><option value="">All</option></select>
       </label>
       <div class="field field-score">
         <label class="field-label" for="f-min-score">Min score <span class="field-hint" id="min-score-hint"></span></label>
@@ -87,6 +144,7 @@ __CSS__
           <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="contract">Contract</button></th>
           <th scope="col" class="num" aria-sort="descending"><button type="button" class="sort" data-key="score">Score</button></th>
           <th scope="col" class="num" aria-sort="none"><button type="button" class="sort" data-key="required_years">Years</button></th>
+          <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="status">Status</button></th>
           <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="posted_at">Posted</button></th>
           <th scope="col" class="num" aria-sort="none"><button type="button" class="sort" data-key="age_days">Age</button></th>
           <th scope="col" class="link-col"><span class="sort-static">Link</span></th>
@@ -136,6 +194,9 @@ __CSS__
 </main>
 
 <script type="application/json" id="data">__DATA__</script>
+<script>
+__TRACKING_JS__
+</script>
 <script>
 __JS__
 </script>

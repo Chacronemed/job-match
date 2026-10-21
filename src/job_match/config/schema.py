@@ -99,6 +99,9 @@ class JMSConfig:
 @dataclass
 class ScoringConfig:
     jms: JMSConfig = field(default_factory=JMSConfig)
+    # Weight of a skill marked "je maîtrise" on the dashboard (D1 `skill_overrides`): it
+    # joins the preferred skills with this weight on the next run.
+    override_weight: int = 2
 
 
 @dataclass

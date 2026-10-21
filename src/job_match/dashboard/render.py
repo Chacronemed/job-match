@@ -1,7 +1,9 @@
 """Render the dashboard: one HTML file with the CSS, the JS and the data inlined.
 
-The page is static and works from `file://`: no fetch, no framework, no build step. Nothing
-from the database is written into the markup. The snapshot travels as JSON inside a
+The snapshot is static and the page works from `file://`: no framework, no build step. The
+only network call is the tracking API on the same origin (`/api/`, CSP `connect-src 'self'`);
+without it the page shows everything but statuses. Nothing from the database is written into
+the markup. The snapshot travels as JSON inside a
 `<script type="application/json">` block, with every `<` escaped as `\\u003c` (still valid
 JSON) so no job title can close the block or open a tag, and the page's own script builds the
 DOM with `textContent`. The template (`assets/index.template.html`) holds only our own words.
@@ -27,10 +29,12 @@ def embed_json(data: dict) -> str:
 def render_index(data: dict) -> str:
     template = _ASSETS.joinpath("index.template.html").read_text(encoding="utf-8")
     css = _ASSETS.joinpath("dashboard.css").read_text(encoding="utf-8")
+    tracking_js = _ASSETS.joinpath("tracking.js").read_text(encoding="utf-8")
     js = _ASSETS.joinpath("dashboard.js").read_text(encoding="utf-8")
     # str.replace, not str.format: the CSS and JS are full of braces.
     return (
         template.replace("__CSS__", css)
+        .replace("__TRACKING_JS__", tracking_js)
         .replace("__JS__", js)
         .replace("__DATA__", embed_json(data))
     )

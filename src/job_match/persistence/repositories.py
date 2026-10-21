@@ -11,6 +11,7 @@ from job_match.domain.models import (
     Eligibility,
     ExperienceRequirement,
     ExperienceStatus,
+    FollowUp,
     FundingEvent,
     Job,
     Lead,
@@ -25,6 +26,7 @@ from job_match.domain.models import (
 from job_match.normalization.company import normalize_company
 from job_match.normalization.location import block_location, same_block_location
 from job_match.normalization.title import normalize_title
+from job_match.tracking.constants import ACTIVE_STATUSES, NO_FOLLOW_UP_STATUSES
 
 # ---------------------------------------------------------------------------
 # Serialisation helpers
@@ -44,6 +46,9 @@ def _score_result_to_dict(sr: ScoreResult) -> dict:
         "missing_preferences": list(sr.missing_preferences),
         "explanations": list(sr.explanations),
         "raw": sr.raw,
+        "evidence": sr.evidence,
+        "weights": sr.weights,
+        "unlisted": sr.unlisted,
     }
 
 
@@ -57,6 +62,9 @@ def _score_result_from_dict(d: dict) -> ScoreResult:
         missing_preferences=tuple(d.get("missing_preferences", [])),
         explanations=tuple(d.get("explanations", [])),
         raw=d.get("raw", {}),
+        evidence=d.get("evidence", {}),
+        weights=d.get("weights", {}),
+        unlisted=d.get("unlisted", {}),
     )
 
 
@@ -73,6 +81,10 @@ def _breakdown_to_json(bd: ScoringBreakdown) -> str:
             "engines": {k: _score_result_to_dict(v) for k, v in bd.engines.items()},
             "divergence": bd.divergence,
             "needs_review": bd.needs_review,
+            "evidence": bd.evidence,
+            "weights": bd.weights,
+            "unlisted": bd.unlisted,
+            "experience_detail": bd.experience_detail,
         }
     )
 
@@ -90,6 +102,10 @@ def _breakdown_from_json(text: str) -> ScoringBreakdown:
         engines={k: _score_result_from_dict(v) for k, v in d.get("engines", {}).items()},
         divergence=d.get("divergence"),
         needs_review=d.get("needs_review", False),
+        evidence=d.get("evidence", {}),
+        weights=d.get("weights", {}),
+        unlisted=d.get("unlisted", {}),
+        experience_detail=d.get("experience_detail", {}),
     )
 
 
@@ -113,6 +129,20 @@ def _visible_where(now: datetime | None, max_age_days: int | None) -> tuple[str,
         where += " AND COALESCE(j.published_at, j.collected_at) >= ?"
         params.append((now - timedelta(days=max_age_days)).isoformat())
     return where, params
+
+
+def _sql_list(values: tuple[str, ...]) -> str:
+    """('a', 'b') -> "'a', 'b'" for constant enums only, never for input."""
+    return ", ".join(f"'{v}'" for v in values)
+
+
+# A job I already handled (applied, interview, rejected, ignored) in the D1 mirror.
+_HANDLED_WHERE = f"""
+  AND NOT EXISTS (
+      SELECT 1 FROM applications a
+      WHERE a.job_key = j.source_id || ':' || j.source_job_id
+        AND a.status NOT IN ({_sql_list(ACTIVE_STATUSES)})
+  )"""
 
 
 def _row_to_job(row: sqlite3.Row) -> Job:
@@ -380,8 +410,9 @@ class JobRepository:
     ) -> list[Job]:
         """Return canonical eligible jobs not yet notified, strong first then by score.
 
-        A job the source said is closed is never listed. With `now` and `max_age_days`, a
-        job whose posting date (collection date when unknown) is older than the cut-off is
+        A job the source said is closed is never listed, nor one I already handled (its
+        tracked status is not to_review/to_apply). With `now` and `max_age_days`, a job
+        whose posting date (collection date when unknown) is older than the cut-off is
         hidden too; without them there is no age cut-off.
         """
         where, params = _visible_where(now, max_age_days)
@@ -393,7 +424,7 @@ class JobRepository:
             WHERE j.eligibility IN ('ELIGIBLE', 'STRETCH')
               AND j.notified_at IS NULL
               AND d.duplicate_job_id IS NULL
-              {where}
+              {where}{_HANDLED_WHERE}
             ORDER BY j.score DESC, j.collected_at DESC
             """,
             params,
@@ -1173,3 +1204,106 @@ class LeadRepository:
 
     def count(self) -> int:
         return self._conn.execute("SELECT COUNT(*) FROM leads").fetchone()[0]
+
+
+class ApplicationRepository:
+    """The read-only mirror of the D1 tracking tables (D1 is the source of truth)."""
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def replace_all(
+        self,
+        applications: list[dict],
+        decisions: list[dict],
+        skill_overrides: list[dict] | None = None,
+    ) -> None:
+        """Swap the tables for the given rows in one transaction (validated by the caller).
+
+        `skill_overrides=None` leaves that table as it is.
+        """
+        with self._conn:
+            if skill_overrides is not None:
+                self._conn.execute("DELETE FROM skill_overrides")
+                self._conn.executemany(
+                    "INSERT INTO skill_overrides(skill, created_at) VALUES (:skill, :created_at)",
+                    skill_overrides,
+                )
+            self._conn.execute("DELETE FROM applications")
+            self._conn.execute("DELETE FROM decisions")
+            self._conn.executemany(
+                "INSERT INTO applications(job_key, status, applied_at, follow_up_at, note,"
+                " cv_url, updated_at) VALUES (:job_key, :status, :applied_at, :follow_up_at,"
+                " :note, :cv_url, :updated_at)",
+                applications,
+            )
+            self._conn.executemany(
+                "INSERT INTO decisions(id, job_key, label, score_at_decision, created_at)"
+                " VALUES (:id, :job_key, :label, :score_at_decision, :created_at)",
+                decisions,
+            )
+
+    def list_latest_decisions(
+        self, since: date | None = None
+    ) -> list[tuple[str, int | None, ScoringBreakdown | None]]:
+        """(label, score_at_decision, stored breakdown) for each job's latest verdict.
+
+        The breakdown is None when the offer is no longer stored. `since` filters on the
+        verdict's date.
+        """
+        rows = self._conn.execute(
+            """
+            SELECT d.label, d.score_at_decision, j.scoring_breakdown
+            FROM decisions d
+            LEFT JOIN jobs j ON j.source_id || ':' || j.source_job_id = d.job_key
+            WHERE d.id IN (SELECT MAX(id) FROM decisions GROUP BY job_key)
+              AND d.created_at >= ?
+            ORDER BY d.id
+            """,
+            ((since or date.min).isoformat(),),
+        ).fetchall()
+        return [
+            (
+                r["label"],
+                r["score_at_decision"],
+                _breakdown_from_json(r["scoring_breakdown"]) if r["scoring_breakdown"] else None,
+            )
+            for r in rows
+        ]
+
+    def list_skill_overrides(self) -> list[str]:
+        """Skills marked "je maîtrise" on the dashboard, by name."""
+        rows = self._conn.execute("SELECT skill FROM skill_overrides ORDER BY skill").fetchall()
+        return [r["skill"] for r in rows]
+
+    def count(self) -> tuple[int, int]:
+        apps = self._conn.execute("SELECT COUNT(*) FROM applications").fetchone()[0]
+        decs = self._conn.execute("SELECT COUNT(*) FROM decisions").fetchone()[0]
+        return apps, decs
+
+    def list_followups_due(self, today: date) -> list[FollowUp]:
+        """Follow-ups due today or overdue, oldest first, unless the application is closed
+        (rejected/ignored). The offer is joined when it is still stored, closed or not."""
+        rows = self._conn.execute(
+            f"""
+            SELECT a.job_key, a.status, a.follow_up_at, j.title, j.company, j.url
+            FROM applications a
+            LEFT JOIN jobs j ON j.source_id || ':' || j.source_job_id = a.job_key
+            WHERE a.follow_up_at IS NOT NULL
+              AND a.follow_up_at <= ?
+              AND a.status NOT IN ({_sql_list(NO_FOLLOW_UP_STATUSES)})
+            ORDER BY a.follow_up_at, a.job_key
+            """,
+            (today.isoformat(),),
+        ).fetchall()
+        return [
+            FollowUp(
+                job_key=r["job_key"],
+                status=r["status"],
+                follow_up_at=date.fromisoformat(r["follow_up_at"]),
+                title=r["title"],
+                company=r["company"],
+                url=r["url"],
+            )
+            for r in rows
+        ]

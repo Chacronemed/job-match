@@ -17,6 +17,13 @@ jobs:
           python-version: "3.12"
           cache: pip
 
+      # The Worker and dashboard-tracking tests (worker/test/*.test.mjs) run under Node from
+      # pytest (tests/unit/test_worker_js.py); with CI set, a missing Node fails instead of
+      # skipping.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Install
         run: pip install ".[dev]"
 

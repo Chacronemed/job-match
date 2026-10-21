@@ -64,6 +64,59 @@ jobs:
       - name: Restore DB
         run: python -m job_match.persistence.snapshot restore --repo data-repo --db data/jobs.sqlite
 
+      # Node runs wrangler: the D1 steps below and the dashboard deploy at the end.
+      - name: Set up Node
+        continue-on-error: true
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Application tracking lives in D1 (ADR 0012). Apply its migrations (idempotent), then
+      # mirror applications, decisions and skill overrides into the jobs DB, before the jobs
+      # pipeline: the run merges the overrides into the profile (ADR 0013), and the digest
+      # leaves out handled jobs and lists due follow-ups. The export holds my notes and CV links: it goes to a
+      # private temp dir, is never printed or uploaded, and is deleted at the end of the
+      # step; the import prints counts only. A failed export keeps yesterday's mirror (it
+      # travels in the DB snapshot), so neither step can block the digest or the push.
+      - name: Apply D1 migrations
+        id: d1_migrate
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+        run: npx --yes wrangler@4 d1 migrations apply job-match-tracking --remote > /dev/null
+
+      - name: Export tracking
+        id: tracking
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+        run: |
+          set -euo pipefail
+          umask 077
+          dir="$RUNNER_TEMP/tracking"
+          mkdir -p "$dir"
+          trap 'rm -rf "$dir"' EXIT
+          d1() { npx --yes wrangler@4 d1 execute job-match-tracking --remote --json --command "$1"; }
+          d1 "SELECT job_key, status, applied_at, follow_up_at, note, cv_url, updated_at FROM applications" > "$dir/applications.json"
+          d1 "SELECT id, job_key, label, score_at_decision, created_at FROM decisions" > "$dir/decisions.json"
+          d1 "SELECT skill, created_at FROM skill_overrides" > "$dir/skill_overrides.json"
+          job-match tracking import --applications "$dir/applications.json" --decisions "$dir/decisions.json" --skill-overrides "$dir/skill_overrides.json"
+
+      # A skill marked "je maîtrise" since the last mirror: re-score the stored jobs still
+      # inside the posting-age cut-off, so the change shows today and not only on offers
+      # fetched again. No API calls; --limit 0 keeps job titles out of this public log.
+      - name: Reprocess for skill overrides
+        id: reprocess_overrides
+        if: ${{ steps.tracking.outputs.overrides_changed == 'true' }}
+        continue-on-error: true
+        run: |
+          since=$(python -c "from datetime import date, timedelta; from pathlib import Path; from job_match.config.loader import load_settings; print(date.today() - timedelta(days=load_settings(Path('config/settings.yaml')).jobs.max_age_days))")
+          job-match reprocess --since "$since" --limit 0
+
       # Sources without a secret are skipped with a warning; the run continues on the
       # rest. Which sources are enabled is config/settings.yaml, not this file.
       - name: Run pipeline
@@ -153,13 +206,6 @@ jobs:
         if: always() && steps.wal.outcome == 'success'
         continue-on-error: true
         run: job-match dashboard --out site
-
-      - name: Set up Node
-        if: always() && steps.wal.outcome == 'success'
-        continue-on-error: true
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
 
       - name: Deploy dashboard
         if: always() && steps.wal.outcome == 'success'

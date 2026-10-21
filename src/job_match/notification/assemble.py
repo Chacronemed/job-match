@@ -12,6 +12,7 @@ from job_match.notification.digest import DigestData
 from job_match.notification.lead_filter import select_leads
 from job_match.persistence.db import Database
 from job_match.persistence.repositories import (
+    ApplicationRepository,
     FundingEventRepository,
     JobRepository,
     LeadRepository,
@@ -29,12 +30,15 @@ class DigestBatch:
 
     @property
     def is_empty(self) -> bool:
-        return not self.job_ids and not self.lead_ids
+        # Follow-ups alone are worth an email; they are never marked, so they do not count
+        # in job_ids/lead_ids.
+        return not self.job_ids and not self.lead_ids and not self.data.followups
 
 
 def build_digest(db: Database, settings: Settings, now: datetime) -> DigestBatch:
-    # Closed offers and postings older than jobs.max_age_days never reach the digest; they
-    # stay in the DB, unnotified.
+    # Closed offers, postings older than jobs.max_age_days and jobs I already handled
+    # (tracked status other than to_review/to_apply) never reach the digest; they stay in
+    # the DB, unnotified.
     unnotified = JobRepository(db.conn).list_unnotified(
         now=now, max_age_days=settings.jobs.max_age_days
     )
@@ -61,6 +65,9 @@ def build_digest(db: Database, settings: Settings, now: datetime) -> DigestBatch
     all_leads = LeadRepository(db.conn).list_unnotified_details(jobs_since)
     selection = select_leads(all_leads, settings.funding.lead_filters, settings.digest.max_leads)
 
+    # The run starts at 07:00 UTC, so the UTC date is the date in France too.
+    followups = ApplicationRepository(db.conn).list_followups_due(now.date())
+
     data = DigestData(
         strong=strong,
         eligible=eligible,
@@ -68,6 +75,7 @@ def build_digest(db: Database, settings: Settings, now: datetime) -> DigestBatch
         leads=selection.selected,
         company_funding=company_funding,
         generated_at=now,
+        followups=tuple(followups),
     )
     return DigestBatch(
         data=data,

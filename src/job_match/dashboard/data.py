@@ -2,7 +2,9 @@
 
 Everything the page shows comes from this one dict, so this module is the allow-list of what
 leaves the DB: job descriptions, the profile's search keywords (`by_keyword`, `queries`), raw
-payloads and anything personal never appear here. Numbers are copied, never recomputed from
+payloads and anything personal never appear here. The one exception to "no description" is
+the "Pourquoi cette offre ?" panel: the single sentence each skill or experience requirement
+was found in, capped at `EVIDENCE_MAX` (ADR 0013). Numbers are copied, never recomputed from
 today's config: a job's required years are the parser's own number or the gate's own words.
 """
 from __future__ import annotations
@@ -22,6 +24,7 @@ from job_match.domain.models import (
 from job_match.normalization.location import department_of
 from job_match.persistence.db import Database
 from job_match.persistence.repositories import JobRepository, LeadRepository, RunRepository
+from job_match.tracking.constants import job_key
 
 RUN_PIPELINES: tuple[str, ...] = ("jobs", "jobs_reprocess")
 RUN_LIMIT = 30
@@ -46,6 +49,7 @@ RUN_KEYS: tuple[str, ...] = (
 )
 
 _STRETCH_YEARS_RE = re.compile(r"requires (\d+(?:\.\d+)?)y")
+EVIDENCE_MAX = 240
 
 
 def safe_url(url: str | None) -> str | None:
@@ -67,7 +71,11 @@ def required_years(job: Job) -> float | None:
     The parser's explicit minimum first; for a STRETCH job the gate's own note
     ("stretch: requires 3y, you have 2") carries the seniority-keyword minimum that gated it.
     The gate is never re-run here: today's keyword map may differ from the one that decided.
+    A breakdown scored since M22 carries the gate's number directly.
     """
+    detail = job.scoring_breakdown.experience_detail if job.scoring_breakdown else {}
+    if "required_years" in detail:
+        return detail["required_years"]
     if job.experience and job.experience.min_years is not None:
         return job.experience.min_years
     if job.eligibility is Eligibility.STRETCH and job.scoring_breakdown:
@@ -97,11 +105,55 @@ def posted_at(job: Job) -> datetime:
     return job.published_at or job.collected_at
 
 
+def _evidence(text: str | None) -> str | None:
+    if not text:
+        return None
+    return text if len(text) <= EVIDENCE_MAX else text[: EVIDENCE_MAX - 1] + "…"
+
+
+def why_entry(job: Job) -> dict:
+    """The "Pourquoi cette offre ?" panel: what was found, where, and what it weighed.
+
+    Rows scored before M22 have no evidence and no basis: the panel says so rather than
+    guessing (basis None).
+    """
+    bd = job.scoring_breakdown
+    if bd is None:
+        return {"skills": [], "unlisted": [], "lowered": [], "experience": None}
+    detail = bd.experience_detail
+    exp = job.experience
+    return {
+        "skills": [
+            {"name": n, "weight": bd.weights.get(n), "snippet": _evidence(bd.evidence.get(n))}
+            for n in bd.positive_matches
+        ],
+        "unlisted": [
+            {"name": n, "snippet": _evidence(s)} for n, s in sorted(bd.unlisted.items())
+        ],
+        # Only negative skills lower a score; a missing preferred skill adds nothing and
+        # takes nothing away (it stays in `missing`).
+        "lowered": [
+            {"name": n, "weight": bd.weights.get(n), "snippet": _evidence(bd.evidence.get(n))}
+            for n in bd.negative_matches
+        ],
+        "experience": {
+            "required_years": required_years(job),
+            "basis": detail.get("basis"),
+            "sentence": _evidence(detail.get("sentence")),
+            "excludes_apprenticeship": bool(
+                detail.get("excludes_apprenticeship", exp.excludes_apprenticeship if exp else False)
+            ),
+        },
+    }
+
+
 def job_entry(job: Job, strong_threshold: int, now: datetime) -> dict:
     bd = job.scoring_breakdown
     posted = posted_at(job)
     return {
         "id": job.id,
+        # The tracking key in D1 (`source:source_job_id`), stable across DB rebuilds.
+        "key": job_key(job.source, job.source_job_id),
         "section": section_of(job, strong_threshold),
         "title": job.title,
         "company": job.company,
@@ -121,6 +173,7 @@ def job_entry(job: Job, strong_threshold: int, now: datetime) -> dict:
         "positive": list(bd.positive_matches) if bd else [],
         "negative": list(bd.negative_matches) if bd else [],
         "missing": list(bd.missing_preferences) if bd else [],
+        "why": why_entry(job),
     }
 
 

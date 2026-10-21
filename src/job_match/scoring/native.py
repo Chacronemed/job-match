@@ -1,19 +1,28 @@
 from job_match.config.schema import Profile, Settings
 from job_match.domain.models import Job, ScoreResult
-from job_match.normalization.skills import contains_term, matches_skill
+from job_match.normalization.skills import contains_term, find_skill, snippet
 
 
 class NativeRuleScorer:
-    def __init__(self, aliases: dict[str, list[str]]) -> None:
+    """`vocabulary`: skills worth naming when an offer asks for them and the profile does
+    not list them (`config/skill_vocabulary.yaml`). They never change the score."""
+
+    def __init__(
+        self, aliases: dict[str, list[str]], vocabulary: tuple[str, ...] | list[str] = ()
+    ) -> None:
         self._aliases = aliases
+        self._vocabulary = tuple(vocabulary)
 
     @property
     def name(self) -> str:
         return "native"
 
     def score(self, job: Job, profile: Profile, settings: Settings) -> ScoreResult:
-        text = f"{job.title} {job.description}".lower()
+        # Original case: matching ignores it, and the evidence sentences read better.
+        text = f"{job.title}. {job.description}"
         title_text = job.title.lower()
+        evidence: dict[str, str] = {}
+        weights: dict[str, int] = {}
 
         delta = 0
         positive_matches: list[str] = []
@@ -22,7 +31,9 @@ class NativeRuleScorer:
         explanations: list[str] = []
 
         for skill in profile.skills.preferred:
-            if matches_skill(text, skill.name, self._aliases):
+            if m := find_skill(text, skill.name, self._aliases):
+                evidence[skill.name] = snippet(text, m.start(), m.end())
+                weights[skill.name] = skill.weight
                 positive_matches.append(skill.name)
                 delta += skill.weight
                 explanations.append(f"Matched preferred: {skill.name} (+{skill.weight})")
@@ -31,7 +42,9 @@ class NativeRuleScorer:
                 explanations.append(f"Missed preferred: {skill.name}")
 
         for skill in profile.skills.negative:
-            if matches_skill(text, skill.name, self._aliases):
+            if m := find_skill(text, skill.name, self._aliases):
+                evidence[skill.name] = snippet(text, m.start(), m.end())
+                weights[skill.name] = skill.weight
                 negative_matches.append(skill.name)
                 delta += skill.weight
                 explanations.append(f"Matched negative: {skill.name} ({skill.weight})")
@@ -48,6 +61,16 @@ class NativeRuleScorer:
 
         final_score = max(0, min(100, settings.base_score + delta))
 
+        listed = {
+            s.name.lower() for s in (*profile.skills.preferred, *profile.skills.negative)
+        }
+        unlisted: dict[str, str] = {}
+        for term in self._vocabulary:
+            if term.lower() in listed:
+                continue
+            if m := find_skill(text, term, self._aliases):
+                unlisted[term] = snippet(text, m.start(), m.end())
+
         return ScoreResult(
             engine="native",
             available=True,
@@ -61,4 +84,7 @@ class NativeRuleScorer:
                 "delta": delta,
                 "title_keywords_matched": matched_kws,
             },
+            evidence=evidence,
+            weights=weights,
+            unlisted=unlisted,
         )

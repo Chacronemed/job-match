@@ -56,6 +56,9 @@ class EmailNotifier:
         if data.leads:
             n_leads = len(data.leads)
             subject += f", {n_leads} funding lead{'s' if n_leads != 1 else ''}"
+        if data.followups:
+            n_due = len(data.followups)
+            subject += f", {n_due} relance{'s' if n_due != 1 else ''}"
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
         msg["From"] = self._user

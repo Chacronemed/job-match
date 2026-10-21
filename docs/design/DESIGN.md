@@ -540,7 +540,7 @@ Depth is carried by the surface ladder + hairline borders. No drop shadows on da
 ## Known Gaps
 
 - Form-field error and validation styling is not visible on the inspected pages.
-- Form-field error styling is still undefined (the dashboard has no form that can fail).
+- Form-field error styling: defined for the dashboard's tracking form (see `track-form` below).
 
 ## Light Mode
 
@@ -568,6 +568,58 @@ The components the dashboard page actually uses (`src/job_match/dashboard/assets
 - **`filter-panel`** — `{colors.surface-1}` panel holding the controls on one grid row; collapses into a `<details>` under 768px. Inputs are `text-input` on `{colors.canvas}` with a `{colors.hairline-strong}` border, 36px tall.
 - **`section-chip`** — pill toggle (`pricing-tab`), 36px, dot in the section colour when pressed, `{colors.surface-2}` fill when pressed.
 - **`table-row`** — 36px, 13px, 1px `{colors.hairline}` rule, `{colors.surface-2}` on hover and when expanded. The first cell is a button that opens the details row; a dot in the section colour precedes the title. Score is a 44px bar + mono figure; years and counts are mono. Under 768px a row becomes a two-column card with inline labels.
-- **`details-row`** — `{colors.surface-1}` with a `{colors.hairline-strong}` bottom rule: meta caption, the stretch note in stretch ink, explanations as a list, matched / negative / missing skills as `status-badge` pills.
+- **`details-row`** — `{colors.surface-1}` with a `{colors.hairline-strong}` bottom rule: `track-form`, meta caption, the stretch note in stretch ink, then the `why-panel`.
 - **`funnel-bar`** — 16px, `{rounded.xs}`, segments rejected (#3e3e44 dark / #c7cacf light), duplicates (`{colors.ink-tertiary}`), eligible (`{colors.primary}`) with the strong share inside it (`{colors.semantic-success}`), stretch (`{colors.semantic-stretch}`); widths are shares of fetched.
 - **`run-card`** — `{colors.surface-1}`, `{rounded.lg}`, 12px 16px: date (500), `status-badge` for a reprocess run, fetched count right, the funnel, then the stats line and the rejection reasons in caption size with mono figures.
+- **`status-badge` (tracking)**: pill, 12px, weight 500. Each status has its own colours:
+  - *to review*: `{colors.surface-2}` fill, `{colors.ink-subtle}` text.
+  - *to apply*: `primary-soft` fill, link ink.
+  - *applied*: `success-soft` fill, success ink.
+  - *interview*: solid `{colors.semantic-success}` fill, white text.
+  - *rejected*: `danger-soft` fill, danger ink (#f2777a dark / #b3261e light).
+  - *ignored*: no fill, `{colors.ink-subtle}` text, struck through.
+- **`today-view`**: a three-tile KPI strip (to apply, to review, follow-ups due), then two tables.
+  - "Relances du jour" (shown only when follow-ups are due): the due date, with the days late in
+    stretch ink.
+  - "À traiter": the job table with Status.
+  - Headings are 13px, weight 600.
+- **`track-form`**: the top of a `details-row`, above the meta line, closed by a 1px hairline.
+  - Fields:
+    - status select, then the two dates (150px each);
+    - CV link (`https:` only) with an "Open" link once it is valid;
+    - a full-width note textarea, which shows a counter in its last 200 characters.
+  - Inputs follow `text-input`.
+  - Errors appear under the field in danger ink, with `aria-invalid` and a danger border.
+  - The foot holds four verdict pills (pressed = solid `{colors.primary}`) and a right-aligned
+    save state:
+    - "Saving…" in subtle ink;
+    - "Saved" in success ink;
+    - the error in danger ink, weight 500, followed by a Retry `button-secondary`.
+  - Under 768px the fields go to two columns, the pills are 44px, and the save state takes its
+    own line.
+- **`track-banner`**: `stretch-soft` field, 13px, `{rounded.lg}`. Shown when tracking cannot load
+  (a page opened from a file, or the API refused), with Retry when a retry can help.
+- **`why-panel`** ("Pourquoi cette offre ?"): below the meta line of a `details-row`, title 13px
+  weight 600.
+  - Two columns: "Compétences détectées" on the left; "Non trouvé dans ton profil", "Expérience"
+    and "Ce qui a baissé le score" stacked on the right. "Ton avis" (the four verdict pills, with
+    their own save state) spans both. One column under 768px.
+  - Block headings are 12px weight 500 in `{colors.ink-subtle}`.
+  - Each finding is a pill (`tag-pos` matched, `tag-miss` unlisted, `tag-neg` lowering) followed by
+    its weight in mono caption (+3, -2), then its `evidence-snippet`.
+  - Missing preferred skills sit under the skills as `tag-miss` pills, labelled "sans effet sur le
+    score": they never lower it.
+  - "Toutes les explications (N)" folds the raw explanation list in a `<details>` at the bottom.
+- **`evidence-snippet`**: a `<q>` (French quotes from `lang="fr"`), 12px `{colors.ink-subtle}`,
+  8px left padding behind a 2px `{colors.hairline-strong}` rule, wraps anywhere. Always text.
+- **`confidence-badge`**: pill, 12px weight 500, after "N ans requis".
+  - *chiffre explicite*: `success-soft` fill, success ink.
+  - *mot-clé de séniorité*: `stretch-soft` fill, stretch ink.
+  - *inconnu*, *non mentionné*, *non recalculé*: hairline border, `{colors.ink-subtle}`.
+  - The "hors stage et alternance" flag is a `stretch-soft` pill under the sentence.
+- **`override-button`**: "je maîtrise", a small `button-secondary` (28px, 44px under 768px),
+  right-aligned on the unlisted skill's line.
+  - Once saved, it becomes "Ajouté — compté au prochain run" in success ink plus an "Annuler" link
+    button in link ink.
+  - It saves optimistically. On failure it reverts, shows the error in danger ink and a Retry. Every
+    control for the same skill on screen follows the change.

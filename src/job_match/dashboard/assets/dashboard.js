@@ -5,8 +5,9 @@
   "use strict";
 
   var SECTIONS = ["strong", "eligible", "stretch"];
-  var TABS = ["jobs", "leads", "runs"];
+  var TABS = ["today", "jobs", "leads", "runs"];
   var HTTP = /^https?:\/\//i;
+  var T = window.JMTracking;
 
   var raw = document.getElementById("data");
   var data;
@@ -129,7 +130,8 @@
   var tabButtons = Array.prototype.slice.call(document.querySelectorAll(".tab"));
 
   function showTab(name, focus) {
-    if (TABS.indexOf(name) < 0) name = "jobs";
+    if (TABS.indexOf(name) < 0) name = "today";
+    if (name === "today" && currentTab !== "today") renderToday();
     tabButtons.forEach(function (b) {
       var on = b.getAttribute("data-tab") === name;
       b.setAttribute("aria-selected", on ? "true" : "false");
@@ -143,7 +145,7 @@
     syncHash();
   }
 
-  var currentTab = "jobs";
+  var currentTab = "";
   var applyingHash = false;
 
   /* The hash carries the tab and the job filters (#jobs?q=...&hide=...), so a view can be
@@ -156,6 +158,7 @@
       var off = SECTIONS.filter(function (s) { return !state.sections[s]; });
       if (off.length) parts.push("hide=" + off.join(","));
       if (state.department) parts.push("dept=" + encodeURIComponent(state.department));
+      if (state.status) parts.push("st=" + state.status);
       if (state.minScore) parts.push("min=" + state.minScore);
       if (state.from) parts.push("from=" + state.from);
       if (state.to) parts.push("to=" + state.to);
@@ -179,7 +182,7 @@
         try { params[kv.slice(0, i)] = decodeURIComponent(kv.slice(i + 1)); } catch (e) { /* bad escape */ }
       });
     }
-    return { tab: TABS.indexOf(tab) >= 0 ? tab : "jobs", params: params };
+    return { tab: TABS.indexOf(tab) >= 0 ? tab : "today", params: params };
   }
 
   tabButtons.forEach(function (b, i) {
@@ -207,6 +210,7 @@
     q: "",
     sections: { strong: true, eligible: true, stretch: true },
     department: "",
+    status: "",
     minScore: 0,
     from: "",
     to: "",
@@ -214,9 +218,11 @@
     sortDir: "desc",
     expanded: {}
   };
+  var todayExpanded = {};
 
   var searchInput = byId("f-search");
   var deptSelect = byId("f-department");
+  var statusSelect = byId("f-status");
   var minScoreInput = byId("f-min-score");
   var minScoreOut = byId("f-min-score-out");
   var fromInput = byId("f-from");
@@ -239,8 +245,15 @@
     if (unknown) deptSelect.appendChild(el("option", { value: "?", text: "? unknown (" + unknown + ")" }));
   }
 
+  function fillStatuses() {
+    T.STATUSES.forEach(function (s) {
+      statusSelect.appendChild(el("option", { value: s, text: T.STATUS_TEXT[s] }));
+    });
+  }
+
   function matches(j) {
     if (!state.sections[j.section]) return false;
+    if (state.status && statusOfJob(j) !== state.status) return false;
     if (state.minScore > 0 && (j.score === null || j.score < state.minScore)) return false;
     if (state.department) {
       if (state.department === "?" ? !!j.department : j.department !== state.department) return false;
@@ -255,9 +268,13 @@
     return true;
   }
 
+  function sortValue(j, k) {
+    return k === "status" ? T.STATUSES.indexOf(statusOfJob(j)) : j[k];
+  }
+
   function compare(a, b) {
     var k = state.sortKey;
-    var av = a[k], bv = b[k];
+    var av = sortValue(a, k), bv = sortValue(b, k);
     var aNull = av === null || av === undefined || av === "";
     var bNull = bv === null || bv === undefined || bv === "";
     if (aNull && bNull) return 0;
@@ -289,9 +306,430 @@
     return wrap;
   }
 
-  function detailsFor(j) {
-    var td = el("td", { colspan: "9" });
+  /* ---------- tracking (D1 through /api/) ---------- */
+
+  /* status: "off" (file:// or no fetch), "loading", "ready", "error". `apps` is what the page
+     shows (optimistic), `confirmed` what the API last stored; a failed save goes back to it. */
+  var track = { status: "off", apps: {}, confirmed: {}, decisions: {}, overrides: {}, seq: {}, pending: 0 };
+  /* skill -> functions redrawing every "je maîtrise" control for it on screen */
+  var overrideViews = {};
+
+  /* Why a write failed, in words the reader can act on. */
+  function failureText(err) {
+    if (err && err.status === 401) return "your Access session expired, reload the page";
+    if (err && err.status >= 500) return "the server failed";
+    return (err && err.message) || "network error";
+  }
+
+  /* A note typed in the last moment, or a save still in flight, is not stored yet. */
+  window.addEventListener("beforeunload", function (ev) {
+    if (track.pending > 0) { ev.preventDefault(); ev.returnValue = ""; }
+  });
+  var badges = {};   /* job key -> status badges on screen, updated in place after a save */
+  var api = (typeof window.fetch === "function") ? T.client(window.fetch.bind(window)) : null;
+
+  function statusOfJob(j) {
+    return T.statusOf(track.apps[j.key]);
+  }
+
+  function statusBadge(key) {
+    var s = T.statusOf(track.apps[key]);
+    var b = el("span", { class: "status status-" + s, text: T.STATUS_TEXT[s] });
+    (badges[key] = badges[key] || []).push(b);
+    return b;
+  }
+
+  function refreshBadges(key) {
+    var s = T.statusOf(track.apps[key]);
+    (badges[key] || []).forEach(function (b) {
+      b.className = "status status-" + s;
+      b.textContent = T.STATUS_TEXT[s];
+    });
+    updateTodayCounts();
+  }
+
+  function trackBanner() {
+    var banner = byId("track-banner");
+    var msg = byId("track-banner-text");
+    var retry = byId("track-retry");
+    if (track.status === "ready" || track.status === "loading") { banner.hidden = true; return; }
+    banner.hidden = false;
+    msg.textContent = track.status === "off"
+      ? "Tracking is unavailable in a page opened from a file. Statuses and notes need the hosted dashboard."
+      : "Tracking could not be loaded, so statuses show as “To review” and nothing can be saved.";
+    retry.hidden = track.status !== "error";
+  }
+
+  function loadTracking() {
+    if (!api || !/^https?:$/.test(location.protocol)) { track.status = "off"; trackBanner(); return; }
+    track.status = "loading";
+    trackBanner();
+    api.list().then(function (res) {
+      var apps = {};
+      (res.applications || []).forEach(function (a) { if (a && a.job_key) apps[a.job_key] = a; });
+      var decisions = {};
+      (res.decisions || []).forEach(function (d) { if (d && d.job_key) decisions[d.job_key] = d.label; });
+      var overrides = {};
+      (res.skill_overrides || []).forEach(function (o) { if (o && o.skill) overrides[o.skill] = true; });
+      track.overrides = overrides;
+      track.apps = apps;
+      track.confirmed = Object.assign({}, apps);
+      track.decisions = decisions;
+      track.status = "ready";
+      trackBanner();
+      renderJobs();
+      renderToday();
+    }).catch(function () {
+      track.status = "error";
+      trackBanner();
+      renderJobs();
+      renderToday();
+    });
+  }
+
+  byId("track-retry").addEventListener("click", loadTracking);
+
+  function fieldId(prefix, j, name) {
+    return "t-" + prefix + "-" + j.id + "-" + name;
+  }
+
+  /* The tracking block at the top of a job's details: status, dates, CV link, note and the
+     verdict buttons. Saves as soon as a field changes (the note after a pause); the page
+     updates first and goes back to the stored values if the API refuses. */
+  function trackForm(j, prefix) {
+    var box = el("div", { class: "track" });
+    if (!j.key) return box;
+    if (track.status !== "ready") {
+      box.appendChild(el("p", { class: "track-off", text: track.status === "loading"
+        ? "Loading tracking…" : "Tracking unavailable: nothing can be saved from this page." }));
+      return box;
+    }
+    var rec = T.blank(track.apps[j.key]);
+    var controls = {};
+    var errors = {};
+
+    function field(name, label, control, extra) {
+      control.id = fieldId(prefix, j, name);
+      control.name = name;
+      controls[name] = control;
+      var err = el("span", { class: "field-error", id: control.id + "-err", "aria-live": "polite" });
+      errors[name] = err;
+      control.setAttribute("aria-describedby", err.id);
+      return el("div", { class: "field track-" + name }, [
+        el("label", { class: "field-label", for: control.id, text: label }), control, extra || null, err
+      ]);
+    }
+
+    var status = el("select");
+    T.STATUSES.forEach(function (s) { status.appendChild(el("option", { value: s, text: T.STATUS_TEXT[s] })); });
+    var applied = el("input", { type: "date", autocomplete: "off" });
+    var follow = el("input", { type: "date", autocomplete: "off" });
+    var cv = el("input", { type: "url", inputmode: "url", autocomplete: "off", spellcheck: "false", placeholder: "https://…" });
+    var cvOpen = el("a", { class: "cv-open", target: "_blank", rel: "noopener noreferrer", text: "Open" });
+    var note = el("textarea", { rows: "3", maxlength: String(T.NOTE_MAX), placeholder: "Contact, salary, next step…" });
+    var counter = el("span", { class: "note-count", "aria-hidden": "true" });
+
+    var grid = el("div", { class: "track-grid" }, [
+      field("status", "Status", status),
+      field("applied_at", "Applied on", applied),
+      field("follow_up_at", "Follow up on", follow),
+      field("cv_url", "CV sent", cv, cvOpen),
+      field("note", "Note", note, counter)
+    ]);
+    box.appendChild(grid);
+
+    var verdicts = el("div", { class: "verdicts", role: "group", "aria-label": "Ton avis sur cette offre" });
+    var verdictButtons = {};
+    T.LABELS.forEach(function (label) {
+      var b = el("button", { type: "button", class: "verdict", "aria-pressed": "false", text: T.LABEL_TEXT[label] });
+      verdictButtons[label] = b;
+      b.addEventListener("click", function () { decide(label); });
+      verdicts.appendChild(b);
+    });
+    var saveState = el("span", { class: "save-state", role: "status" });
+    var retry = el("button", { type: "button", class: "btn btn-retry", text: "Retry", hidden: true });
+    box.appendChild(el("div", { class: "track-foot" }, [saveState, retry]));
+    /* The verdicts live in the "Pourquoi cette offre ?" panel, next to the reasons they
+       judge; detailsFor places this block there. */
+    var vState = el("span", { class: "save-state", role: "status" });
+    var vRetry = el("button", { type: "button", class: "btn btn-retry", text: "Retry", hidden: true });
+    var verdictBlock = el("div", { class: "verdict-block" }, [verdicts, vState, vRetry]);
+    box.verdictBlock = verdictBlock;
+
+    function fill(r) {
+      status.value = r.status;
+      applied.value = r.applied_at;
+      follow.value = r.follow_up_at;
+      cv.value = r.cv_url;
+      note.value = r.note;
+      syncExtras();
+    }
+
+    function syncExtras() {
+      var ok = T.isHttpsUrl(cv.value);
+      cvOpen.hidden = !ok;
+      if (ok) cvOpen.setAttribute("href", cv.value); else cvOpen.removeAttribute("href");
+      counter.textContent = note.value.length > T.NOTE_MAX - 200 ? note.value.length + " / " + T.NOTE_MAX : "";
+      var current = track.decisions[j.key];
+      T.LABELS.forEach(function (label) {
+        verdictButtons[label].setAttribute("aria-pressed", current === label ? "true" : "false");
+      });
+    }
+
+    function read() {
+      return {
+        status: status.value,
+        applied_at: applied.value,
+        follow_up_at: follow.value,
+        note: note.value,
+        cv_url: cv.value.trim()
+      };
+    }
+
+    function setState(kind, text, onRetry) {
+      box.setAttribute("data-state", kind);
+      saveState.textContent = text;
+      retry.hidden = !onRetry;
+      retry.onclick = onRetry || null;
+    }
+
+    function showErrors(errs) {
+      Object.keys(errors).forEach(function (name) {
+        errors[name].textContent = errs[name] || "";
+        if (errs[name]) controls[name].setAttribute("aria-invalid", "true");
+        else controls[name].removeAttribute("aria-invalid");
+      });
+    }
+
+    function send(next) {
+      var key = j.key;
+      var seq = (track.seq[key] || 0) + 1;
+      track.seq[key] = seq;
+      track.apps[key] = Object.assign({ job_key: key }, track.apps[key] || {}, next);
+      refreshBadges(key);
+      setState("saving", "Saving…");
+      track.pending += 1;
+      api.save(key, next).finally(function () { track.pending -= 1; }).then(function (res) {
+        if (track.seq[key] !== seq) return;          /* a later edit is in flight */
+        track.apps[key] = track.confirmed[key] = res.application;
+        refreshBadges(key);
+        setState("saved", "Saved");
+      }).catch(function (err) {
+        if (track.seq[key] !== seq) return;
+        var prev = track.confirmed[key];
+        if (prev) track.apps[key] = prev; else delete track.apps[key];
+        refreshBadges(key);
+        fill(T.blank(prev));
+        setState("error", "Not saved (" + failureText(err) + "). The fields show the last saved values.", function () {
+          fill(next);
+          send(next);
+        });
+      });
+    }
+
+    function commit() {
+      var next = read();
+      var errs = T.validateRecord(next);
+      showErrors(errs);
+      if (Object.keys(errs).length) {
+        setState("error", "Fix the highlighted field; nothing was saved.");
+        return;
+      }
+      send(next);
+    }
+
+    function setVerdictState(kind, text, onRetry) {
+      verdictBlock.setAttribute("data-state", kind);
+      vState.textContent = text;
+      vRetry.hidden = !onRetry;
+      vRetry.onclick = onRetry || null;
+    }
+
+    /* The score goes with the verdict: `job-match calibrate` compares the two later. */
+    function decide(label) {
+      var key = j.key;
+      var before = track.decisions[key];
+      track.decisions[key] = label;
+      syncExtras();
+      setVerdictState("saving", "Saving verdict…");
+      api.decide(key, label, typeof j.score === "number" ? j.score : null).then(function () {
+        setVerdictState("saved", "Verdict saved");
+      }).catch(function (err) {
+        if (before) track.decisions[key] = before; else delete track.decisions[key];
+        syncExtras();
+        setVerdictState("error", "Verdict not saved (" + failureText(err) + ").", function () { decide(label); });
+      });
+    }
+    verdictBlock.addEventListener("click", function (ev) { ev.stopPropagation(); });
+    verdictBlock.addEventListener("keydown", function (ev) { ev.stopPropagation(); });
+
+    var noteTimer;
+    [status, applied, follow, cv].forEach(function (c) { c.addEventListener("change", commit); });
+    cv.addEventListener("input", syncExtras);
+    note.addEventListener("input", function () {
+      syncExtras();
+      if (!noteTimer) track.pending += 1;
+      clearTimeout(noteTimer);
+      noteTimer = setTimeout(flushNote, 800);
+    });
+    /* Leaving the field saves at once; if the pause already saved it, nothing is resent. */
+    note.addEventListener("change", function () { if (noteTimer) flushNote(); });
+    function flushNote() {
+      if (noteTimer) { clearTimeout(noteTimer); noteTimer = null; track.pending -= 1; }
+      commit();
+    }
+    /* Clicks and keys inside the form must not toggle the row it belongs to. */
+    box.addEventListener("click", function (ev) { ev.stopPropagation(); });
+    box.addEventListener("keydown", function (ev) { ev.stopPropagation(); });
+
+    fill(rec);
+    return box;
+  }
+
+  /* ---------- "Pourquoi cette offre ?" ---------- */
+
+  var BASIS_TEXT = {
+    explicit: "chiffre explicite",
+    seniority: "mot-clé de séniorité",
+    unknown: "inconnu",
+    not_mentioned: "non mentionné"
+  };
+
+  function weightText(w) {
+    return typeof w === "number" ? (w > 0 ? "+" + w : String(w)) : null;
+  }
+
+  /* One skill: its pill, its weight, then the sentence of the offer it was found in. */
+  function evidenceItem(cls, name, weight, snippet, control) {
+    var head = el("div", { class: "why-head" }, [
+      el("span", { class: "tag " + cls, text: name }),
+      weight === null ? null : el("span", { class: "why-weight", text: weight }),
+      control || null
+    ]);
+    return el("li", { class: "why-item" }, [head, snippet ? el("q", { class: "evidence", text: snippet }) : null]);
+  }
+
+  /* "je maîtrise": saved in D1, merged into the profile on the next run. Optimistic, like the
+     other writes; every control for the same skill on screen follows the change. */
+  function overrideControl(skill) {
+    if (track.status !== "ready" || !api) return null;
+    var wrap = el("span", { class: "override" });
+    var add = el("button", { type: "button", class: "btn btn-override", text: "je maîtrise" });
+    var done = el("span", { class: "override-done", text: "Ajouté — compté au prochain run" });
+    var undo = el("button", { type: "button", class: "link-btn", text: "Annuler" });
+    var state = el("span", { class: "override-state", role: "status" });
+    var retry = el("button", { type: "button", class: "btn btn-retry", text: "Retry", hidden: true });
+    [add, done, undo, state, retry].forEach(function (n) { wrap.appendChild(n); });
+
+    function sync() {
+      var on = !!track.overrides[skill];
+      add.hidden = on;
+      done.hidden = !on;
+      undo.hidden = !on;
+    }
+    (overrideViews[skill] = overrideViews[skill] || []).push({ node: wrap, sync: sync });
+    function syncAll() {
+      overrideViews[skill] = overrideViews[skill].filter(function (v) { return v.node === wrap || document.contains(v.node); });
+      overrideViews[skill].forEach(function (v) { v.sync(); });
+    }
+
+    function set(on) {
+      var before = !!track.overrides[skill];
+      if (on) track.overrides[skill] = true; else delete track.overrides[skill];
+      syncAll();
+      wrap.setAttribute("data-state", "saving");
+      state.textContent = "Saving…";
+      retry.hidden = true;
+      track.pending += 1;
+      api.overrideSkill(skill, on).finally(function () { track.pending -= 1; }).then(function () {
+        wrap.setAttribute("data-state", "saved");
+        state.textContent = "";
+      }).catch(function (err) {
+        if (before) track.overrides[skill] = true; else delete track.overrides[skill];
+        syncAll();
+        wrap.setAttribute("data-state", "error");
+        state.textContent = "Not saved (" + failureText(err) + ").";
+        retry.hidden = false;
+        retry.onclick = function () { set(on); };
+      });
+    }
+    add.addEventListener("click", function () { set(true); });
+    undo.addEventListener("click", function () { set(false); });
+    sync();
+    return wrap;
+  }
+
+  function experienceBody(e) {
+    if (!e) return [el("p", { class: "note", text: "Aucune analyse stockée pour cette offre." })];
+    var years = fmtYears(e.required_years);
+    var text = years === null
+      ? (e.basis === "explicit" ? "Pas de minimum chiffré" : "Années requises inconnues")
+      : years === "0" ? "Aucune année exigée"
+        : years + (years === "1" ? " an requis" : " ans requis");
+    var basis = e.basis && BASIS_TEXT[e.basis] ? e.basis : "none";
+    var out = [el("div", { class: "why-head" }, [
+      el("span", { class: "why-years", text: text }),
+      el("span", { class: "confidence confidence-" + basis, text: basis === "none" ? "non recalculé" : BASIS_TEXT[basis] })
+    ])];
+    if (e.sentence) out.push(el("q", { class: "evidence", text: e.sentence }));
+    if (e.excludes_apprenticeship) out.push(el("span", { class: "tag tag-flag", text: "hors stage et alternance" }));
+    return out;
+  }
+
+  function whyPanel(j, verdictBlock) {
+    var w = j.why || { skills: [], unlisted: [], lowered: [], experience: null };
+    var panel = el("section", { class: "why", "aria-label": "Pourquoi cette offre ?" });
+    panel.appendChild(el("h3", { class: "why-title", text: "Pourquoi cette offre ?" }));
+    var grid = el("div", { class: "why-grid" });
+    /* Skills on the left; the shorter blocks stack on the right; the verdict spans both. */
+    var left = el("div", { class: "why-col" });
+    var right = el("div", { class: "why-col" });
+    var target = left;
+    function block(name, title, body) {
+      target.appendChild(el("div", { class: "why-block why-" + name }, [el("h4", { text: title })].concat(body)));
+    }
+    function list(items) { return el("ul", { class: "why-list" }, items); }
+
+    var skills = [w.skills.length
+      ? list(w.skills.map(function (s) { return evidenceItem("tag-pos", s.name, weightText(s.weight), s.snippet); }))
+      : el("p", { class: "note", text: "Aucune compétence de ton profil trouvée dans l’offre." })];
+    if (j.missing && j.missing.length) {
+      skills.push(el("div", { class: "why-aside" }, [
+        el("span", { text: "Absentes de l’offre, sans effet sur le score :" }),
+        el("span", { class: "tags" }, j.missing.map(function (t) { return el("span", { class: "tag tag-miss", text: t }); }))
+      ]));
+    }
+    block("skills", "Compétences détectées", skills);
+    target = right;
+
+    block("unlisted", "Non trouvé dans ton profil", [w.unlisted.length
+      ? list(w.unlisted.map(function (u) { return evidenceItem("tag-miss", u.name, null, u.snippet, overrideControl(u.name)); }))
+      : el("p", { class: "note", text: "L’offre ne cite pas d’autre compétence connue." })]);
+
+    block("experience", "Expérience", experienceBody(w.experience));
+
+    block("lowered", "Ce qui a baissé le score", [w.lowered.length
+      ? list(w.lowered.map(function (s) { return evidenceItem("tag-neg", s.name, weightText(s.weight), s.snippet); }))
+      : el("p", { class: "note", text: "Rien n’a baissé le score." })]);
+
+    grid.appendChild(left);
+    grid.appendChild(right);
+    target = grid;
+    block("verdict", "Ton avis", [verdictBlock ||
+      el("p", { class: "note", text: "Les avis s’enregistrent depuis le tableau de bord hébergé." })]);
+
+    panel.appendChild(grid);
+    /* Clicks inside the panel (buttons, folded explanations) must not toggle the row. */
+    panel.addEventListener("click", function (ev) { ev.stopPropagation(); });
+    panel.addEventListener("keydown", function (ev) { ev.stopPropagation(); });
+    return panel;
+  }
+
+  function detailsFor(j, prefix, colspan) {
+    var td = el("td", { colspan: String(colspan) });
     var box = el("div", { class: "details" });
+    var form = trackForm(j, prefix);
+    box.appendChild(form);
     var meta = [];
     if (j.location) meta.push(j.location);
     if (j.source) meta.push("source: " + j.source);
@@ -303,46 +741,82 @@
       if (line.indexOf("stretch:") === 0 && !stretchLine) stretchLine = line;
       else others.push(line);
     });
-    if (j.experience_status && !stretchLine) meta.push("experience parse: " + j.experience_status.toLowerCase());
     box.appendChild(el("p", { class: "meta", text: meta.join(" · ") }));
     if (stretchLine) box.appendChild(el("p", { class: "stretch-note", text: stretchLine }));
 
-    var grid = el("div", { class: "details-grid" });
-    var left = el("div");
-    left.appendChild(el("h3", { text: "Explanations" }));
+    var panel = whyPanel(j, form.verdictBlock || null);
     if (others.length) {
-      left.appendChild(el("ul", null, others.map(function (t) { return el("li", { text: t }); })));
-    } else {
-      left.appendChild(el("p", { class: "note", text: "No explanation stored for this job." }));
+      panel.appendChild(el("details", { class: "explain-all" }, [
+        el("summary", { text: "Toutes les explications (" + others.length + ")" }),
+        el("ul", null, others.map(function (t) { return el("li", { text: t }); }))
+      ]));
     }
-    grid.appendChild(left);
-
-    var right = el("div");
-    function tags(title, items, cls) {
-      if (!items || !items.length) return;
-      right.appendChild(el("h3", { text: title }));
-      right.appendChild(el("div", { class: "tags" }, items.map(function (t) {
-        return el("span", { class: "tag " + cls, text: t });
-      })));
-    }
-    tags("Matched", j.positive, "tag-pos");
-    tags("Negative", j.negative, "tag-neg");
-    tags("Missing preferences", j.missing, "tag-miss");
-    if (!right.childNodes.length) right.appendChild(el("p", { class: "note", text: "No skill matches recorded." }));
-    grid.appendChild(right);
-    box.appendChild(grid);
+    box.appendChild(panel);
     td.appendChild(box);
-    return el("tr", { class: "details", id: "job-details-" + j.id }, td);
+    return el("tr", { class: "details", id: prefix + "-details-" + j.id }, td);
   }
 
-  function toggleRow(j, row) {
-    var open = !state.expanded[j.id];
-    state.expanded[j.id] = open;
-    row.setAttribute("aria-expanded", open ? "true" : "false");
-    row.querySelector(".expand").setAttribute("aria-expanded", open ? "true" : "false");
-    var existing = byId("job-details-" + j.id);
-    if (open && !existing) row.parentNode.insertBefore(detailsFor(j), row.nextSibling);
-    if (!open && existing) existing.parentNode.removeChild(existing);
+  /* Cell builders shared by the Jobs table and the Aujourd'hui queue. */
+  var COLUMNS = {
+    title: function (j, prefix, expanded) {
+      return cell("col-title", "Title", el("button", {
+        type: "button", class: "expand", "aria-expanded": expanded ? "true" : "false",
+        "aria-controls": prefix + "-details-" + j.id
+      }, [el("span", { class: "dot dot-" + j.section, "aria-hidden": "true" }), el("span", { class: "title-text", text: j.title || "—" })]));
+    },
+    company: function (j) { return cell("col-company", "Company", j.company || "—"); },
+    department: function (j) { return cell("col-dept", "Dept", j.department || "?"); },
+    contract: function (j) { return cell("col-contract", "Contract", j.contract || "UNKNOWN"); },
+    score: function (j) { return cell("num col-score", "Score", scoreCell(j)); },
+    required_years: function (j) {
+      var years = fmtYears(j.required_years);
+      return cell("num col-years", "Years", el("span", { class: years === null ? "unknown years" : "years", text: years === null ? "—" : years + "y" }));
+    },
+    status: function (j) { return cell("col-status", "Status", statusBadge(j.key)); },
+    posted_at: function (j) { return cell("col-date", "Posted", fmtDate(j.posted_at)); },
+    age_days: function (j) {
+      var age = typeof j.age_days === "number" ? j.age_days : null;
+      return cell("num col-age", "Age", el("span", { class: age === null ? "unknown" : "", text: age === null ? "—" : age + "d" }));
+    },
+    link: function (j) { return cell("link-col", "Link", link(j.url, "Open")); }
+  };
+  var JOB_COLUMNS = ["title", "company", "department", "contract", "score", "required_years", "status", "posted_at", "age_days", "link"];
+  var TODAY_COLUMNS = ["title", "company", "department", "score", "status", "posted_at", "link"];
+
+  function jobRows(list, prefix, columns, expandedMap) {
+    var frag = document.createDocumentFragment();
+    list.forEach(function (j) {
+      var open = !!expandedMap[j.id];
+      var row = el("tr", { class: "row row-" + j.section, tabindex: "0", "aria-expanded": open ? "true" : "false" });
+      columns.forEach(function (c) { row.appendChild(COLUMNS[c](j, prefix, open)); });
+      function toggle() {
+        var now = !expandedMap[j.id];
+        expandedMap[j.id] = now;
+        row.setAttribute("aria-expanded", now ? "true" : "false");
+        row.querySelector(".expand").setAttribute("aria-expanded", now ? "true" : "false");
+        var existing = byId(prefix + "-details-" + j.id);
+        if (now && !existing) row.parentNode.insertBefore(detailsFor(j, prefix, columns.length), row.nextSibling);
+        if (!now && existing) existing.parentNode.removeChild(existing);
+      }
+      row.addEventListener("click", function (ev) {
+        if (ev.target.closest("a")) return;
+        toggle();
+      });
+      row.addEventListener("keydown", function (ev) {
+        if (ev.target !== row) return;
+        if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); toggle(); }
+      });
+      frag.appendChild(row);
+      if (open) frag.appendChild(detailsFor(j, prefix, columns.length));
+    });
+    return frag;
+  }
+
+  function dropBadges(root) {
+    /* Badges inside a table about to be cleared stop being updated. */
+    Object.keys(badges).forEach(function (k) {
+      badges[k] = badges[k].filter(function (b) { return !root.contains(b); });
+    });
   }
 
   function renderJobs() {
@@ -357,39 +831,77 @@
     byId("jobs-rowcount").textContent = shown.length + " of " + jobs.length + " jobs · sorted by " +
       state.sortKey.replace("_", " ") + (state.sortDir === "asc" ? " ↑" : " ↓");
 
+    dropBadges(jobsBody);
     clear(jobsBody);
     byId("jobs-empty").hidden = shown.length > 0;
-    var frag = document.createDocumentFragment();
-    shown.forEach(function (j) {
-      var row = el("tr", { class: "row row-" + j.section, tabindex: "0", "aria-expanded": state.expanded[j.id] ? "true" : "false" });
-      var btn = el("button", {
-        type: "button", class: "expand", "aria-expanded": state.expanded[j.id] ? "true" : "false",
-        "aria-controls": "job-details-" + j.id
-      }, [el("span", { class: "dot dot-" + j.section, "aria-hidden": "true" }), el("span", { class: "title-text", text: j.title || "—" })]);
-      row.appendChild(cell("col-title", "Title", btn));
-      row.appendChild(cell("col-company", "Company", j.company || "—"));
-      row.appendChild(cell("col-dept", "Dept", j.department || "?"));
-      row.appendChild(cell("col-contract", "Contract", j.contract || "UNKNOWN"));
-      row.appendChild(cell("num col-score", "Score", scoreCell(j)));
-      var years = fmtYears(j.required_years);
-      row.appendChild(cell("num col-years", "Years", el("span", { class: years === null ? "unknown years" : "years", text: years === null ? "—" : years + "y" })));
-      row.appendChild(cell("col-date", "Posted", fmtDate(j.posted_at)));
-      var age = typeof j.age_days === "number" ? j.age_days : null;
-      row.appendChild(cell("num col-age", "Age", el("span", { class: age === null ? "unknown" : "", text: age === null ? "—" : age + "d" })));
-      row.appendChild(cell("link-col", "Link", link(j.url, "Open")));
+    jobsBody.appendChild(jobRows(shown, "jobs", JOB_COLUMNS, state.expanded));
+  }
 
-      row.addEventListener("click", function (ev) {
-        if (ev.target.closest("a")) return;
-        toggleRow(j, row);
-      });
+  /* ---------- aujourd'hui ---------- */
+
+  function updateTodayCounts() {
+    var items = T.todayItems(jobs, track.apps, T.localDay());
+    var toApply = items.queue.filter(function (j) { return statusOfJob(j) === "to_apply"; }).length;
+    byId("kpi-today-apply").textContent = toApply;
+    byId("kpi-today-review").textContent = items.queue.length - toApply;
+    byId("kpi-today-due").textContent = items.followups.length;
+    byId("count-today").textContent = items.queue.length + items.followups.length;
+  }
+
+  function followupRow(f) {
+    var j = f.job;
+    var row = el("tr", { class: "row row-followup" + (j ? " row-" + j.section : "") });
+    var title = j
+      ? el("span", { class: "followup-title" }, [el("span", { class: "dot dot-" + j.section, "aria-hidden": "true" }), el("span", { class: "title-text", text: j.title || "—" })])
+      : el("span", { class: "unknown", text: f.key + " · offer no longer listed" });
+    row.appendChild(cell("col-title", "Title", title));
+    row.appendChild(cell("col-company", "Company", j ? (j.company || "—") : "—"));
+    row.appendChild(cell("col-status", "Status", statusBadge(f.key)));
+    var due = el("span", { class: "due" + (f.late > 0 ? " due-late" : "") }, [
+      fmtDate(f.app.follow_up_at), el("span", { class: "due-late-text", text: f.late > 0 ? " · " + f.late + "d late" : " · today" })
+    ]);
+    row.appendChild(cell("col-due", "Follow up", due));
+    row.appendChild(cell("link-col", "Link", j ? link(j.url, "Open") : el("span", { class: "unknown", text: "—" })));
+    if (j) {
+      /* Opens the job in the queue below or, when it has left the queue, in Jobs. */
+      row.setAttribute("tabindex", "0");
+      var go = function () { openInJobs(j); };
+      row.addEventListener("click", function (ev) { if (!ev.target.closest("a")) go(); });
       row.addEventListener("keydown", function (ev) {
-        if (ev.target !== row) return;
-        if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); toggleRow(j, row); }
+        if (ev.target === row && (ev.key === "Enter" || ev.key === " ")) { ev.preventDefault(); go(); }
       });
-      frag.appendChild(row);
-      if (state.expanded[j.id]) frag.appendChild(detailsFor(j));
-    });
-    jobsBody.appendChild(frag);
+    }
+    return row;
+  }
+
+  function openInJobs(j) {
+    state.q = (j.title || "").toLowerCase();
+    searchInput.value = j.title || "";
+    state.status = ""; statusSelect.value = "";
+    state.expanded[j.id] = true;
+    renderJobs();
+    showTab("jobs", false);
+    var row = byId("jobs-details-" + j.id);
+    if (row) row.scrollIntoView({ block: "center" });
+  }
+
+  function renderToday() {
+    var today = T.localDay();
+    var items = T.todayItems(jobs, track.apps, today);
+    updateTodayCounts();
+
+    var fBody = byId("today-followups-body");
+    dropBadges(fBody);
+    clear(fBody);
+    byId("today-followups").hidden = items.followups.length === 0;
+    items.followups.forEach(function (f) { fBody.appendChild(followupRow(f)); });
+
+    var qBody = byId("today-body");
+    dropBadges(qBody);
+    clear(qBody);
+    byId("today-empty").hidden = items.queue.length > 0;
+    byId("today-rowcount").textContent = items.queue.length + " jobs to review or apply to · “To apply” first, then by score";
+    qBody.appendChild(jobRows(items.queue, "today", TODAY_COLUMNS, todayExpanded));
   }
 
   var debounce;
@@ -418,6 +930,12 @@
     syncHash();
   });
 
+  statusSelect.addEventListener("change", function () {
+    state.status = statusSelect.value;
+    renderJobs();
+    syncHash();
+  });
+
   minScoreInput.addEventListener("input", function () {
     state.minScore = Number(minScoreInput.value) || 0;
     minScoreOut.textContent = state.minScore;
@@ -433,6 +951,7 @@
     SECTIONS.forEach(function (s) { state.sections[s] = true; });
     chips.forEach(function (c) { c.setAttribute("aria-pressed", "true"); });
     state.department = ""; deptSelect.value = "";
+    state.status = ""; statusSelect.value = "";
     state.minScore = 0; minScoreInput.value = "0"; minScoreOut.textContent = "0";
     state.from = ""; fromInput.value = "";
     state.to = ""; toInput.value = "";
@@ -463,7 +982,7 @@
     });
   }
 
-  var SORT_KEYS = ["title", "company", "department", "contract", "score", "required_years", "posted_at", "age_days"];
+  var SORT_KEYS = ["title", "company", "department", "contract", "score", "required_years", "status", "posted_at", "age_days"];
   var DAY = /^\d{4}-\d{2}-\d{2}$/;
 
   function applyHash() {
@@ -478,6 +997,8 @@
     var deptOk = p.dept && Array.prototype.some.call(deptSelect.options, function (o) { return o.value === p.dept; });
     state.department = deptOk ? p.dept : "";
     deptSelect.value = state.department;
+    state.status = T.STATUSES.indexOf(p.st) >= 0 ? p.st : "";
+    statusSelect.value = state.status;
     var min = parseInt(p.min, 10);
     state.minScore = min >= 0 && min <= 100 ? min : 0;
     minScoreInput.value = String(state.minScore);
@@ -658,8 +1179,10 @@
   byId("count-leads").textContent = leads.length;
   byId("count-runs").textContent = runs.length;
   fillDepartments();
+  fillStatuses();
   renderLeads();
   renderRuns();
   if (window.innerWidth <= 768) byId("jobs-controls").removeAttribute("open");
   applyHash();
+  loadTracking();
 })();

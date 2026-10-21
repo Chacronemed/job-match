@@ -95,13 +95,13 @@ def test_jobs_reprocess_takes_the_date_by_env_and_logs_counts_only():
 # ---------------------------------------------------------------------------
 
 def _dashboard_steps() -> list[dict]:
-    return [_steps()[_index(n)] for n in ("Build dashboard", "Set up Node", "Deploy dashboard")]
+    return [_steps()[_index(n)] for n in ("Build dashboard", "Deploy dashboard")]
 
 
 def test_dashboard_steps_run_after_the_db_push_and_cannot_block_it():
     push = _index("Push DB to data repo")
     assert _index("Send digest") < push
-    assert push < _index("Build dashboard") < _index("Set up Node") < _index("Deploy dashboard")
+    assert _index("Set up Node") < push < _index("Build dashboard") < _index("Deploy dashboard")
     for step in _dashboard_steps():
         assert step.get("continue-on-error") is True
         # same guard as the push: run even if the digest failed, never on a broken DB
@@ -145,7 +145,8 @@ def test_db_round_trip_step_order():
     push = _index("Push DB to data repo")
     assert clone < restore < _index("Run pipeline") < vacuum < push
     # every writer runs before the VACUUM, so the pushed file is the compacted one
-    for writer in ("Run funding pipeline", "Reprocess jobs", "Reprocess funding articles"):
+    for writer in ("Run funding pipeline", "Reprocess jobs", "Reprocess funding articles",
+                   "Export tracking"):
         assert _index(writer) < vacuum
 
 
@@ -176,3 +177,69 @@ def test_no_step_copies_the_plain_db_into_the_data_repo_any_more():
         run = step.get("run", "")
         assert "data-repo/jobs.sqlite " not in run + " "
         assert "git push" not in run  # only the snapshot module pushes, and it force-pushes
+
+
+
+# ---------------------------------------------------------------------------
+# Application tracking: D1 -> read-only mirror in the jobs DB, before the digest
+# ---------------------------------------------------------------------------
+
+def test_tracking_steps_order_restore_node_migrate_export_then_pipeline():
+    # The mirror lands before the jobs pipeline: the run merges the skill overrides into the
+    # profile, and the digest further down still reads today's statuses.
+    node = _index("Set up Node")
+    migrate = _index("Apply D1 migrations")
+    export = _index("Export tracking")
+    assert _index("Restore DB") < node < migrate < export < _index("Run pipeline")
+    for later in ("Reprocess jobs", "Reprocess funding articles", "WAL checkpoint and VACUUM",
+                  "Send digest", "Push DB to data repo", "Deploy dashboard"):
+        assert export < _index(later), later
+
+
+def test_override_reprocess_runs_only_when_the_overrides_changed():
+    step = _steps()[_index("Reprocess for skill overrides")]
+    assert _index("Export tracking") < _index("Reprocess for skill overrides") < _index(
+        "Run pipeline"
+    )
+    assert step["if"] == "${{ steps.tracking.outputs.overrides_changed == 'true' }}"
+    assert step.get("continue-on-error") is True
+    assert 'job-match reprocess --since "$since" --limit 0' in step["run"]
+    assert "jobs.max_age_days" in step["run"]  # the cut-off comes from settings.yaml
+    assert "${{" not in step["run"]
+
+
+def test_tracking_steps_cannot_block_the_digest_or_the_push():
+    for name in ("Set up Node", "Apply D1 migrations", "Export tracking"):
+        step = _steps()[_index(name)]
+        assert step.get("continue-on-error") is True, name
+        assert "if" not in step, name
+
+
+def test_tracking_steps_use_the_cloudflare_secrets_and_print_nothing_from_d1():
+    for name in ("Apply D1 migrations", "Export tracking"):
+        step = _steps()[_index(name)]
+        assert step["env"]["CLOUDFLARE_API_TOKEN"] == "${{ secrets.CLOUDFLARE_API_TOKEN }}"
+        assert step["env"]["CLOUDFLARE_ACCOUNT_ID"] == "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}"
+        assert "${{" not in step["run"]
+    assert "> /dev/null" in _steps()[_index("Apply D1 migrations")]["run"]
+
+    export = _steps()[_index("Export tracking")]["run"]
+    assert "set -euo pipefail" in export
+    assert "umask 077" in export
+    assert "trap 'rm -rf \"$dir\"' EXIT" in export
+    # each query's JSON goes to a file, never to the log
+    assert export.count('> "$dir/') == 3
+    assert "--json" in export and "--remote" in export
+    for leak in ("cat ", "echo", "tee", "head", "jq", "upload"):
+        assert leak not in export, leak
+    assert ('job-match tracking import --applications "$dir/applications.json" '
+            '--decisions "$dir/decisions.json" '
+            '--skill-overrides "$dir/skill_overrides.json"') in export
+
+
+def test_export_selects_exactly_the_mirrored_columns():
+    export = _steps()[_index("Export tracking")]["run"]
+    assert ("SELECT job_key, status, applied_at, follow_up_at, note, cv_url, updated_at "
+            "FROM applications") in export
+    assert "SELECT id, job_key, label, score_at_decision, created_at FROM decisions" in export
+    assert "SELECT skill, created_at FROM skill_overrides" in export

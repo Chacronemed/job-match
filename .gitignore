@@ -46,3 +46,6 @@ htmlcov/
 /site/
 .wrangler/
 .taste-skill/
+
+# Worker local secrets (wrangler dev)
+.dev.vars

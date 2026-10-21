@@ -3,14 +3,135 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**Milestone 20: offer closure check** — **DONE** (2026-10-19). Each `job-match run` asks France
-Travail whether the offers still shown exist (detail endpoint, 204 = closed), marks
-`jobs.closed_at` / `last_checked_at`, and the digest and dashboard hide closed rows plus any
-posting older than `jobs.max_age_days` (45). Dashboard shows Posted + Age. ADR 0010. Nothing
-in `daily.yml` changed. Still pending from earlier: the two Cloudflare secrets, M9 manual
-GitHub setup, `PROFILE_YAML` re-encoding, `SMTP_PORT` variable.
+**Milestone 22: "Pourquoi cette offre ?" panel + decision-based calibration** — **DONE locally**
+(2026-10-21), not deployed. ADR 0013. Needs the M21 Cloudflare setup (Next step) before the
+overrides reach production; then one manual `reprocess_since` run fills the evidence on the
+production rows. Still pending: the M21 Cloudflare setup, the data-repo cleanup (ADR 0011), the
+two Cloudflare secrets, M9 manual GitHub setup, `PROFILE_YAML` re-encoding, `SMTP_PORT` variable.
 
 ## Done
+- **"Pourquoi cette offre ?" + calibration** (2026-10-21, M22, ADR 0013):
+  - **Evidence in the breakdown JSON** (no migration; old rows load with empty defaults):
+    - `normalization/skills.find_skill` and `snippet`: the sentence around a match, at most 160
+      characters, with "…" when cut. "node.js" is never split, and a bullet marker is stripped.
+    - `NativeRuleScorer(aliases, vocabulary)` records `evidence`, `weights` and `unlisted`
+      (vocabulary skills that are not in the profile; they never change the score).
+    - `ScoringBreakdown.experience_detail` is `{required_years, basis, sentence,
+      excludes_apprenticeship}`.
+      - `basis` (`ExperienceBasis`) is explicit / seniority / unknown / not_mentioned, decided by
+        the gate (`_basis`).
+      - The sentence comes from `ExperienceRequirement.sentence` (`parser.sentence_of`), or from
+        `infer_seniority` for a keyword.
+  - **Vocabulary:** `config/skill_vocabulary.yaml`, 60 terms, loaded by `load_skill_vocabulary`.
+    Its aliases are in `aliases.yaml` (gitlab-ci, gitlabci, argo cd, postgres…).
+  - **Skill overrides:**
+    - D1: `worker/migrations/0002_skill_overrides.sql`.
+    - Worker: `PUT` / `DELETE /api/skill-overrides/:skill` (lowercase, at most 40 characters,
+      same auth and origin rules); `GET /api/applications` also returns `skill_overrides`.
+    - `fakeD1` now applies every migration.
+    - Mirror: migration `0009_skill_overrides_mirror.sql`; `tracking import --skill-overrides`
+      skips names outside the vocabulary and writes `overrides_changed=true|false` to
+      `$GITHUB_OUTPUT`.
+    - `config/loader.apply_skill_overrides` adds them as preferred skills with
+      `scoring.override_weight: 2`. Called by `run` and `reprocess` (`cli._with_skill_overrides`);
+      only the count is printed.
+  - **`daily.yml`:**
+    - Set up Node, Apply D1 migrations and Export tracking (3 exports) now run right after
+      Restore DB, before the jobs pipeline.
+    - New step "Reprocess for skill overrides", only when `overrides_changed == 'true'`:
+      `reprocess --since <today − max_age_days> --limit 0`.
+  - **Dashboard:**
+    - `data.py` adds `why` per job: skills, unlisted, lowered, experience, each sentence capped
+      at 240 characters.
+    - `dashboard.js` `whyPanel`, five blocks: Compétences détectées (plus "absentes, sans effet
+      sur le score"), Non trouvé dans ton profil with "je maîtrise" / Annuler, Expérience with
+      a confidence badge, Ce qui a baissé le score, and Ton avis (the verdict pills moved here,
+      with their own save state).
+    - "Toutes les explications" is folded.
+    - `failureText` is shared, so a verdict save now gives the friendly 401/5xx message too.
+    - `tracking.js` adds `client.overrideSkill`. DESIGN.md has four new components.
+  - **`job-match calibrate [--since]`** (`calibration/report.py`,
+    `ApplicationRepository.list_latest_decisions`):
+    - reports the precision of strong, the score distribution per label (10-point bands), rule
+      lift on off_topic, and the unlisted skills on missing_skill jobs;
+    - suggests (threshold at recall ≥ 0.5, lower a preferred weight at lift ≥ 2, add a skill
+      named on ≥ 3 missing_skill jobs) only from 10 verdicts on, and never writes config;
+    - local only.
+  - **Local reprocess (1670 jobs):**
+    - 337 scored. Basis: explicit 94, not_mentioned 183, seniority 48, unknown 12.
+    - 138 jobs carry unlisted skills (gitlab ci 41, java 34, kafka 18, openshift 18…).
+    - Scores are unchanged by construction.
+  - **Verified:**
+    - `wrangler dev` with a local D1 (scratch config holding only the `DB` binding) behind
+      `dev-access-proxy.mjs`, driven by playwright-cli at 1440 and 390, dark and light:
+      - "je maîtrise" → D1 row;
+      - forced 500 on Annuler → revert + Retry → deleted;
+      - verdict stored with `score_at_decision` 92;
+      - a `<img onerror>` / `<script>` snippet shown as text, `__xss` unset;
+      - 44 px targets on mobile, no horizontal overflow, 0 console errors apart from the forced
+        500.
+    - Local D1 export → import printed `(changed)` and `overrides_changed=true`, and the
+      reprocess gave datadog +2 on 9 jobs. The mirror was then reset to empty and reprocessed.
+  - Tests:
+    - 73 Node tests;
+    - Python tests: evidence/basis/overrides/vocabulary (18), mirror overrides (9), why
+      (4), calibrate (6), workflow, enums (the skill pattern agrees across D1, Worker and
+      Python; the vocabulary passes it).
+    - ruff clean. 1 test fails, unrelated to M22 (Known issues).
+- **Application tracking** (2026-10-20, M21, ADR 0012; M20 was the closure check):
+  - **D1** (`worker/migrations/0001_tracking.sql`):
+    - `applications(job_key PK, status, applied_at, follow_up_at, note ≤ 2000, cv_url,
+      updated_at)`;
+    - `decisions(id, job_key, label, score_at_decision, created_at)`;
+    - `job_key` = `source:source_job_id` (`tracking.constants.job_key`; `data.py` adds `key`).
+  - **Worker** (`worker/src/`, no deps; `wrangler.jsonc`: `main`, `run_worker_first: ["/api/*"]`,
+    D1 binding `DB`):
+    - routes: `GET /api/applications` (+ latest verdict per job), `PUT
+      /api/applications/:key` (upsert), `POST /api/decisions`;
+    - every call verifies the Access JWT (RS256, JWKS cached 1 h with at most one refetch a
+      minute for an unknown kid, `aud`, `iss`, `exp`/`nbf` ± 60 s); missing → 401, keys
+      unreachable → 503, secrets unset → 500;
+    - same-origin only (writes need `Origin`), JSON with a body ≤ 8 KB, no CORS headers;
+    - validation: unknown fields, enums, real dates, `https:` CV links without credentials;
+      errors never echo input.
+  - **Dashboard** (`assets/tracking.js` pure logic + `dashboard.js`; CSP `connect-src 'self'`):
+    - "Aujourd'hui" is the default tab: KPI strip, "Relances du jour", then the queue of
+      untracked/to_review/to_apply jobs, to_apply first;
+    - Jobs tab: Status column (sortable) and filter (`st=` in the hash);
+    - the details form is optimistic, reverts on failure, offers Retry and shows field errors;
+    - the note saves after 800 ms or on blur; `beforeunload` warns while a save is pending;
+    - a banner appears when opened from a file or when the API fails. DESIGN.md has the new
+      components.
+  - **Mirror and digest:**
+    - migration `0008_tracking_mirror.sql`;
+    - `tracking/mirror.py` validates every row like the Worker and replaces both tables in one
+      transaction; a malformed export writes nothing;
+    - `job-match tracking import` prints counts only;
+    - `list_unnotified` leaves out jobs whose status is not to_review/to_apply;
+      `ApplicationRepository.list_followups_due` (not rejected/ignored, oldest first, offer
+      joined when still stored);
+    - the digest opens with "Relances du jour" (no note, no CV link), sends even when it only
+      has follow-ups, never marks them, and counts them in the subject.
+  - **`daily.yml`:**
+    - "Set up Node" moved up;
+    - "Apply D1 migrations" and "Export tracking" run after the pipelines and before the
+      VACUUM, both `continue-on-error`;
+    - the export goes to a `umask 077` temp dir that is removed on exit and never printed.
+  - **Tests:**
+    - `worker/test/*.test.mjs`: 68 Node tests, a fake D1 over `node:sqlite` running the real
+      migration, a real RSA key; run by `tests/unit/test_worker_js.py`, and `ci.yml` installs
+      Node 22;
+    - Python tests: mirror, enums agreeing across SQL/Worker/JS/Python, digest exclusion and
+      follow-ups, workflow order, wrangler config.
+    - 1280 tests, ruff clean.
+  - **Verified locally:**
+    - `wrangler dev` with a local D1 behind `scripts/dev-access-proxy.mjs` (signs a JWT, serves
+      the JWKS, injects the header; `.dev.vars` is gitignored);
+    - API without a JWT or with a forged one → 401, foreign Origin → 403, `http:` CV → 400;
+    - playwright-cli at 1440 and 390, dark and light: save → "Saved", forced 500 → error,
+      revert and Retry, a `<img onerror>` note shown as text, 0 console errors, no overflow;
+    - layout fixes from the screenshots: min widths on status/score/date, link-ink "To
+      apply", "Ignored" struck through instead of tertiary ink, 44 px targets on mobile.
 - **Compressed single-commit DB snapshot** (2026-10-20, ADR 0011): the data repo had a
   27.3 MB `jobs.sqlite`, 26 commits, 9.2 MB packed. `job_match.persistence.snapshot`
   restore (gunzip, legacy plain file read once) / publish (deterministic gzip, skip if
@@ -450,7 +571,35 @@ GitHub setup, `PROFILE_YAML` re-encoding, `SMTP_PORT` variable.
   - `src/job_match/cli.py` — stub entry point
   - 26 tests green, `ruff check .` clean
 
+## Known issues
+- `tests/unit/test_wrangler_config.py::test_one_d1_database_with_the_repo_migrations` fails.
+  `wrangler.jsonc` now has a second D1 binding (`job_match` → database `job-match`, `remote:
+  true`), added outside M22. It looks like `wrangler d1 create` was run with the name
+  `job-match` and appended its own binding, while the first binding (`job-match-tracking`) still
+  has the zero `database_id`. Decide which database is the tracking one:
+  - either put its id into the `DB` binding and delete the extra entry;
+  - or rename the `DB` binding's `database_name` and update `daily.yml` and the test.
+
 ## Next step
+- **M22 in production:** after the M21 Cloudflare setup, trigger "Daily run" once with
+  `reprocess_since` = today minus 45 days and `reprocess_scope` = `jobs`, so the visible rows get
+  their evidence. Then open a job's details: the panel should show sentences and a confidence
+  badge, not "non recalculé". After about 10 verdicts, run `job-match calibrate` locally on a
+  restored DB.
+- **Cloudflare setup for M21 (one-time, before the next daily run uses it):**
+  1. `npx wrangler@4 d1 create job-match-tracking`, then put the printed `database_id` into
+     `wrangler.jsonc` in place of the zeros, and commit it (not a secret).
+  2. API token (`CLOUDFLARE_API_TOKEN`): add **Account → D1 → Edit** next to **Workers Scripts
+     → Edit**.
+  3. Zero Trust → Access → Applications → the `job-match` app → copy the **Application Audience
+     (AUD) Tag**. The team domain is `https://<team>.cloudflareaccess.com` (Settings → Custom
+     Pages shows the team name). Then run `npx wrangler@4 secret put CF_ACCESS_AUD` and
+     `npx wrangler@4 secret put CF_ACCESS_TEAM_DOMAIN`. They are secrets, so deploys keep them.
+  4. Check that the Access application covers the whole hostname, `/api/*` included, with no
+     Bypass policy. Without a JWT the API answers 401 by design.
+  5. The first daily run applies the D1 migration and exports empty tables. Then open the
+     dashboard and change one status: the next digest's log line should read `Tracking
+     mirror: 1 applications…`.
 - **Watch the first production closure check:** the Actions log should carry
   `closure check: checked=N closed=M unclear=0` and the summary's `checked:` / `closed:`
   lines. The first run checks every visible row (none has `last_checked_at`), so expect
@@ -672,6 +821,9 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
   use fixtures.
 
 ## Session log
+- 2026-10-20 (3): Application tracking (M21). D1 + Worker API with Access JWT checks,
+  "Aujourd'hui" view, details form, D1 → jobs DB mirror, digest exclusion and "Relances du
+  jour". Verified with wrangler dev + a local Access proxy + playwright-cli. ADR 0012.
 - 2026-10-19 (3): Offer closure check (M20). Measured the detail endpoint (204 = closed),
   added `closed_at`/`last_checked_at`, `check_offer` on the France Travail adapter, the
   post-collection `check_closed` step (24 h interval, unknown never closes), the

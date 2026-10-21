@@ -76,6 +76,26 @@ def main() -> None:
     dash_p.add_argument("--out", default="site", metavar="DIR",
                         help="Output directory (default: site)")
 
+    cal_p = sub.add_parser(
+        "calibrate",
+        help="Compare dashboard verdicts with scores; suggests changes, never applies them",
+    )
+    cal_p.add_argument("--since", metavar="YYYY-MM-DD",
+                       help="Only verdicts given on/after this date")
+
+    tracking_p = sub.add_parser("tracking", help="Application tracking mirror (D1 -> jobs DB)")
+    tracking_sub = tracking_p.add_subparsers(dest="tracking_command", metavar="SUBCOMMAND")
+    timp_p = tracking_sub.add_parser(
+        "import", help="Replace the local mirror with `wrangler d1 execute --json` exports",
+    )
+    timp_p.add_argument("--applications", required=True, metavar="PATH",
+                        help="Export of SELECT * FROM applications")
+    timp_p.add_argument("--decisions", required=True, metavar="PATH",
+                        help="Export of SELECT * FROM decisions")
+    timp_p.add_argument("--skill-overrides", metavar="PATH",
+                        help="Export of SELECT * FROM skill_overrides "
+                             "(default: keep the current mirror)")
+
     funding_p = sub.add_parser("funding", help="Funding / news pipeline")
     funding_sub = funding_p.add_subparsers(dest="funding_command", metavar="SUBCOMMAND")
     frun_p = funding_sub.add_parser("run", help="Ingest articles from RSS feeds")
@@ -104,6 +124,14 @@ def main() -> None:
         _cmd_digest(args)
     elif args.command == "dashboard":
         _cmd_dashboard(args)
+    elif args.command == "calibrate":
+        _cmd_calibrate(args)
+    elif args.command == "tracking":
+        if args.tracking_command == "import":
+            _cmd_tracking_import(args)
+        else:
+            tracking_p.print_help()
+            sys.exit(1)
     elif args.command == "funding":
         if args.funding_command == "run":
             _cmd_funding_run(args)
@@ -123,7 +151,12 @@ def _cmd_reprocess(args: argparse.Namespace) -> None:
 
     from datetime import UTC, datetime
 
-    from job_match.config.loader import load_aliases, load_profile, load_settings
+    from job_match.config.loader import (
+        load_aliases,
+        load_profile,
+        load_settings,
+        load_skill_vocabulary,
+    )
     from job_match.persistence.db import Database
     from job_match.persistence.repositories import JobRepository
     from job_match.pipelines.jobs import reprocess_jobs
@@ -133,6 +166,7 @@ def _cmd_reprocess(args: argparse.Namespace) -> None:
     profile = load_profile(cfg / "profile.yaml")
     settings = load_settings(cfg / "settings.yaml")
     aliases = load_aliases(cfg / "aliases.yaml")
+    vocabulary = load_skill_vocabulary(cfg / "skill_vocabulary.yaml")
 
     since = None
     if args.since:
@@ -148,8 +182,10 @@ def _cmd_reprocess(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     with Database(path=str(db_path)) as db:
+        profile = _with_skill_overrides(profile, settings, db)
         summary = reprocess_jobs(
-            profile, settings, db, aliases, since=since, dry_run=args.dry_run
+            profile, settings, db, aliases,
+            since=since, dry_run=args.dry_run, vocabulary=vocabulary,
         )
         top = JobRepository(db.conn).list_eligible(min_score=settings.strong_threshold)
 
@@ -229,7 +265,7 @@ def _cmd_digest(args: argparse.Namespace) -> None:
     print(
         f"Digest: {len(batch.job_ids)} unnotified jobs ({len(data.strong)} strong, "
         f"{len(data.eligible)} eligible, {len(data.stretch)} stretch), "
-        f"{len(batch.lead_ids)} funding leads"
+        f"{len(batch.lead_ids)} funding leads, {len(data.followups)} follow-ups due"
     )
     print(
         f"  held back (stay unnotified): {batch.jobs_below_min_score} jobs below "
@@ -246,7 +282,7 @@ def _cmd_digest(args: argparse.Namespace) -> None:
         return
 
     if batch.is_empty:
-        print("  No new jobs or leads to send.")
+        print("  No new jobs, leads or follow-ups to send.")
         return
 
     try:
@@ -272,7 +308,12 @@ def _cmd_run(args: argparse.Namespace) -> None:
     _quiet_http_logs()
 
     from job_match.adapters.jobs.factory import build_sources, missing_env
-    from job_match.config.loader import load_aliases, load_profile, load_settings
+    from job_match.config.loader import (
+        load_aliases,
+        load_profile,
+        load_settings,
+        load_skill_vocabulary,
+    )
     from job_match.persistence.db import Database
     from job_match.pipelines.jobs import run_jobs
 
@@ -282,6 +323,7 @@ def _cmd_run(args: argparse.Namespace) -> None:
     profile = load_profile(profile_path)
     settings = load_settings(cfg / "settings.yaml")
     aliases = load_aliases(cfg / "aliases.yaml")
+    vocabulary = load_skill_vocabulary(cfg / "skill_vocabulary.yaml")
     print(f"profile: {profile_path} (experience_years={profile.candidate.experience_years})")
 
     if not args.dry_run:
@@ -301,8 +343,13 @@ def _cmd_run(args: argparse.Namespace) -> None:
 
     db_path = ":memory:" if args.dry_run else str(data_dir / "jobs.sqlite")
 
+    # A dry run reads an empty in-memory DB, so it runs without the skill overrides.
     with Database(path=db_path) as db:
-        summary = run_jobs(sources, profile, settings, db, aliases, dry_run=args.dry_run)
+        profile = _with_skill_overrides(profile, settings, db)
+        summary = run_jobs(
+            sources, profile, settings, db, aliases,
+            dry_run=args.dry_run, vocabulary=vocabulary,
+        )
 
     _print_summary(summary, dry_run=args.dry_run)
 
@@ -321,6 +368,92 @@ def _build_funding_sources(names: list[str]) -> list:
             sys.exit(1)
         sources.append(cls())
     return sources
+
+
+def _cmd_tracking_import(args: argparse.Namespace) -> None:
+    """Mirror the D1 tracking tables. Prints counts only: notes and links are private and
+    the CI log is public."""
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+
+    from job_match.config.loader import load_skill_vocabulary
+    from job_match.persistence.db import Database
+    from job_match.tracking.mirror import MirrorFormatError, import_tracking
+
+    db_path = _data_dir() / "jobs.sqlite"
+    if not db_path.exists():
+        print(f"No database at {db_path}: run `job-match run` first.", file=sys.stderr)
+        sys.exit(1)
+    overrides_arg = getattr(args, "skill_overrides", None)
+    overrides_path = Path(overrides_arg) if overrides_arg else None
+    vocabulary = load_skill_vocabulary(_config_dir() / "skill_vocabulary.yaml")
+    with Database(path=str(db_path)) as db:
+        try:
+            result = import_tracking(
+                db.conn, Path(args.applications), Path(args.decisions),
+                overrides_path, vocabulary,
+            )
+        except MirrorFormatError as exc:
+            print(f"Tracking export rejected ({exc}); previous mirror kept.", file=sys.stderr)
+            sys.exit(1)
+    print(
+        f"Tracking mirror: {result.applications} applications, {result.decisions} decisions,"
+        f" {result.skill_overrides} skill overrides"
+        f"{' (changed)' if result.overrides_changed else ''},"
+        f" {result.skipped} invalid rows skipped"
+    )
+    # The daily workflow reprocesses stored jobs only when the overrides changed.
+    github_output = os.environ.get("GITHUB_OUTPUT")
+    if github_output:
+        with open(github_output, "a", encoding="utf-8") as fh:
+            changed = "true" if result.overrides_changed else "false"
+            fh.write(f"overrides_changed={changed}\n")
+
+
+def _cmd_calibrate(args: argparse.Namespace) -> None:
+    """Local only: the report names skills, so it never runs in the public CI log."""
+    from datetime import date
+
+    from job_match.calibration.report import DecidedJob, build_report, format_report
+    from job_match.config.loader import load_settings
+    from job_match.persistence.db import Database
+    from job_match.persistence.repositories import ApplicationRepository
+
+    since = None
+    if args.since:
+        try:
+            since = date.fromisoformat(args.since)
+        except ValueError:
+            print(f"--since must be YYYY-MM-DD, got {args.since!r}", file=sys.stderr)
+            sys.exit(1)
+    db_path = _data_dir() / "jobs.sqlite"
+    if not db_path.exists():
+        print(f"No database at {db_path}: run `job-match run` first.", file=sys.stderr)
+        sys.exit(1)
+    settings = load_settings(_config_dir() / "settings.yaml")
+    with Database(path=str(db_path)) as db:
+        decided = ApplicationRepository(db.conn).list_latest_decisions(since)
+    rows = [
+        DecidedJob(
+            label=label,
+            score=score,
+            positive=bd.positive_matches if bd else (),
+            negative=bd.negative_matches if bd else (),
+            unlisted=tuple(bd.unlisted) if bd else (),
+        )
+        for label, score, bd in decided
+    ]
+    print(format_report(build_report(rows, settings.strong_threshold)))
+
+
+def _with_skill_overrides(profile, settings, db):
+    """The profile plus the mirrored "je maîtrise" skills. Logs the count, never names."""
+    from job_match.config.loader import apply_skill_overrides
+    from job_match.persistence.repositories import ApplicationRepository
+
+    overrides = ApplicationRepository(db.conn).list_skill_overrides()
+    if overrides:
+        print(f"skill overrides: {len(overrides)}")
+    return apply_skill_overrides(profile, overrides, settings.scoring.override_weight)
 
 
 def _cmd_dashboard(args: argparse.Namespace) -> None:

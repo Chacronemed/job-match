@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 
 
@@ -36,6 +36,15 @@ def stretch_note(required_years: float, candidate_years: float) -> str:
     )
 
 
+class ExperienceBasis(StrEnum):
+    """Where the gate's required years came from, i.e. how much to trust them."""
+
+    EXPLICIT = "explicit"  # a number in the text ("3 ans d'expérience", "up to 2 years")
+    SENIORITY = "seniority"  # no number, a seniority keyword ("senior", "confirmé")
+    UNKNOWN = "unknown"  # vague wording only ("première expérience", "solid experience")
+    NOT_MENTIONED = "not_mentioned"
+
+
 class RejectionReason(StrEnum):
     EXPERIENCE = "EXPERIENCE"
     CONTRACT = "CONTRACT"
@@ -70,6 +79,9 @@ class ExperienceRequirement:
     # "hors stage et alternance": internships / work-study years do not count. Reported
     # in explanations only; the gate does not use it (yet).
     excludes_apprenticeship: bool = False
+    # The sentence the evidence came from, for display. Not stored in its own column: the
+    # scoring breakdown carries it (`ScoringBreakdown.experience_detail`).
+    sentence: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,6 +93,10 @@ class EligibilityResult:
     # seniority-keyword minimum), None when the text says nothing usable.
     stretch: bool = False
     required_years: float | None = None
+    # How `required_years` was found, and the sentence that says so (the parser's sentence,
+    # or the one holding the seniority keyword).
+    basis: ExperienceBasis = ExperienceBasis.NOT_MENTIONED
+    basis_evidence: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,6 +109,12 @@ class ScoreResult:
     missing_preferences: tuple[str, ...] = ()
     explanations: tuple[str, ...] = ()
     raw: dict = field(default_factory=dict)
+    # Per matched skill (preferred or negative): the sentence it was found in and the
+    # weight it carried. `unlisted`: vocabulary skills the offer names that are neither in
+    # the profile nor overridden, with their sentence.
+    evidence: dict[str, str] = field(default_factory=dict)
+    weights: dict[str, int] = field(default_factory=dict)
+    unlisted: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,6 +129,12 @@ class ScoringBreakdown:
     engines: dict[str, ScoreResult] = field(default_factory=dict)
     divergence: int | None = None
     needs_review: bool = False
+    evidence: dict[str, str] = field(default_factory=dict)
+    weights: dict[str, int] = field(default_factory=dict)
+    unlisted: dict[str, str] = field(default_factory=dict)
+    # {"required_years", "basis", "sentence", "excludes_apprenticeship"}, from the gate and
+    # the parser at scoring time. Empty for rows scored before it existed.
+    experience_detail: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -234,6 +262,21 @@ class LeadDetail:
     evidence: dict[str, str] = field(default_factory=dict)
     open_jobs: int = 0  # eligible, canonical, recent jobs at the same company
     country: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class FollowUp:
+    """Read model: an application whose follow-up date has come, with its offer if still stored.
+
+    The note and CV link are not part of it: they never leave the dashboard.
+    """
+
+    job_key: str
+    status: str
+    follow_up_at: date
+    title: str | None = None
+    company: str | None = None
+    url: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

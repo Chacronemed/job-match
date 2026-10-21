@@ -7,11 +7,12 @@ from __future__ import annotations
 
 import html
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 
 from job_match.domain.models import (
     STRETCH_NOTE_PREFIX,
     CompanyFunding,
+    FollowUp,
     Job,
     LeadDetail,
     format_years,
@@ -33,6 +34,9 @@ class DigestData:
     generated_at: datetime = field(default_factory=datetime.now)
     leads: tuple[LeadDetail, ...] = ()  # unnotified, high priority first
     company_funding: dict[int, CompanyFunding] = field(default_factory=dict)  # by company_id
+    # Tracked applications whose follow-up date is today or past ("Relances du jour"). Listed
+    # every day until the date or the status changes; never marked as notified.
+    followups: tuple[FollowUp, ...] = ()
 
 
 def _e(text: str | None) -> str:
@@ -94,6 +98,18 @@ def evidence_lines(evidence: dict[str, str]) -> list[tuple[str, str]]:
     return [(", ".join(keys), sentence) for sentence, keys in grouped.items()][:_MAX_EVIDENCE]
 
 
+def _late(followup: FollowUp, today: date) -> str:
+    days = (today - followup.follow_up_at).days
+    return "aujourd'hui" if days <= 0 else f"{days} j de retard"
+
+
+def _followup_label(followup: FollowUp) -> str:
+    """Title — company when the offer is still stored, the job key otherwise."""
+    if followup.title:
+        return f"{followup.title} — {followup.company}" if followup.company else followup.title
+    return f"{followup.job_key} (offer no longer stored)"
+
+
 def _subtitle(data: DigestData) -> str:
     total = len(data.strong) + len(data.eligible) + len(data.stretch)
     tiers = f"{len(data.strong)} strong"
@@ -103,6 +119,9 @@ def _subtitle(data: DigestData) -> str:
     if data.leads:
         n = len(data.leads)
         text += f", {n} funding lead{'s' if n != 1 else ''}"
+    if data.followups:
+        n = len(data.followups)
+        text += f", {n} follow-up{'s' if n != 1 else ''}"
     return text
 
 
@@ -140,6 +159,7 @@ def render_html(data: DigestData) -> str:
         ".stats{background:#f9fafb;padding:12px 16px;border-radius:6px;"
         "font-size:.85rem;line-height:1.8}"
         ".empty{color:#888;font-style:italic}"
+        ".due{font-size:.82rem;color:#9a3412;margin-top:5px}"
         "</style>"
         "</head><body>"
     )
@@ -149,6 +169,19 @@ def render_html(data: DigestData) -> str:
         f"<h1>Job Match Digest</h1>"
         f"<p class='meta'>Generated {_e(ts)} — {_e(_subtitle(data))}</p>"
     )
+
+    today = data.generated_at.date()
+    if data.followups:
+        parts.append(f"<h2>Relances du jour ({len(data.followups)})</h2>")
+        for f in data.followups:
+            label = _e(_followup_label(f))
+            if f.url:
+                label = f"<a href='{_e(f.url)}'>{label}</a>"
+            parts.append(
+                f"<div class='job'><div class='job-title'>{label}</div>"
+                f"<div class='due'>{_e(f.status)} · relance prévue le "
+                f"{f.follow_up_at.isoformat()} ({_e(_late(f, today))})</div></div>"
+            )
 
     if data.run_stats:
         parts.append("<h2>Last Run</h2><div class='stats'>")
@@ -259,6 +292,19 @@ def render_text(data: DigestData) -> str:
     lines.append(f"Job Match Digest — {ts}")
     lines.append(_subtitle(data))
     lines.append("")
+
+    today = data.generated_at.date()
+    if data.followups:
+        lines.append(f"=== Relances du jour ({len(data.followups)}) ===")
+        for f in data.followups:
+            lines.append(f"  {_followup_label(f)}")
+            lines.append(
+                f"         {f.status} · relance prévue le {f.follow_up_at.isoformat()}"
+                f" ({_late(f, today)})"
+            )
+            if f.url:
+                lines.append(f"         {f.url}")
+        lines.append("")
 
     if data.run_stats:
         lines.append("=== Last Run ===")

@@ -2,11 +2,13 @@ from job_match.config.schema import Profile, RelevanceConfig, Settings
 from job_match.domain.models import (
     ContractType,
     EligibilityResult,
+    ExperienceBasis,
     ExperienceRequirement,
+    ExperienceStatus,
     Job,
     RejectionReason,
 )
-from job_match.experience.parser import infer_seniority_min
+from job_match.experience.parser import infer_seniority
 from job_match.normalization.location import (
     departments_for,
     french_location,
@@ -72,16 +74,16 @@ def evaluate(
     # 1. Experience hard gate
     # Seniority keywords (title or description) set a minimum when no explicit number exists.
     # An explicit number in the text always wins over the keyword minimum.
-    seniority_min: float | None = None
+    seniority = None
     if settings and settings.seniority_min_years:
-        s = infer_seniority_min(job.title, job.description, settings.seniority_min_years)
-        if s is not None:
-            seniority_min = float(s)
+        seniority = infer_seniority(job.title, job.description, settings.seniority_min_years)
 
+    basis, basis_evidence = _basis(requirement, seniority)
     if requirement.min_years is not None:
         effective_min: float | None = requirement.min_years  # explicit wins
     else:
-        effective_min = seniority_min  # keyword fallback (may be 0 = no restriction)
+        # keyword fallback (may be 0 = no restriction)
+        effective_min = float(seniority[0]) if seniority else None
 
     # Stretch band: candidate < required <= candidate + stretch_years is kept as STRETCH,
     # not rejected. Above the band the hard gate holds. 0 disables the band.
@@ -113,7 +115,24 @@ def evaluate(
         reasons=tuple(reasons),
         stretch=stretch and not reasons,
         required_years=effective_min,
+        basis=basis,
+        basis_evidence=basis_evidence,
     )
+
+
+def _basis(
+    requirement: ExperienceRequirement, seniority: tuple[int, str] | None
+) -> tuple[ExperienceBasis, str | None]:
+    """How the required years were found, with the sentence that says so."""
+    if requirement.min_years is not None:
+        return ExperienceBasis.EXPLICIT, requirement.sentence
+    if seniority is not None:
+        return ExperienceBasis.SENIORITY, seniority[1]
+    if requirement.status is ExperienceStatus.ELIGIBLE:  # a maximum only ("up to 2 years")
+        return ExperienceBasis.EXPLICIT, requirement.sentence
+    if requirement.status is ExperienceStatus.UNKNOWN:
+        return ExperienceBasis.UNKNOWN, requirement.sentence
+    return ExperienceBasis.NOT_MENTIONED, None
 
 
 FRANCE_TRAVAIL = "france_travail"  # the one source whose index is French by construction

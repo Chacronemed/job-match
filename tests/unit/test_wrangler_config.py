@@ -1,19 +1,48 @@
-"""The Worker config serves ./site as static assets and nothing else; site/ is never committed."""
+"""The Worker config: ./site as static assets, the Worker only on /api/*, one D1 binding.
+
+The Access identifiers are Worker secrets, never config; site/ and .dev.vars are never committed.
+"""
 import json
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent.parent
 
 
-def test_wrangler_config_is_assets_only_and_points_at_site():
-    cfg = json.loads((ROOT / "wrangler.jsonc").read_text(encoding="utf-8"))
+def _config() -> dict:
+    # wrangler.jsonc allows comments; ours are whole-line `//` comments only.
+    text = (ROOT / "wrangler.jsonc").read_text(encoding="utf-8")
+    lines = [ln for ln in text.splitlines() if not ln.strip().startswith("//")]
+    return json.loads("\n".join(lines))
+
+
+def test_assets_are_served_first_and_the_worker_only_runs_on_the_api():
+    cfg = _config()
     assert cfg["name"] == "job-match"
+    assert cfg["main"] == "worker/src/index.js"
+    assert (ROOT / cfg["main"]).is_file()
     assert cfg["assets"]["directory"] == "./site"
-    assert "main" not in cfg  # no Worker script: Access is the whole auth story
+    assert cfg["assets"]["binding"] == "ASSETS"
+    assert cfg["assets"]["run_worker_first"] == ["/api/*"]
     assert "compatibility_date" in cfg
+
+
+def test_one_d1_database_with_the_repo_migrations():
+    (db,) = _config()["d1_databases"]
+    assert db["binding"] == "DB"
+    assert db["database_name"] == "job-match-tracking"
+    assert db["migrations_dir"] == "worker/migrations"
+    assert (ROOT / db["migrations_dir"] / "0001_tracking.sql").is_file()
+
+
+def test_access_identifiers_are_secrets_not_config():
+    text = (ROOT / "wrangler.jsonc").read_text(encoding="utf-8")
+    cfg = _config()
+    assert "vars" not in cfg
+    assert "cloudflareaccess.com" not in text
 
 
 def test_site_and_deploy_tooling_are_gitignored():
     lines = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
     assert "/site/" in lines
     assert ".wrangler/" in lines
+    assert ".dev.vars" in lines

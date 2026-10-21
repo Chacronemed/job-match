@@ -83,7 +83,7 @@ def test_nothing_to_send(tmp_project, capsys):
     with patch(_NOTIFIER) as cls:
         _cmd_digest(argparse.Namespace(dry_run=False, resend_since=None))
         cls.from_env.assert_not_called()
-    assert "No new jobs or leads to send." in capsys.readouterr().out
+    assert "No new jobs, leads or follow-ups to send." in capsys.readouterr().out
 
 
 def test_resend_since_also_resets_leads(tmp_project):

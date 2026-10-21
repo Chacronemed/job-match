@@ -1,6 +1,7 @@
 import base64
 import logging
 import os
+from dataclasses import replace
 from pathlib import Path
 
 import yaml
@@ -71,6 +72,40 @@ def load_aliases(path: Path) -> dict[str, list[str]]:
     }
 
 
+def load_skill_vocabulary(path: Path) -> tuple[str, ...]:
+    """Skills worth naming when an offer asks for them and the profile does not list them.
+
+    A YAML list of canonical names, lowercased and de-duplicated in file order. Their
+    aliases live in `aliases.yaml`, like the profile's. Missing file: empty vocabulary.
+    """
+    if not path.exists():
+        return ()
+    with path.open(encoding="utf-8") as fh:
+        raw = yaml.safe_load(fh) or []
+    if not isinstance(raw, list) or not all(isinstance(v, str) for v in raw):
+        raise ConfigError(f"Skill vocabulary must be a YAML list of strings: {path}")
+    return tuple(dict.fromkeys(v.strip().lower() for v in raw if v.strip()))
+
+
+def apply_skill_overrides(profile: Profile, overrides: list[str], weight: int) -> Profile:
+    """A copy of `profile` where each override is one more preferred skill.
+
+    An override the profile already lists (preferred or negative) changes nothing: a
+    negative skill is a choice the profile made on purpose, and the dashboard never offers
+    "je maîtrise" for one anyway.
+    """
+    listed = {s.name.lower() for s in (*profile.skills.preferred, *profile.skills.negative)}
+    added = [
+        SkillWeight(name=name, weight=weight)
+        for name in dict.fromkeys(o.lower() for o in overrides)
+        if name not in listed
+    ]
+    if not added:
+        return profile
+    skills = Skills(preferred=[*profile.skills.preferred, *added], negative=profile.skills.negative)
+    return replace(profile, skills=skills)
+
+
 def load_settings(path: Path) -> Settings:
     if not path.exists():
         raise ConfigError(f"Settings file not found: {path}")
@@ -103,7 +138,13 @@ def load_settings(path: Path) -> Settings:
             jms=JMSConfig(
                 enabled=bool(jms_raw.get("enabled", False)),
                 commit_sha=jms_raw.get("commit_sha"),
-            )
+            ),
+            override_weight=_positive_int(
+                scoring_raw.get("override_weight", ScoringConfig().override_weight)
+                if isinstance(scoring_raw, dict) else ScoringConfig().override_weight,
+                "scoring.override_weight",
+                path,
+            ),
         ),
         funding=FundingConfig(
             requests_per_second=float(
@@ -207,6 +248,12 @@ def _published_since_days(value: object, key: str, path: Path) -> int | None:
         raise ConfigError(
             f"{key}.published_since_days must be one of {allowed} (in {path})"
         )
+    return value
+
+
+def _positive_int(value: object, key: str, path: Path) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ConfigError(f"{key} must be a positive integer (in {path})")
     return value
 
 

@@ -1,0 +1,85 @@
+# Skills worth naming on the dashboard when an offer asks for them and the profile does
+# not list them ("non trouvé dans ton profil"). They never change a score on their own:
+# "je maîtrise" on the dashboard turns one into a preferred skill (scoring.override_weight).
+#
+# Canonical names, lowercase. Aliases go in aliases.yaml. Matching is whole-term and
+# case-insensitive, so avoid everyday words: "chef" would match "chef de projet", "flux"
+# any French text, "go" too many sentences (use golang).
+
+# Cloud and platforms
+- aws
+- azure
+- gcp
+- openshift
+- rancher
+- openstack
+- vmware
+- proxmox
+
+# Containers and orchestration
+- kubernetes
+- docker
+- helm
+- kustomize
+- istio
+- nomad
+
+# Infrastructure as code and configuration
+- terraform
+- ansible
+- pulumi
+- cloudformation
+- packer
+- puppet
+- saltstack
+
+# CI/CD and GitOps
+- jenkins
+- gitlab ci
+- github actions
+- circleci
+- argocd
+- fluxcd
+- sonarqube
+- artifactory
+
+# Observability
+- prometheus
+- grafana
+- elasticsearch
+- kibana
+- logstash
+- loki
+- datadog
+- splunk
+- opentelemetry
+
+# Security
+- vault
+- keycloak
+- trivy
+- snyk
+- selinux
+
+# Data and messaging
+- postgresql
+- mysql
+- mongodb
+- redis
+- kafka
+- rabbitmq
+
+# Languages and shells
+- python
+- bash
+- powershell
+- golang
+- java
+- ruby
+
+# Systems
+- linux
+- windows server
+- active directory
+- nginx
+- haproxy

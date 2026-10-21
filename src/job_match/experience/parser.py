@@ -3,6 +3,9 @@ from dataclasses import replace
 
 from job_match.domain.models import ExperienceRequirement, ExperienceStatus
 from job_match.normalization.numbers import WORD_NUMBERS as _WORD_NUMS
+from job_match.normalization.skills import snippet
+
+SENTENCE_MAX = 240
 
 # Non-capturing alternation of written numbers
 _W = "(?:" + "|".join(_WORD_NUMS) + ")"
@@ -71,7 +74,15 @@ def parse(text: str) -> ExperienceRequirement:
     req = _parse(text)
     if text and _EXCLUDES_APPRENTICESHIP_RE.search(text):
         req = replace(req, excludes_apprenticeship=True)
+    if req.evidence:
+        req = replace(req, sentence=sentence_of(text, req.evidence))
     return req
+
+
+def sentence_of(text: str, phrase: str) -> str | None:
+    """The sentence of `text` holding `phrase` (first occurrence, case-insensitive)."""
+    m = re.search(re.escape(phrase), text, re.IGNORECASE)
+    return snippet(text, m.start(), m.end(), SENTENCE_MAX) if m else None
 
 
 def _parse(text: str) -> ExperienceRequirement:
@@ -158,14 +169,23 @@ def infer_seniority_min(title: str, description: str, seniority_map: dict[str, i
     Returns None when no keyword matches or the map is empty.
     An explicit numeric requirement from the parser always wins over this value.
     """
+    found = infer_seniority(title, description, seniority_map)
+    return found[0] if found else None
+
+
+def infer_seniority(
+    title: str, description: str, seniority_map: dict[str, int]
+) -> tuple[int, str] | None:
+    """`infer_seniority_min` plus the sentence holding the winning keyword."""
     if not seniority_map:
         return None
-    text = f"{title} {description}"
-    best: int | None = None
+    # The full stop keeps the title out of the description's first sentence.
+    text = f"{title}. {description}"
+    best: tuple[int, str] | None = None
     for keyword, min_years in seniority_map.items():
-        if re.search(r"\b" + re.escape(keyword) + r"\b", text, re.IGNORECASE):
-            if best is None or min_years > best:
-                best = min_years
+        m = re.search(r"\b" + re.escape(keyword) + r"\b", text, re.IGNORECASE)
+        if m and (best is None or min_years > best[0]):
+            best = (min_years, snippet(text, m.start(), m.end(), SENTENCE_MAX))
     return best
 
 

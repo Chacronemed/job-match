@@ -1,6 +1,6 @@
 # ADR 0009 — Static dashboard behind Cloudflare Access
 
-**Status:** accepted (2026-10-19)
+**Status:** accepted (2026-10-19). Amended by ADR 0012 (M21): the Worker now runs code on `/api/*` for application tracking, and the page fetches that API.
 
 ## Context
 

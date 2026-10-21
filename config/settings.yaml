@@ -62,6 +62,9 @@ scoring:
   jms:
     enabled: false
     commit_sha: null
+  # A skill marked "je maîtrise" on the dashboard joins the preferred skills with this
+  # weight on the next run (D1 `skill_overrides`, mirrored before the jobs pipeline).
+  override_weight: 2
 
 # Funding pipeline (M10): RSS ingestion. Full article text is never stored.
 funding:

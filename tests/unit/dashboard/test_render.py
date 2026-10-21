@@ -44,12 +44,15 @@ def test_index_is_self_contained_with_no_external_resources(dashboard_data):
     assert '<html lang="fr">' in html  # native date inputs render dd/mm/yyyy
     assert 'http-equiv="Content-Security-Policy"' in html
     assert "default-src 'none'" in html
+    # the one network call allowed: the tracking API on the same origin
+    assert "connect-src 'self'" in html
     assert 'rel="stylesheet"' not in html
     assert "<script src=" not in html
-    assert "fetch(" not in html
+    assert re.findall(r'fetchImpl\("([^"]*)"', html) == ["/api/"]
+    assert "fetch(" not in html.replace("window.fetch.bind", "")
     assert "innerHTML" not in html
     assert '<meta name="robots" content="noindex, nofollow">' in html
-    for marker in ("__CSS__", "__JS__", "__DATA__"):
+    for marker in ("__CSS__", "__JS__", "__TRACKING_JS__", "__DATA__"):
         assert marker not in html
 
 
@@ -82,4 +85,22 @@ def test_jobs_table_has_posted_and_age_columns_and_no_collected_column():
     assert 'data-key="age_days">Age<' in html
     assert 'data-key="collected_at"' not in html
     assert "Posted from" in html and "Collected from" not in html
-    assert '"posted_at", "age_days"]' in html  # SORT_KEYS allow-list for the hash
+    assert '"status", "posted_at", "age_days"]' in html  # SORT_KEYS allow-list for the hash
+
+
+def test_today_is_the_default_tab_and_jobs_has_a_status_column_and_filter():
+    html = render_index(_EMPTY)
+    assert 'id="tab-today" aria-controls="panel-today" aria-selected="true"' in html
+    assert 'id="tab-jobs" aria-controls="panel-jobs" aria-selected="false" tabindex="-1"' in html
+    assert 'id="panel-today" role="tabpanel" aria-labelledby="tab-today">' in html
+    assert 'id="panel-jobs" role="tabpanel" aria-labelledby="tab-jobs" hidden>' in html
+    assert 'var TABS = ["today", "jobs", "leads", "runs"];' in html
+    assert 'data-key="status">Status<' in html
+    assert '<select id="f-status" name="status">' in html
+    assert "Relances du jour" in html and "À traiter" in html
+    assert 'id="track-banner"' in html
+
+
+def test_tracking_script_is_inlined_before_the_dashboard_script():
+    html = render_index(_EMPTY)
+    assert html.index("root.JMTracking = api") < html.index("var T = window.JMTracking;")

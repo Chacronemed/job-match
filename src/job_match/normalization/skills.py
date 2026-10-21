@@ -10,13 +10,53 @@ def skill_forms(name: str, aliases: dict[str, list[str]]) -> list[str]:
     return [canonical] + [a.lower() for a in aliases.get(canonical, [])]
 
 
-def contains_term(text: str, term: str) -> bool:
+def find_term(text: str, term: str) -> re.Match[str] | None:
     """Whole-term, case-insensitive match: `ci/cd` works, `java` never matches `javascript`."""
-    return re.search(r"(?<!\w)" + re.escape(term) + r"(?!\w)", text, re.IGNORECASE) is not None
+    return re.search(r"(?<!\w)" + re.escape(term) + r"(?!\w)", text, re.IGNORECASE)
+
+
+def contains_term(text: str, term: str) -> bool:
+    return find_term(text, term) is not None
+
+
+def find_skill(text: str, name: str, aliases: dict[str, list[str]]) -> re.Match[str] | None:
+    """Earliest match of the skill or one of its aliases, None when absent."""
+    found = [m for form in skill_forms(name, aliases) if (m := find_term(text, form))]
+    return min(found, key=lambda m: m.start()) if found else None
 
 
 def matches_skill(text: str, name: str, aliases: dict[str, list[str]]) -> bool:
-    return any(contains_term(text, form) for form in skill_forms(name, aliases))
+    return find_skill(text, name, aliases) is not None
+
+
+SNIPPET_MAX = 160
+# Sentence or bullet boundaries a snippet never crosses.
+# A full stop only ends a sentence before a space, so "node.js" and "asp.net" stay whole.
+_BOUNDARY_RE = re.compile(r"[.!?;](?=\s|$)|[\u2022\n\r]")
+
+
+def snippet(text: str, start: int, end: int, max_len: int = SNIPPET_MAX) -> str:
+    """The sentence around text[start:end], whitespace collapsed, at most `max_len` chars.
+
+    A longer sentence is cut to a window centred on the match, with "…" on the cut sides.
+    """
+    left = max((m.end() for m in _BOUNDARY_RE.finditer(text, 0, start)), default=0)
+    right_m = _BOUNDARY_RE.search(text, end)
+    right = right_m.start() if right_m else len(text)
+    if right - left > max_len:
+        max_len -= 2  # room for the two ellipses
+        half = max(0, (max_len - (end - start)) // 2)
+        lo = max(left, start - half)
+        hi = min(right, lo + max_len)
+        lo = max(left, hi - max_len)
+        out = text[lo:hi]
+        prefix = "…" if lo > left else ""
+        suffix = "…" if hi < right else ""
+    else:
+        out, prefix, suffix = text[left:right], "", ""
+    # A bullet's own marker ("- ", "* ") is layout, not part of the sentence.
+    body = " ".join(out.split()).lstrip("-*·–— ")
+    return f"{prefix}{body}{suffix}" if body else ""
 
 
 def title_term(title: str, terms: list[str]) -> str | None:

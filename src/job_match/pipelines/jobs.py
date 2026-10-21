@@ -36,6 +36,7 @@ def run_jobs(
     aliases: dict[str, list[str]],
     *,
     dry_run: bool = False,
+    vocabulary: tuple[str, ...] = (),
 ) -> RunSummary:
     """Fetch → normalize → experience gate → dedup → score → store.
 
@@ -54,7 +55,7 @@ def run_jobs(
     raw_repo = RawPayloadRepository(db.conn)
 
     dedup_engine = DedupEngine(settings)
-    scoring_engine = ScoringEngine([NativeRuleScorer(aliases)])
+    scoring_engine = ScoringEngine([NativeRuleScorer(aliases, vocabulary)])
 
     window = datetime.now(UTC) - timedelta(days=settings.dedup_window_days)
 
@@ -249,6 +250,7 @@ def reprocess_jobs(
     *,
     since: datetime | None = None,
     dry_run: bool = False,
+    vocabulary: tuple[str, ...] = (),
 ) -> RunSummary:
     """Re-apply the gate and the scorer to jobs already in the DB. No network calls.
 
@@ -265,7 +267,7 @@ def reprocess_jobs(
     job_repo = JobRepository(db.conn)
     company_repo = CompanyRepository(db.conn)
     dup_repo = JobDuplicateRepository(db.conn)
-    scoring_engine = ScoringEngine([NativeRuleScorer(aliases)])
+    scoring_engine = ScoringEngine([NativeRuleScorer(aliases, vocabulary)])
     dedup_engine = DedupEngine(settings)
 
     self_links = 0

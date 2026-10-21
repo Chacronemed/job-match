@@ -60,6 +60,14 @@ class ScoringEngine:
         if experience.excludes_apprenticeship:
             notes += (EXCLUDES_APPRENTICESHIP_NOTE,)
 
+        # What the "why this job" panel shows about experience, fixed at scoring time.
+        experience_detail = {
+            "required_years": eligibility.required_years,
+            "basis": str(eligibility.basis),
+            "sentence": eligibility.basis_evidence,
+            "excludes_apprenticeship": experience.excludes_apprenticeship,
+        }
+
         if primary is not None:
             return ScoringBreakdown(
                 eligible=eligibility.eligible,
@@ -72,6 +80,10 @@ class ScoringEngine:
                 engines=engines,
                 divergence=divergence,
                 needs_review=needs_review,
+                evidence=primary.evidence,
+                weights=primary.weights,
+                unlisted=primary.unlisted,
+                experience_detail=experience_detail,
             )
 
         return ScoringBreakdown(
@@ -81,4 +93,5 @@ class ScoringEngine:
             engines=engines,
             divergence=divergence,
             needs_review=needs_review,
+            experience_detail=experience_detail,
         )

@@ -128,13 +128,25 @@ job-match funding run                # ingest articles, funding events and leads
 
 ## Dashboard
 
-`job-match dashboard --out site` writes a private, static dashboard from the database: `site/index.html` (one self-contained page, no framework, no build step, opens from the file system) and `site/data.json`. Three tabs:
+`job-match dashboard --out site` writes a private dashboard from the database: `site/index.html` (one self-contained page, no framework, no build step, opens from the file system) and `site/data.json`. Four tabs:
 
+- **Aujourd'hui** (default): jobs still to review or to apply to ("To apply" first, then by score), plus the follow-ups due today or overdue. Everything already applied to, in interview, rejected or ignored is left out.
 - **Jobs:** every canonical strong, eligible and stretch job that is still online, with title, company, department, contract, score, required years, posting date, age in days and link; search, filters (section, department, minimum score, posting dates), sort on any column, and a details row with the scorer's explanations. Each daily run asks France Travail whether the offers it still shows exist (a withdrawn offer answers HTTP 204) and hides the closed ones; a posting older than `jobs.max_age_days` (45) is hidden whatever its check status. ADR 0010.
 - **Leads:** funding leads with amount, round, investors, hiring signal and the evidence sentence behind each field.
 - **Runs:** the last 30 runs as a funnel, fetched → rejected by reason → eligible / strong / stretch.
 
-The generator is an allow-list: no job description, no search keyword, no profile value leaves the database, links are kept only with an `http(s)` scheme, and every string is rendered as text (external titles are tested with script tags in them). The daily workflow deploys `site/` as a Cloudflare Worker with static assets (`wrangler.jsonc`, no Worker code) behind Cloudflare Access, using the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets; a failed deploy never fails the digest or the DB sync. `site/` is gitignored, never an Actions artifact, and the URL is not published. ADR 0009.
+**Application tracking** (ADR 0012). Each job's details row has a status (to review, to apply, applied, interview, rejected, ignored), the date applied, a follow-up date, a note, the CV link sent, and a verdict on the match (good fit / off topic / too senior / missing skill). Changes save as you make them, to Cloudflare D1, through `/api/` on the same Worker. Every API call checks the Cloudflare Access JWT, refuses cross-origin requests, and validates each field. The Jobs tab gets a Status column and filter. Before each digest, the daily run mirrors D1 into the jobs DB (`job-match tracking import`, counts only in the log). The digest then skips handled jobs and opens with "Relances du jour". Locally: `wrangler d1 migrations apply job-match-tracking --local`, `wrangler dev`, and `node scripts/dev-access-proxy.mjs`, which plays the Access edge (see the script header for the `.dev.vars` it expects).
+
+**"Pourquoi cette offre ?"** (ADR 0013). The details row explains the score with five blocks:
+- the skills found, each with its weight and the sentence of the offer it came from;
+- the skills the offer asks for that are not in the profile ("non trouvé dans ton profil"), each with a "je maîtrise" button. The button saves the skill to D1, and the next run counts it as a preferred skill (`scoring.override_weight`). The daily workflow reprocesses the visible jobs when the set changes;
+- the required years, with how they were found (explicit number, seniority keyword, or unknown), the sentence they came from and the "hors stage" flag;
+- everything that lowered the score, with its weight;
+- the verdict buttons.
+
+`job-match calibrate [--since YYYY-MM-DD]` compares those verdicts with the scores at decision time. It reports the precision of strong, the score distribution per label, and the rules most frequent on off-topic jobs. It suggests threshold and weight changes but never edits `config/`. Run it locally only: it names skills.
+
+The generator is an allow-list: no job description, no search keyword, no profile value leaves the database, links are kept only with an `http(s)` scheme, and every string is rendered as text (external titles are tested with script tags in them). The daily workflow deploys `site/` as a Cloudflare Worker with static assets (`wrangler.jsonc`; Worker code only on `/api/*`) behind Cloudflare Access, using the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets; a failed deploy never fails the digest or the DB sync. `site/` is gitignored, never an Actions artifact, and the URL is not published. ADR 0009.
 
 ## Configuration
 

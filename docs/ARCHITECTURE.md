@@ -409,7 +409,9 @@ English-only, French postings are penalized, and the upstream repo is new with 2
 - **Division of labour.** This system does discovery, FR sources, the experience gate, dedup, triage scoring,
   funding signals and the daily digest. career-ops does deep A–G evaluation, CV tailoring, the application tracker
   and interview prep.
-  - We do **not** build CV generation, application tracking or LLM evaluation.
+  - We do **not** build CV generation or LLM evaluation. Since M21 (ADR 0012) job-match records application
+    *statuses* (D1, edited from the dashboard) so the digest can skip handled jobs; career-ops keeps the
+    evaluation and CV work.
   - We do **not** write into career-ops' tracker or `scan-history.tsv`.
 - **Optional integration point** (late, only if useful): `job-match export-career-ops --job-ids …` (in
   `export/career_ops.py`) writes two things into a user-given career-ops checkout path:
@@ -500,6 +502,8 @@ English-only, French postings are penalized, and the upstream repo is new with 2
 | 14–18 | National scope, dedup blocks, location gate, FT paging, stretch tier | ADR 0005–0008 |
 | 19 | **Static dashboard** | `job-match dashboard --out site` (index.html + data.json, allow-listed fields, XSS-safe embedding), Cloudflare Worker static assets behind Cloudflare Access from `daily.yml`, tests on shape / secrets / escaping / workflow, ADR 0009 |
 | 20 | **Offer closure check** | `FranceTravailSource.check_offer` (detail endpoint: 204 = closed, measured), `pipelines/closure.py` after collection (24 h interval, unknown never closes), `jobs.closed_at` / `last_checked_at` (migration 0006), `jobs.max_age_days` cut-off, digest and dashboard hide closed/stale rows, Posted + Age columns, `checked` / `closed` in the run summary, ADR 0010 |
+| 21 | **Application tracking** | D1 `applications` / `decisions` behind `/api/` on the same Worker (Access JWT re-checked), mirrored into the jobs DB, Aujourd'hui tab, digest follow-ups, ADR 0012 |
+| 22 | **"Pourquoi cette offre ?" + calibration** | Evidence sentence and weight per skill, vocabulary skills not in the profile, experience basis (explicit / seniority / unknown) in the breakdown JSON; "je maîtrise" overrides in D1 merged into the profile, conditional reprocess; verdicts in the panel; `job-match calibrate` (suggests, never applies), ADR 0013 |
 
 **MVP = M1–M6b + M8–M9.** M7 can be skipped or postponed without blocking anything.
 
