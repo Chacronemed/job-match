@@ -210,20 +210,41 @@ Priorities:
 
 ## Fix status
 
-Fixed on 2026-10-21: P1-1, P1-2, P1-3, P1-4, P2-11, P2-16. P2-6 is partial. The counts below
-are from the re-run journeys, same fake data:
+Fixed on 2026-10-21: P1-1, P1-2, P1-3, P1-4, P2-11, P2-16. P2-6 is partial.
+
+**Redesign phase 3, step 1 (2026-10-22): shell and Tri on the new system (DESIGN.md 2.0, ADR 0015).**
+
+| ID | Status | How |
+|---|---|---|
+| P1-5 | **Fixed** | `--ink-3` measures 4.8–6.3:1 on every surface. The legacy tokens are remapped onto it, so the views not ported yet gain the contrast too |
+| P1-6 | **Deferred** | Light mode is off (toggle hidden). It needs its own measured inks when it comes back |
+| P1-8 | **Fixed** | The « Relevé du score » on every Tri card and record: start, each weight, the total. The scale ticks come from `data.thresholds`, and the band and the gap sentence sit beside it |
+| P1-9 | **Fixed in Tri** | The card title opens that exact offer's record, matched by key; `openInJobs` (dead code) is removed. Candidatures follows in step 2 |
+| P2-6 | **Fixed** | On phones the toast sits at the top: the bottom holds the Tri bar and the tab bar |
+| P2-7 | **Fixed** | Skills appear once, in the ledger with their weight; the chips only list what the profile lacks |
+| P2-8 | **Fixed** | One prominent counter (`3 / 20`), then « lot 1 sur 3, 57 restantes » |
+| P2-9 | **Fixed** | Views are links, not a tablist, and Tri focuses its card when opened, so ← → decide |
+| P2-10 | **Fixed** | « Voir mes candidatures » and « pendant cette session »; « Lot suivant » stays primary |
+| P2-22 | **Fixed** | The reason step sits above Écarter / Garder, keys 1–4, and the next decision closes it with no reason |
+| P2-26 | **Partial** | Tri, the record and the toast: 44 px under 768 px. The legacy views follow as they are ported |
+| P3-6 | **Fixed** | The theme button is hidden while the page is dark only |
+| P3-7 | **Fixed** | `applyTheme` sets `theme-color` |
+| P3-8 | **Fixed** | « Voir l’offre » (icon link) sits at the foot of the card; « Lire la suite » is 44 px on phones |
+| P3-10 | **Fixed** | DESIGN.md is rewritten as the single dashboard system |
+
+The counts below are from the re-run journeys, same fake data:
 
 | Journey | Before | After |
 |---|---|---|
-| A. Sort 20 offers | 26 actions | 28 actions (+3 "Passer", see P2-22); the question is about the right offer and in the right place |
-| B. Apply + follow-up | 3 (1440) / 4 (390) clicks, question off-screen | 3 / 5 clicks, question in the focused toast; "Enregistrer" is explicit |
-| C. Old offer | 4 / 5 clicks, "orbital kubernetes" found 0 | 3 / 5 clicks, found with no date filter |
-| S. Understand a score | — | 4 / 5 clicks + typing, and the score still can't be reconciled |
-| T. Status change | — | 1 action; focus lost |
-| R. Move a follow-up | — | 5 / 6 clicks + typing, a change of view, a risk of editing the wrong offer |
+| A. Sort 20 offers | 26 actions | 20 actions (keyboard or swipe): a drop with no reason costs nothing; checked with playwright, 20 saves and 10 verdicts |
+| B. Apply + follow-up | 3 (1440) / 4 (390) clicks, question off-screen | 3 / 5 clicks, question in the focused toast; "Enregistrer" is explicit (step 2 redoes Candidatures) |
+| C. Old offer | 4 / 5 clicks, "orbital kubernetes" found 0 | 3 / 5 clicks, found with no date filter; or `Ctrl K` + typing, 1 action to the record |
+| S. Understand a score | 4 / 5 clicks + typing, and the score still can't be reconciled | 0 clicks in Tri: the card's ledger adds up to the score, with the gap to « forte » |
+| T. Status change | 1 action; focus lost | Step 2 (Candidatures) |
+| R. Move a follow-up | 5 / 6 clicks + typing, a change of view, a risk of editing the wrong offer | Step 2 (Candidatures) |
 
-Counts: **8 P1 open** (P1-5 to P1-10, P2-2, P2-5), **22 P2 open** (P2-6 partial), **10 P3
-open**, 6 fixed.
+Counts: **5 P1 open** (P1-7, P1-9 in Candidatures, P1-10, P2-2, P2-5), **1 P1 deferred** (P1-6), **16 P2 open**
+(P2-26 partial), **6 P3 open**; 18 fixed in all (6 on 2026-10-21, 12 in this step).
 
 ## Guidelines (revision 2: new or changed only)
 

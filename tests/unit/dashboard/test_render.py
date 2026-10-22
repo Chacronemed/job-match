@@ -52,7 +52,8 @@ def test_index_is_self_contained_with_no_external_resources(dashboard_data):
     assert "fetch(" not in html.replace("window.fetch.bind", "")
     assert "innerHTML" not in html
     assert '<meta name="robots" content="noindex, nofollow">' in html
-    for marker in ("__CSS__", "__JS__", "__TRACKING_JS__", "__DATA__"):
+    for marker in ("__CSS__", "__JS__", "__TRACKING_JS__", "__TRIAGE_JS__", "__ICONS_JS__",
+                   "__SCORE_JS__", "__UI_JS__", "__PALETTE_JS__", "__DATA__"):
         assert marker not in html
 
 
@@ -66,13 +67,34 @@ def test_write_site_writes_both_files(tmp_path, dashboard_data):
     assert set(on_disk) == {"generated_at", "thresholds", "jobs", "tracked", "leads", "runs"}
 
 
-def test_light_and_dark_tokens_are_both_defined():
+def test_the_page_is_dark_only_with_one_accent_and_reduced_motion():
+    """DESIGN.md: Radix slate dark + one violet accent; light mode is planned, its toggle hidden."""
     html = render_index(_EMPTY)
-    assert '[data-theme="light"]' in html
-    assert "prefers-color-scheme: light" in html
-    assert "prefers-reduced-motion" in html
-    assert "--canvas: #010102" in html
-    assert "--canvas: #ffffff" in html
+    assert '<meta name="color-scheme" content="dark">' in html
+    css = html.split("<style>")[1].split("</style>")[0]
+    assert '[data-theme="light"]' not in css and "prefers-color-scheme: light" not in css
+    assert "--bg: var(--slate-1)" in html and "--slate-1: #111113" in html
+    assert "--accent: var(--violet-9)" in html
+    assert 'id="theme-toggle" type="button" aria-pressed="false" hidden' in html
+    assert "prefers-reduced-motion: reduce" in html
+    assert "linear-gradient" not in html and "radial-gradient" not in html
+
+
+def test_inter_is_self_hosted_under_the_csp_and_licensed(tmp_path, dashboard_data):
+    data, _ = dashboard_data
+    html = render_index(data)
+    assert "font-src 'self'" in html
+    assert 'url("fonts/InterVariable-latin.woff2")' in html
+    # no resource from another origin: every url() and href/src is relative or the data block
+    assert not re.search(r"url\(\s*[\"']?https?:", html)
+    assert not re.search(r'<(link|script|img)[^>]+(href|src)="https?:', html)
+    site = tmp_path / "site"
+    write_site(data, site)
+    font = (site / "fonts" / "InterVariable-latin.woff2").read_bytes()
+    assert font[:4] == b"wOF2"
+    licences = (site / "LICENSES.md").read_text(encoding="utf-8")
+    for name in ("SIL Open Font License", "ISC License", "MIT License", "Inter", "Lucide", "Radix"):
+        assert name in licences
 
 
 def test_jobs_table_has_posted_and_age_columns_and_no_collected_column():
@@ -88,18 +110,22 @@ def test_jobs_table_has_posted_and_age_columns_and_no_collected_column():
     assert '"status", "posted_at", "age_days"]' in html  # SORT_KEYS allow-list for the hash
 
 
-def test_tri_is_the_default_tab_and_the_nav_is_in_french():
+def test_tri_is_the_default_view_and_the_nav_is_in_french():
     html = render_index(_EMPTY)
-    assert 'id="tab-tri" aria-controls="panel-tri" aria-selected="true"' in html
-    for tab, label in (("candidatures", "Candidatures"), ("offres", "Offres"), ("leads", "Leads"),
-                       ("executions", "Exécutions")):
-        assert f'id="tab-{tab}" aria-controls="panel-{tab}" aria-selected="false"' in html
-        assert f'data-tab="{tab}">{label} <span' in html
-        assert f'id="panel-{tab}" role="tabpanel" aria-labelledby="tab-{tab}" hidden>' in html
+    for tab, label in (("tri", "Tri"), ("candidatures", "Candidatures"), ("offres", "Offres"),
+                       ("leads", "Leads"), ("executions", "Exécutions")):
+        # sidebar and phone tab bar: real links, so modifier clicks open a new tab
+        assert html.count(f'href="#{tab}" data-tab="{tab}"') == 2
+        assert f'<span class="nav-label">{label}</span>' in html
+        assert f'id="panel-{tab}" aria-labelledby="h-{tab}"' in html
+    assert 'id="panel-tri" aria-labelledby="h-tri">' in html  # shown first, no `hidden`
+    for tab in ("candidatures", "offres", "leads", "executions"):
+        assert f'id="panel-{tab}" aria-labelledby="h-{tab}" hidden>' in html
     assert 'var TABS = ["tri", "candidatures", "offres", "leads", "executions"];' in html
     assert 'today: "tri", jobs: "offres", runs: "executions"' in html  # old links still work
     assert 'id="tri-stage"' in html and 'id="kb-board"' in html and 'id="tri-live"' in html
-    assert 'id="track-banner"' in html
+    assert 'id="track-banner"' in html and 'id="record"' in html
+    assert 'aria-current", "page"' in html
 
 
 def test_every_offres_filter_is_present_and_wired():
@@ -137,7 +163,7 @@ def test_audit_p1_fixes_are_in_the_page():
     assert 'placeholder="ex. orbital kubernetes"' in html
     assert "T.matchesWords(j, searchWords())" in html
     # P1-3: the reason step names the offer.
-    assert 'id="tri-reasons-title"' in html and "Pourquoi écarter « " in html
+    assert 'id="tri-reasons-title"' in html and "Pourquoi écarter « " in html
     # P2-16: the KPI cards are not a live region (the row count is).
     kpis = re.search(r'<div class="kpis"[^>]*>', html).group(0)
     assert "aria-live" not in kpis

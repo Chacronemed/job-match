@@ -1,0 +1,71 @@
+/* Design tokens (docs/design/DESIGN.md). Radix Colors 3.0 dark (MIT, see LICENSES.md): slate
+   for everything, violet as the single accent; status hues only on dots, score marks and the
+   few words that carry a state. Dark only for now: light mode is planned, not shipped. */
+@font-face {
+  font-family: "Inter Variable";
+  src: url("fonts/InterVariable-latin.woff2") format("woff2-variations"), url("fonts/InterVariable-latin.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: dark;
+
+  /* slate dark */
+  --slate-1: #111113; --slate-2: #18191b; --slate-3: #212225; --slate-4: #272a2d;
+  --slate-5: #2e3135; --slate-6: #363a3f; --slate-7: #43484e; --slate-8: #5a6169;
+  --slate-9: #696e77; --slate-10: #777b84; --slate-11: #b0b4ba; --slate-12: #edeef0;
+  /* violet dark: the accent */
+  --violet-3: #291f43; --violet-4: #33255b; --violet-6: #473876; --violet-8: #6958ad;
+  --violet-9: #6e56cf; --violet-10: #7d66d9; --violet-11: #baa7ff;
+  /* status hues */
+  --green-3: #132d21; --green-9: #30a46c; --green-11: #3dd68c;
+  --amber-3: #302008; --amber-9: #ffc53d; --amber-11: #ffca16;
+  --red-3: #3b1219; --red-9: #e5484d; --red-11: #ff9592;
+  --blue-9: #0090ff; --blue-11: #70b8ff;
+
+  /* surfaces: three very close levels */
+  --bg: var(--slate-1);         /* canvas, sidebar */
+  --surface: var(--slate-2);    /* content, record panel */
+  --raised: var(--slate-3);     /* group headers, cards, menus */
+  --hover: rgba(216, 244, 246, 0.04);
+  --active: rgba(221, 234, 248, 0.08);
+
+  /* 1 px semi-transparent borders */
+  --line: rgba(255, 255, 255, 0.06);
+  --line-2: rgba(255, 255, 255, 0.08);
+  --line-3: rgba(255, 255, 255, 0.10);
+
+  /* text: three greys only. --ink-3 (between slate-9 and slate-10) passes AA on every surface
+     up to slate-4 (4.8:1 there), so it may carry words (AUDIT P1-5). */
+  --ink: var(--slate-12);
+  --ink-2: var(--slate-11);
+  --ink-3: #91959e;
+
+  /* accent */
+  --accent: var(--violet-9);
+  --accent-ink: var(--violet-11);
+  --accent-soft: rgba(110, 86, 207, 0.16);
+  --focus: var(--violet-10);
+
+  /* type */
+  --font: "Inter Variable", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --fs-xs: 11px; --fs-sm: 12px; --fs: 13px; --fs-md: 15px; --fs-lg: 18px; --fs-xl: 20px;
+  --tight: -0.015em;
+
+  /* space (4 px grid) and shape */
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 20px; --s6: 24px; --s8: 32px;
+  --row: 40px; --nav-row: 30px; --head: 48px;
+  --r-sm: 6px; --r: 8px; --r-lg: 12px;
+  --panel-w: 440px;
+
+  /* motion */
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --d-fast: 120ms; --d: 160ms; --d-slow: 200ms;
+  --overlay-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --d-fast: 0ms; --d: 0ms; --d-slow: 0ms; }
+}
