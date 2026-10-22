@@ -4,8 +4,9 @@
 
 ## Current milestone
 **UI redesign phase 3: port prototype C view by view** (branch `feat/ui-redesign`, ADR 0015, DESIGN.md
-2.0). Step 1 done locally (2026-10-22): shell (sidebar, tab bar, palette Ctrl/⌘K, help, record
-panel split at ≥ 1280 px, toast) + Tri. Next: step 2 Candidatures, then Offres, Leads, Exécutions,
+2.0). Steps 1 and 1b done locally (2026-10-22): shell (sidebar, tab bar, palette Ctrl/⌘K, help,
+record panel split at ≥ 1280 px, toast) + Tri, with the whole description on the card. Next:
+step 2 Candidatures, then Offres, Leads, Exécutions,
 one commit each. The views not ported yet run inside the new shell on `dashboard.css` (legacy,
 tokens remapped).
 
@@ -16,6 +17,27 @@ production rows. Still pending: the M21 Cloudflare setup, the data-repo cleanup 
 two Cloudflare secrets, M9 manual GitHub setup, `PROFILE_YAML` re-encoding, `SMTP_PORT` variable.
 
 ## Done
+- **Redesign phase 3, step 1b: a Tri card worth reading** (2026-10-22). ADR 0015 §7.
+  - **`data.py`:** `description_excerpt` carries the whole description, up to `DESCRIPTION_MAX = 5000`. Line breaks and list items are kept, the markup stripped, the key unchanged.
+  - **Weight, on the local DB (154 offers):**
+    - `data.json`: 593 KB → 1 010 KB (gzip: 77 → 200 KB);
+    - `index.html`: 707 KB → 1 136 KB (gzip: 132 → 255 KB).
+  - **`description.js` (pure):**
+    - finds the usual sections (56 % of the local descriptions name them), the bullet lists and the paragraphs;
+    - reads a salary only from an explicit line (66 offers);
+    - renders through the safe `el` builder.
+  - **Card:**
+    - the facts block (Poste, Entreprise, Expérience demandée, Lieu, Contrat, Salaire if stated, Publiée);
+    - the description in sections, with no truncation;
+    - its content scrolls inside the card (↑ ↓ and Page ↑ ↓ too), and the bar stays fixed;
+    - the card is as tall as its content, so there is no empty space at the bottom; the card behind takes the same box.
+  - **Relevé:**
+    - collapsible, closed by default, as one summary line (score, band, gap to forte);
+    - its state kept in `localStorage` (try/catch);
+    - inside it, a counter for the profile skills missing from the offer and the skills the offer names that the profile lacks.
+  - **Reason banner:** « Dernière offre écartée : <titre> ».
+  - **Record panel:** « Description de l’offre » uses the same layout.
+  - **Tests:** the excerpt (lines, cap, XSS), plus `description.js` (sections, lists, salary, and hostile text that stays text through a recording `el`). The "never parse HTML" check now covers every script.
 - **Redesign phase 3, step 1: shell + Tri** (2026-10-22). ADR 0015; DESIGN.md is rewritten as the single system.
   - **New assets:**
     - `tokens.css` (Radix slate/violet, dark only) and `app.css`;

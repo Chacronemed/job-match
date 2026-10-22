@@ -28,6 +28,7 @@ SCRIPTS = (
     ("__TRIAGE_JS__", "triage.js"),
     ("__ICONS_JS__", "lucide.js"),
     ("__SCORE_JS__", "score.js"),
+    ("__DESC_JS__", "description.js"),
     ("__UI_JS__", "ui.js"),
     ("__PALETTE_JS__", "palette.js"),
     ("__JS__", "dashboard.js"),

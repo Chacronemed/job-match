@@ -33,6 +33,12 @@ Two redesign directions (A « Relevé », B « Échelle ») lacked polish and li
    - The views stay in `dashboard.js`, which owns the tracking state, the API client and the retry queue they share.
 6. **Same data, same API.** `data.json`, the Worker API, scoring and the pipelines are unchanged. The « Relevé » is computed in the page from the scorer's explanation lines, which carry every weight. A capped score shows no start line rather than an invented one.
 
+7. **The Tri card shows the whole description (step 1b, 2026-10-22).** `description_excerpt` (ADR 0014) keeps its name and its place in the allow-list, but now carries:
+   - the full plain text, up to `DESCRIPTION_MAX = 5000` (France Travail's own cap), instead of 600 characters;
+   - its line breaks, so the page can find sections and lists (`description.js`); everything is still set with textContent.
+   - On the local DB (154 listed offers), `data.json` goes from 593 KB to 1 010 KB (gzip: 77 → 200 KB), and `index.html`, which inlines it, from 707 KB to 1 136 KB (gzip: 132 → 255 KB).
+   - Alternative: load descriptions on demand from a second file. That means one more request per open and an extra code path for an offline page; rejected while the page stays under ~1.5 MB.
+
 ## Alternatives considered
 
 - **Inline the font as a `data:` URI (`font-src data:`).** No extra file, but about 64 KB of base64 in every page load, parsed before first paint, and not cacheable on its own. Rejected.
