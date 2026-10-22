@@ -12,7 +12,7 @@ import zlib
 from pathlib import Path
 
 OUT = Path(__file__).parent.parent / "src" / "job_match" / "dashboard" / "assets" / "icons"
-PRIMARY = (94, 106, 210)  # DESIGN.md colors.primary
+PRIMARY = (110, 86, 207)  # DESIGN.md --accent (Radix violet-9, #6e56cf)
 WHITE = (255, 255, 255)
 
 

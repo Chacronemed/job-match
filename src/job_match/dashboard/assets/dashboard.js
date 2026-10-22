@@ -31,31 +31,13 @@
   var runs = data.runs || [];
   var thresholds = data.thresholds || { strong: 70, min_score: 60 };
 
-  /* ---------- small DOM helpers ---------- */
+  /* ---------- small DOM helpers (ui.js) ---------- */
 
-  function el(tag, attrs, children) {
-    var node = document.createElement(tag);
-    if (attrs) {
-      Object.keys(attrs).forEach(function (k) {
-        var v = attrs[k];
-        if (v === null || v === undefined || v === false) return;
-        if (k === "text") node.textContent = String(v);
-        else if (k === "class") node.className = v;
-        else node.setAttribute(k, v === true ? "" : String(v));
-      });
-    }
-    if (children) {
-      (Array.isArray(children) ? children : [children]).forEach(function (c) {
-        if (c === null || c === undefined || c === false) return;
-        node.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
-      });
-    }
-    return node;
-  }
-
-  function clear(node) {
-    while (node.firstChild) node.removeChild(node.firstChild);
-  }
+  var U = window.JMUI;
+  var S = window.JMScore;
+  var P = window.JMPalette;
+  var el = U.el;
+  var clear = U.clear;
 
   function byId(id) {
     return document.getElementById(id);
@@ -106,7 +88,8 @@
   /* The triage card's experience fact: "3 ans requis", "1,5 an requis" (French: singular
      below 2), or that the posting states no number. */
   function yearsText(y) {
-    if (typeof y !== "number" || !isFinite(y)) return "années non précisées";
+    if (typeof y !== "number" || !isFinite(y)) return "Années non précisées";
+    if (y === 0) return "Aucune année exigée";
     return YEARS_NUM.format(y) + (y < 2 ? " an" : " ans") + " requis";
   }
 
@@ -142,40 +125,70 @@
     return document.documentElement.getAttribute("data-theme") || systemTheme();
   }
 
+  /* Dark only for now (DESIGN.md "Light mode": planned). The toggle stays wired, hidden, so
+     light mode can come back without new plumbing; theme-color follows the applied theme. */
+  var DARK_ONLY = true;
+  var THEME_COLOR = { dark: "#111113", light: "#ffffff" };
+
   function applyTheme(theme, persist) {
+    if (DARK_ONLY) theme = "dark";
     document.documentElement.setAttribute("data-theme", theme);
     themeBtn.textContent = theme === "dark" ? "Mode clair" : "Mode sombre";
     themeBtn.setAttribute("aria-pressed", theme === "light" ? "true" : "false");
+    byId("theme-color").setAttribute("content", THEME_COLOR[theme]);
     if (persist) {
       try { localStorage.setItem("job-match-theme", theme); } catch (e) { /* private window */ }
     }
   }
 
   applyTheme(storedTheme() === "light" || storedTheme() === "dark" ? storedTheme() : systemTheme(), false);
+  themeBtn.hidden = DARK_ONLY;
   themeBtn.addEventListener("click", function () {
     applyTheme(currentTheme() === "dark" ? "light" : "dark", true);
   });
 
-  /* ---------- tabs ---------- */
+  /* ---------- views: sidebar, tab bar, View Transitions ---------- */
 
-  var tabButtons = Array.prototype.slice.call(document.querySelectorAll(".tab"));
+  var navLinks = Array.prototype.slice.call(document.querySelectorAll("[data-tab]"));
+  navLinks.forEach(function (a) {
+    var icon = a.getAttribute("data-icon");
+    if (icon) a.insertBefore(U.icon(icon), a.firstChild);
+    /* A plain click keeps the Offres filters (they live in the hash); modifier and middle
+       clicks open the view in a new tab as any link does. */
+    a.addEventListener("click", function (ev) {
+      if (ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+      ev.preventDefault();
+      showTab(a.getAttribute("data-tab"), false, true);
+    });
+  });
 
-  function showTab(name, focus) {
+  /* `animate`: a View Transition from the current view (user navigation only). */
+  function showTab(name, focus, animate) {
     if (TABS.indexOf(name) < 0) name = "tri";
     var entering = name !== currentTab;
-    tabButtons.forEach(function (b) {
-      var on = b.getAttribute("data-tab") === name;
-      b.setAttribute("aria-selected", on ? "true" : "false");
-      b.tabIndex = on ? 0 : -1;
-      if (on && focus) b.focus();
-    });
-    TABS.forEach(function (t) {
-      byId("panel-" + t).hidden = t !== name;
-    });
-    currentTab = name;
-    if (entering) renderCurrent();
-    syncHash();
+    function swap() {
+      navLinks.forEach(function (a) {
+        if (a.getAttribute("data-tab") === name) a.setAttribute("aria-current", "page");
+        else a.removeAttribute("aria-current");
+      });
+      TABS.forEach(function (t) { byId("panel-" + t).hidden = t !== name; });
+      currentTab = name;
+      if (entering) {
+        if (recordOpen && recordFor !== name) closeRecord(false);
+        renderCurrent();
+        byId("main").scrollTop = 0;
+      }
+      syncHash();
+      document.title = VIEW_TITLE[name] + " · job-match";
+    }
+    if (animate && entering && currentTab) U.transition(swap, ["view"]).then(afterEnter); else { swap(); if (entering) afterEnter(); }
+    function afterEnter() {
+      /* Tri opened with the pointer: the card takes focus so ← → decide at once (AUDIT P2-9). */
+      if (name === "tri") focusTriCard();
+      else if (focus) byId("main").focus({ preventScroll: true });
+    }
   }
+  var VIEW_TITLE = { tri: "Tri", candidatures: "Candidatures", offres: "Offres", leads: "Leads", executions: "Exécutions" };
 
   var currentTab = "";
   var applyingHash = false;
@@ -196,6 +209,8 @@
       if (state.from) parts.push("from=" + state.from);
       if (state.to) parts.push("to=" + state.to);
       if (state.sortKey !== "score" || state.sortDir !== "desc") parts.push("sort=" + state.sortKey + ":" + state.sortDir);
+      /* The open record, so a link or a reload shows the same offer. */
+      if (typeof recordOpen !== "undefined" && recordOpen && recordJob && recordJob.key) parts.push("fiche=" + encodeURIComponent(recordJob.key));
     }
     var next = "#" + currentTab + (parts.length ? "?" + parts.join("&") : "");
     if (location.hash !== next) {
@@ -218,21 +233,6 @@
     tab = TAB_ALIASES[tab] || tab;
     return { tab: TABS.indexOf(tab) >= 0 ? tab : "tri", params: params };
   }
-
-  tabButtons.forEach(function (b, i) {
-    b.addEventListener("click", function () { showTab(b.getAttribute("data-tab"), false); });
-    b.addEventListener("keydown", function (ev) {
-      var next = null;
-      if (ev.key === "ArrowRight") next = (i + 1) % tabButtons.length;
-      if (ev.key === "ArrowLeft") next = (i - 1 + tabButtons.length) % tabButtons.length;
-      if (ev.key === "Home") next = 0;
-      if (ev.key === "End") next = tabButtons.length - 1;
-      if (next !== null) {
-        ev.preventDefault();
-        showTab(tabButtons[next].getAttribute("data-tab"), true);
-      }
-    });
-  });
 
   window.addEventListener("hashchange", function () {
     applyHash();
@@ -855,11 +855,18 @@
   var toastOnEscape = null;
   var TOAST_MS = 5000;
 
+  var toastLeave = null;
+  /* Slides out (DESIGN.md "Motion"); a toast shown meanwhile cancels the exit. */
   function hideToast() {
     clearTimeout(toastTimer);
     toastHeld = false;
     toastOnEscape = null;
-    toast.hidden = true;
+    if (toast.hidden) return;
+    if (U.reduced()) { toast.hidden = true; return; }
+    toast.classList.remove("is-in");
+    toast.classList.add("leaving");
+    clearTimeout(toastLeave);
+    toastLeave = setTimeout(function () { toast.hidden = true; toast.classList.remove("leaving"); }, 160);
   }
 
   function armToast() {
@@ -882,7 +889,15 @@
     clear(toastActions);
     (actions || []).forEach(function (a) { toastActions.appendChild(toastButton(a)); });
     toastActions.hidden = !toastActions.childNodes.length;
+    clearTimeout(toastLeave);
+    toast.classList.remove("leaving");
+    var wasHidden = toast.hidden;
     toast.hidden = false;
+    if (wasHidden) {
+      toast.classList.remove("is-in");
+      void toast.offsetWidth;  /* restart the slide-in */
+      toast.classList.add("is-in");
+    }
     toastHeld = !!opts.hold;
     toastOnEscape = opts.onEscape || null;
     armToast();
@@ -1166,9 +1181,17 @@
     return Object.keys(track.apps).filter(function (k) { return BOARD.indexOf(T.statusOf(track.apps[k])) >= 0; });
   }
 
+  /* Sidebar, tab bar and view headers all carry data-count="<view>". */
+  function setCount(view, n) {
+    document.querySelectorAll('[data-count="' + view + '"]').forEach(function (node) {
+      /* The tab bar's Tri badge disappears at zero rather than showing "0". */
+      node.textContent = n || !node.closest(".tab-item") ? String(n) : "";
+    });
+  }
+
   function updateCounts() {
-    byId("count-tri").textContent = X.triageQueue(rows, track.apps, runAt).length;
-    byId("count-candidatures").textContent = boardKeys().length;
+    setCount("tri", X.triageQueue(rows, track.apps, runAt).length);
+    setCount("candidatures", boardKeys().length);
   }
 
   /* ---------- Tri ---------- */
@@ -1265,152 +1288,139 @@
 
   function canTriage() { return track.status === "ready" && !!api; }
 
-  function reasonText(r) {
-    return r.name + " · poids " + (r.weight > 0 ? "+" + r.weight : String(r.weight));
+  function focusTriCard() {
+    var card = byId("tri-stage").querySelector(".tcard:not(.is-next)");
+    if (card) card.focus({ preventScroll: true });
   }
 
-  /* One card. Everything from the data goes through textContent (el). */
+  function ageText(days) {
+    if (typeof days !== "number") return "Date de publication inconnue";
+    if (days <= 0) return "Publiée aujourd’hui";
+    return days === 1 ? "Publiée hier" : "Publiée il y a " + days + " j";
+  }
+
+  /* The ledger animates only when a card arrives (first view, or the one after a decision),
+     not when the same card is drawn again. */
+  var triArrive = true;
+
+  /* One card (DESIGN.md "Tri card"). Everything from the data goes through textContent. The
+     ledger carries the weights, so the skills are not listed a second time (AUDIT P2-7); the
+     title opens this exact offer's record (P1-9). */
   function triCard(item, isNext) {
     var j = item.row;
     var w = j.why || { skills: [], unlisted: [], lowered: [] };
     var card = el("article", {
-      class: "tri-card" + (isNext ? " is-next" : ""),
+      class: "tcard" + (isNext ? " is-next" : ""),
       tabindex: isNext ? null : "-1",
       "aria-hidden": isNext ? "true" : null,
-      "aria-label": isNext ? null : (j.title || "Offre")
+      "aria-label": isNext ? null : (j.title || "Offre") + (j.company ? ", " + j.company : "")
     });
-    var badges = el("div", { class: "tri-badges" });
-    if (item.isNew) badges.appendChild(el("span", { class: "badge badge-new", text: "Nouveau" }));
-    if (j.section === "stretch") badges.appendChild(el("span", { class: "badge badge-stretch", text: "À tenter" }));
-    if (j.postings) badges.appendChild(el("span", { class: "badge", text: j.departments.length + " départements" }));
-    card.appendChild(el("div", { class: "tri-top" }, [
-      badges,
-      el("span", { class: "tri-score score-" + j.section, "aria-label": "Score " + (j.score === null ? "inconnu" : j.score) }, [
-        el("b", { text: j.score === null ? "—" : String(j.score) }), el("span", { text: "/100" })
-      ])
+    if (!isNext) {
+      card.appendChild(el("span", { class: "stamp stamp-keep", "aria-hidden": "true", icon: "check" }, "Garder"));
+      card.appendChild(el("span", { class: "stamp stamp-drop", "aria-hidden": "true", icon: "x" }, "Écarter"));
+    }
+    var top = el("div", { class: "tcard-top" }, [el("p", { class: "tcard-company", text: j.company || "Entreprise non communiquée" }), el("span", { class: "fill" })]);
+    if (item.isNew) top.appendChild(el("span", { class: "badge badge-new", text: "Nouveau" }));
+    if (j.section === "stretch") top.appendChild(el("span", { class: "badge badge-stretch", text: "À tenter" }));
+    if (j.postings) top.appendChild(el("span", { class: "badge", text: j.departments.length + " départements" }));
+    card.appendChild(top);
+    var open = el("button", { type: "button", title: "Ouvrir la fiche", text: j.title || "—", tabindex: isNext ? "-1" : null });
+    open.addEventListener("click", function () { openRecord(j, open); });
+    card.appendChild(el("h2", { class: "tcard-title" }, open));
+    card.appendChild(el("ul", { class: "tcard-props" }, [
+      el("li", { icon: "map-pin" }, j.location || (j.department ? "Département " + j.department : "Lieu non précisé")),
+      el("li", { icon: "briefcase-business" }, j.contract || "Contrat inconnu"),
+      el("li", { icon: "timer" }, yearsText(j.required_years)),
+      el("li", { icon: "clock" }, ageText(j.age_days))
     ]));
-    card.appendChild(el("h3", { class: "tri-title", text: j.title || "—" }));
-    var facts = [j.company || "Entreprise non communiquée", j.location || "—", j.contract || "INCONNU", yearsText(j.required_years)];
-    if (typeof j.age_days === "number") facts.push("publiée il y a " + j.age_days + " j");
-    card.appendChild(el("p", { class: "tri-facts", text: facts.join(" · ") }));
-    if (isNext) return card;
-
-    var reasons = X.topReasons(w);
-    if (reasons.length) {
-      card.appendChild(el("ul", { class: "tri-reasons", "aria-label": "Ce qui pèse le plus" }, reasons.map(function (r) {
-        return el("li", { class: r.weight > 0 ? "up" : "down", text: reasonText(r) });
-      })));
-    }
-    var chips = el("div", { class: "tri-chips" });
-    (j.positive || []).forEach(function (s) { chips.appendChild(el("span", { class: "tag tag-pos", text: s })); });
+    card.appendChild(U.ledger(j, thresholds, { animate: !isNext && triArrive }));
     if ((w.unlisted || []).length) {
-      chips.appendChild(el("span", { class: "tri-chips-label", text: "Non trouvé dans ton profil :" }));
-      w.unlisted.forEach(function (u) { chips.appendChild(el("span", { class: "tag tag-miss", text: u.name })); });
+      card.appendChild(el("p", { class: "tcard-unlisted" }, ["Non trouvé dans ton profil :"].concat(
+        w.unlisted.map(function (u) { return el("span", { class: "pill", text: u.name }); }))));
     }
-    card.appendChild(chips);
-
+    if ((j.missing || []).length) {
+      card.appendChild(el("p", { class: "tcard-missing", text: "Souhaitées, absentes de l’offre (sans effet sur le score) : " + j.missing.join(", ") }));
+    }
+    if (isNext) return card;
     if (j.description_excerpt) {
-      var excerpt = el("p", { class: "tri-excerpt is-clamped", id: "tri-excerpt", text: j.description_excerpt });
+      var excerpt = el("p", { class: "tcard-excerpt is-clamped", id: "tri-excerpt", text: j.description_excerpt });
       var more = el("button", { type: "button", class: "link-btn", "aria-expanded": "false", "aria-controls": "tri-excerpt", text: "Lire la suite" });
       more.addEventListener("click", function () {
-        var open = excerpt.classList.toggle("is-clamped") === false;
-        more.setAttribute("aria-expanded", open ? "true" : "false");
-        more.textContent = open ? "Réduire" : "Lire la suite";
+        var opened = excerpt.classList.toggle("is-clamped") === false;
+        more.setAttribute("aria-expanded", opened ? "true" : "false");
+        more.textContent = opened ? "Réduire" : "Lire la suite";
       });
       card.appendChild(excerpt);
       card.appendChild(more);
     }
-    var foot = el("div", { class: "tri-foot" });
-    if (j.url && HTTP.test(j.url)) foot.appendChild(el("a", { class: "tri-link", href: j.url, target: "_blank", rel: "noopener noreferrer", text: "Voir l’offre" }));
+    var foot = el("div", { class: "tcard-foot" });
+    if (j.url && HTTP.test(j.url)) {
+      foot.appendChild(el("a", { class: "link-btn tri-link", href: j.url, target: "_blank", rel: "noopener noreferrer",
+        "aria-label": "Voir l’offre « " + (j.title || "offre") + " » sur le site source", icon: "external-link" }, "Voir l’offre"));
+    }
     card.appendChild(foot);
-    card.appendChild(el("span", { class: "tri-hint tri-hint-keep", "aria-hidden": "true", text: "Garder" }));
-    card.appendChild(el("span", { class: "tri-hint tri-hint-drop", "aria-hidden": "true", text: "Écarter" }));
-    if (canTriage()) attachSwipe(card);
+    if (canTriage()) {
+      var keepS = card.querySelector(".stamp-keep"), dropS = card.querySelector(".stamp-drop");
+      U.draggable(card, {
+        canStart: function () { return !flying; },
+        onMove: function (dx) {
+          keepS.style.opacity = String(Math.max(0, Math.min(1, dx / 90)));
+          dropS.style.opacity = String(Math.max(0, Math.min(1, -dx / 90)));
+        },
+        onDecide: function (dir, release) { commit(dir > 0 ? "right" : "left", release); }
+      });
+    }
     return card;
   }
 
-  /* Pointer Events: the card follows the finger; past 30 % of its width, or flicked, it goes. */
-  function attachSwipe(card) {
-    var start = null;
-    card.addEventListener("pointerdown", function (ev) {
-      if (ev.button !== 0 || ev.target.closest("a, button")) return;
-      start = { x: ev.clientX, y: ev.clientY, t: performance.now(), id: ev.pointerId, dx: 0 };
-      card.setPointerCapture(ev.pointerId);
-      card.classList.add("is-dragging");
-    });
-    card.addEventListener("pointermove", function (ev) {
-      if (!start || ev.pointerId !== start.id) return;
-      start.dx = ev.clientX - start.x;
-      if (reduceMotion()) return;
-      var ratio = Math.max(-1, Math.min(1, start.dx / (card.offsetWidth * 0.3)));
-      card.style.transform = "translateX(" + start.dx + "px) rotate(" + (ratio * 6) + "deg)";
-      card.style.setProperty("--swipe", String(ratio));
-    });
-    function end(ev) {
-      if (!start || ev.pointerId !== start.id) return;
-      var dx = start.dx;
-      var speed = Math.abs(dx) / Math.max(1, performance.now() - start.t);
-      start = null;
-      card.classList.remove("is-dragging");
-      if (Math.abs(dx) > card.offsetWidth * 0.3 || (Math.abs(dx) > 24 && speed > 0.5)) {
-        commit(dx > 0 ? "right" : "left");
-        return;
-      }
-      card.style.transform = "";
-      card.style.setProperty("--swipe", "0");
-    }
-    card.addEventListener("pointerup", end);
-    card.addEventListener("pointercancel", end);
-  }
-
-  /* The reason step takes the buttons' place; closing it gives them back (unless the batch
-     or the queue has ended: the end screen owns that space then). */
+  /* The reason step sits above the buttons; the buttons stay (AUDIT P2-22), and the next
+     decision closes it without a reason. */
   function hideReasons() {
     clearTimeout(reasonTimer);
-    var bar = byId("tri-reasons-bar");
-    if (bar.hidden) return;
-    var hadFocus = bar.contains(document.activeElement);
-    bar.hidden = true;
-    var controls = byId("tri-controls");
-    controls.hidden = !byId("tri-end").hidden;
-    if (hadFocus && !controls.hidden) byId("tri-drop").focus({ preventScroll: true });
+    byId("tri-reasons-bar").hidden = true;
+    reasonFor = null;
   }
 
-  /* After a left swipe: why, in one tap, for 6 seconds, named after the offer it is about. */
+  var reasonFor = null;
+  function giveReason(label) {
+    var item = reasonFor;
+    hideReasons();
+    if (!item || !label) return;
+    T.postingsOf(item.row).slice(0, 1).forEach(function (p) {
+      triDecide(p.key, label, typeof item.row.score === "number" ? item.row.score : null);
+    });
+    announce("Raison enregistrée : " + T.LABEL_TEXT[label]);
+  }
+
+  /* After a drop: why, in one tap or one key (1–4), for 8 seconds, named after the offer. */
   function showReasons(item) {
     var bar = byId("tri-reasons-bar");
     var list = byId("tri-reason-chips");
-    var controls = byId("tri-controls");
-    var question = "Pourquoi écarter « " + (item.row.title || "cette offre") + " » ?";
+    var question = "Pourquoi écarter « " + (item.row.title || "cette offre") + " » ?";
     byId("tri-reasons-title").textContent = question;
-    bar.setAttribute("aria-label", question);
     clear(list);
-    X.REASONS.forEach(function (label) {
-      var b = el("button", { type: "button", class: "qa reason-chip", text: T.LABEL_TEXT[label] });
-      b.addEventListener("click", function () {
-        hideReasons();
-        T.postingsOf(item.row).slice(0, 1).forEach(function (p) {
-          triDecide(p.key, label, typeof item.row.score === "number" ? item.row.score : null);
-        });
-        announce("Raison enregistrée : " + T.LABEL_TEXT[label]);
-      });
+    X.REASONS.forEach(function (label, i) {
+      var b = el("button", { type: "button", class: "chip-btn", "aria-keyshortcuts": String(i + 1) }, [T.LABEL_TEXT[label], U.kbd(String(i + 1))]);
+      b.addEventListener("click", function () { giveReason(label); });
       list.appendChild(b);
     });
-    var hadFocus = controls.contains(document.activeElement);
-    controls.hidden = true;
+    var skip = el("button", { type: "button", class: "chip-btn ghost", text: "Passer" });
+    skip.addEventListener("click", function () { hideReasons(); focusTriCard(); });
+    list.appendChild(skip);
+    reasonFor = item;
     bar.hidden = false;
-    if (hadFocus) list.firstChild.focus({ preventScroll: true });
-    announce(question + " 4 raisons au choix, Échap pour passer.");
+    announce(question + " Touches 1 à 4, ou la décision suivante pour passer.");
     clearTimeout(reasonTimer);
-    reasonTimer = setTimeout(hideReasons, 6000);
+    reasonTimer = setTimeout(hideReasons, 8000);
   }
 
   /* right = keep (to_apply + good_fit), left = drop (ignored; the reason is optional).
-     A group: keep its best posting, drop all of them (as the row's quick actions do). */
-  var flying = null;  /* the card still flying out: a new action finishes it first */
+     A group: keep its best posting, drop all of them (as the row's quick actions do).
+     `release`: the drag's last position and speed, so the card leaves with its inertia. */
+  var flying = null;  /* {anim, advance}: a new action lands the card in flight first */
 
-  function commit(direction) {
-    if (flying) { clearTimeout(flying.timer); flying.advance(); }
+  function commit(direction, release) {
+    if (flying) { var f = flying; flying = null; f.anim.onfinish = null; f.advance(); }
     if (!canTriage() || tri.pos >= tri.items.length) return;
     hideReasons();
     var item = tri.items[tri.pos];
@@ -1425,32 +1435,35 @@
     var rule = X.SWIPE[direction];
     if (rule.label) triDecide(item.row.key, rule.label, typeof item.row.score === "number" ? item.row.score : null);
     if (direction === "right") tri.kept += 1; else tri.dropped += 1;
-    announce((direction === "right" ? "Gardée : " : "Écartée : ") + (item.row.title || "offre"));
+    announce((direction === "right" ? "Gardée : " : "Écartée : ") + (item.row.title || "offre"));
     var stage = byId("tri-stage");
-    var card = stage.querySelector(".tri-card:not(.is-next)");
+    var card = stage.querySelector(".tcard:not(.is-next)");
     var hadFocus = !!(card && card.contains(document.activeElement));
     function advance() {
       flying = null;
       tri.pos += 1;
-      renderTri();
+      triArrive = true;
+      renderTri({ rise: true });
       /* No reason step on the end screen: it would ask about an offer no longer in view. */
-      if (direction === "left" && !byId("tri-controls").hidden) showReasons(item);
+      if (direction === "left" && byId("tri-end").hidden) showReasons(item);
       updateCounts();
-      /* Focus was on a link or button of the card that just left: give it to the new card
-         rather than dropping it on the page. */
-      var next = stage.querySelector(".tri-card:not(.is-next)");
-      if (hadFocus && next) next.focus({ preventScroll: true });
-      else if (hadFocus) byId("tri-end").focus({ preventScroll: true });
+      /* Focus was on the card that just left: give it to the new card, not to the page. */
+      if (hadFocus) {
+        if (stage.querySelector(".tcard:not(.is-next)")) focusTriCard();
+        else byId("tri-end").focus({ preventScroll: true });
+      }
     }
-    if (card && !reduceMotion()) {
-      card.classList.add(direction === "right" ? "fly-right" : "fly-left");
-      flying = { advance: advance, timer: setTimeout(advance, 200) };
-    } else {
-      advance();
+    if (card) {
+      var stamp = card.querySelector(direction === "right" ? ".stamp-keep" : ".stamp-drop");
+      if (stamp) stamp.style.opacity = "1";
     }
+    var anim = card ? U.flyOut(card, direction === "right" ? 1 : -1, release) : null;
+    if (anim) { flying = { anim: anim, advance: advance }; anim.onfinish = function () { if (flying && flying.anim === anim) advance(); }; }
+    else advance();
   }
 
   function undoLast() {
+    if (flying) { var f = flying; flying = null; f.anim.onfinish = null; f.advance(); }
     var entry = undo.pop();
     if (!entry) { announce("Rien à annuler."); return; }
     hideReasons();
@@ -1465,88 +1478,270 @@
       });
     });
     var item = tri.items[entry.pos];
+    var back = false;
     if (item && T.rowStatus(item.row, track.apps) === "to_review") {
       tri.pos = entry.pos;
       tri.pausedAt = -1;
+      back = true;
     }
     announce("Annulé.");
+    triArrive = false;
     renderTri();
     updateCounts();
+    if (back) {
+      U.flyIn(byId("tri-stage").querySelector(".tcard:not(.is-next)"), entry.direction === "right" ? 1 : -1);
+      focusTriCard();
+    }
   }
 
-  function renderTri() {
+  /* opts.rise: the card that was underneath comes up into place. */
+  function renderTri(opts) {
     if (!tri.built) buildTri();
     var stage = byId("tri-stage");
     var end = byId("tri-end");
     var total = tri.items.length;
     clear(stage);
+    var loading = track.status === "loading";
     var off = byId("tri-off");
-    off.hidden = canTriage();
-    off.textContent = track.status === "loading"
-      ? "Chargement du suivi…"
-      : "Le tri enregistre tes choix : il demande le tableau de bord hébergé, avec le suivi chargé.";
+    off.hidden = canTriage() || loading;
     ["tri-keep", "tri-drop"].forEach(function (id) { byId(id).disabled = !canTriage(); });
+    if (loading) {
+      byId("tri-count").textContent = "";
+      byId("tri-left").textContent = "Chargement du suivi…";
+      byId("tri-progress-bar").hidden = true;
+      byId("tri-controls").hidden = false;
+      stage.appendChild(el("div", { class: "tcard sk-card", "aria-hidden": "true" }, [
+        el("span", { class: "sk", style: "width:30%;height:10px" }), el("span", { class: "sk", style: "width:75%;height:18px" }),
+        el("span", { class: "sk", style: "width:90%;height:10px" }), el("span", { class: "sk sk-block" })
+      ]));
+      return;
+    }
     var b = X.batchOf(Math.min(tri.pos, Math.max(total - 1, 0)), total, X.BATCH);
     var atBoundary = tri.pos > 0 && tri.pos < total && tri.pos % X.BATCH === 0 && tri.pausedAt !== tri.pos;
     var done = tri.pos >= total;
-    byId("tri-progress").hidden = total === 0;
+    byId("tri-progress-bar").hidden = total === 0;
+    /* One prominent counter (this batch), the rest of the queue secondary (AUDIT P2-8). */
+    var inBatch = done ? b.size : (atBoundary ? X.BATCH : tri.pos - b.start);
+    var size = done ? b.size : (atBoundary ? X.BATCH : b.size);
+    byId("tri-count").textContent = total ? (done ? "" : Math.min(inBatch + 1, size) + " / " + size) : "";
+    byId("tri-left").textContent = total ? (b.count > 1 ? "lot " + (atBoundary ? b.index : b.index + 1) + " sur " + b.count + ", " : "") +
+      Math.max(total - tri.pos, 0) + (total - tri.pos > 1 ? " restantes" : " restante") : "";
     if (total) {
-      var inBatch = done ? b.size : (atBoundary ? X.BATCH : tri.pos - b.start);
-      var size = done ? b.size : (atBoundary ? X.BATCH : b.size);
       byId("tri-progress-fill").style.transform = "scaleX(" + (inBatch / Math.max(size, 1)) + ")";
-      byId("tri-progress-text").textContent = "Lot " + (atBoundary ? b.index : b.index + 1) + "/" + b.count +
-        " · " + inBatch + " / " + size + " · " + Math.max(total - tri.pos, 0) + " restantes";
-      byId("tri-progress-bar").setAttribute("aria-valuenow", String(inBatch));
-      byId("tri-progress-bar").setAttribute("aria-valuemax", String(size));
-      byId("tri-progress-bar").setAttribute("aria-valuetext", inBatch + " sur " + size);
+      var bar = byId("tri-progress-bar");
+      bar.setAttribute("aria-valuenow", String(inBatch));
+      bar.setAttribute("aria-valuemax", String(size));
+      bar.setAttribute("aria-valuetext", inBatch + " sur " + size + " dans ce lot");
     }
     end.hidden = !(done || atBoundary);
     if (!end.hidden) hideReasons();
-    byId("tri-controls").hidden = done || atBoundary || total === 0 || !byId("tri-reasons-bar").hidden;
+    byId("tri-controls").hidden = done || atBoundary || total === 0;
     byId("tri-undo").disabled = undo.size() === 0;
     if (done || atBoundary) {
       clear(end);
+      var session = tri.kept + (tri.kept > 1 ? " gardées, " : " gardée, ") + tri.dropped + (tri.dropped > 1 ? " écartées" : " écartée");
+      var toApps = el("button", { type: "button", class: "button", text: "Voir mes candidatures" });
+      toApps.addEventListener("click", function () { showTab("candidatures", true, true); });
+      end.appendChild(U.icon("circle-check"));
       if (atBoundary) {
-        end.appendChild(el("h3", { text: "Lot terminé" }));
-        end.appendChild(el("p", { text: tri.kept + " gardées · " + tri.dropped + " écartées depuis le début. " + (total - tri.pos) + " restantes." }));
-        var next = el("button", { type: "button", class: "btn btn-primary", text: "Lot suivant" });
-        next.addEventListener("click", function () { tri.pausedAt = tri.pos; renderTri(); });
-        var later = el("button", { type: "button", class: "btn", text: "Plus tard" });
-        later.addEventListener("click", function () { showTab("candidatures", false); });
-        end.appendChild(el("div", { class: "tri-end-actions" }, [next, later]));
-        announce("Lot " + b.index + "/" + b.count + " terminé.");
+        end.appendChild(el("h2", { text: "Lot " + b.index + " terminé" }));
+        end.appendChild(el("p", { text: session + " pendant cette session. " + (total - tri.pos) + " offres attendent encore." }));
+        var next = el("button", { type: "button", class: "button primary", text: "Lot suivant" });
+        next.addEventListener("click", function () { tri.pausedAt = tri.pos; triArrive = true; renderTri(); focusTriCard(); });
+        end.appendChild(el("div", { class: "tri-end-actions" }, [next, toApps]));
+        announce("Lot " + b.index + " sur " + b.count + " terminé.");
       } else {
-        end.appendChild(el("h3", { text: "Tri terminé" }));
+        end.appendChild(el("h2", { text: "Tri terminé" }));
         end.appendChild(el("p", { text: total === 0
-          ? "Aucune offre à examiner : tout est trié."
-          : tri.kept + " gardées · " + tri.dropped + " écartées." }));
-        var go = el("button", { type: "button", class: "btn btn-primary", text: "Voir les candidatures" });
-        go.addEventListener("click", function () { showTab("candidatures", false); });
-        end.appendChild(el("div", { class: "tri-end-actions" }, [go]));
+          ? "Aucune offre à examiner : tout est trié. Les nouvelles offres arrivent avec la prochaine exécution."
+          : session + ". Les offres gardées attendent dans Candidatures." }));
+        end.appendChild(el("div", { class: "tri-end-actions" }, [toApps]));
       }
       return;
     }
-    stage.appendChild(triCard(tri.items[tri.pos], false));
     if (tri.items[tri.pos + 1]) stage.appendChild(triCard(tri.items[tri.pos + 1], true));
+    var top = triCard(tri.items[tri.pos], false);
+    stage.appendChild(top);
+    triArrive = false;
+    if (opts && opts.rise) {
+      U.rise(top);
+      var under = stage.querySelector(".tcard.is-next");
+      if (under && !U.reduced()) under.animate([{ opacity: 0 }, { opacity: 0.6 }], { duration: 200, easing: "ease-out" });
+    }
   }
 
   byId("tri-keep").addEventListener("click", function () { commit("right"); });
   byId("tri-drop").addEventListener("click", function () { commit("left"); });
   byId("tri-undo").addEventListener("click", undoLast);
-  byId("tri-reasons-close").addEventListener("click", hideReasons);
 
-  document.addEventListener("keydown", function (ev) {
-    if (currentTab !== "tri" || ev.altKey || ev.ctrlKey || ev.metaKey) return;
-    var tag = ev.target && ev.target.tagName;
-    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-    if (ev.key === "Escape" && !byId("tri-reasons-bar").hidden) { ev.preventDefault(); hideReasons(); }
-    else if (ev.key === "ArrowRight") { ev.preventDefault(); commit("right"); }
-    else if (ev.key === "ArrowLeft") { ev.preventDefault(); commit("left"); }
-    else if (ev.key === "z" || ev.key === "Z") { ev.preventDefault(); undoLast(); }
-    else if (ev.key === "Enter" && !(ev.target && ev.target.closest && ev.target.closest("a, button"))) {
-      var link = byId("tri-stage").querySelector(".tri-card:not(.is-next) .tri-link");
-      if (link) { ev.preventDefault(); window.open(link.href, "_blank", "noopener"); }
+  /* Tri keys; the record panel's own controls keep their keys when focus is inside it. */
+  function triKeys(ev) {
+    if (record.contains(document.activeElement) || (recordOpen && !wideScreen())) return false;
+    if (reasonFor && /^[1-4]$/.test(ev.key)) { giveReason(X.REASONS[Number(ev.key) - 1]); return true; }
+    if (ev.key === "Escape" && reasonFor) { hideReasons(); return true; }
+    if (ev.key === "ArrowRight") { commit("right"); return true; }
+    if (ev.key === "ArrowLeft") { commit("left"); return true; }
+    if (ev.key === "z" || ev.key === "Z") { undoLast(); return true; }
+    if (ev.key === "Enter" && !(ev.target && ev.target.closest && ev.target.closest("a, button"))) {
+      var item = tri.items[tri.pos];
+      if (item && byId("tri-end").hidden) { openRecord(item.row, byId("tri-stage").querySelector(".tcard-title button")); return true; }
     }
+    return false;
+  }
+
+  /* ---------- record panel (Attio): split at ≥ 1280 px, overlay below ---------- */
+
+  var record = byId("record");
+  var recordOpen = false, recordFor = null, recordJob = null, recordOpener = null;
+  function wideScreen() { return !!(window.matchMedia && window.matchMedia("(min-width: 1280px)").matches); }
+
+  /* Below 1280 px the record covers the page: what is under it is inert, so Tab stays inside. */
+  function setInert() {
+    var cover = recordOpen && !wideScreen();
+    [byId("main"), document.querySelector(".sidebar"), byId("tabbar")].forEach(function (n) {
+      if (n) { if (cover) n.setAttribute("inert", ""); else n.removeAttribute("inert"); }
+    });
+  }
+  if (window.matchMedia) window.matchMedia("(min-width: 1280px)").addEventListener("change", setInert);
+
+  function prop(iconName, label, value) {
+    return el("div", { class: "prop" }, [el("dt", { icon: iconName }, label), el("dd", null, value)]);
+  }
+
+  /* Order (AUDIT P2-13): what the offer says, why it scored so, then the tracking. */
+  function recordBody(j) {
+    var box = el("div", { class: "record-scroll" });
+    box.appendChild(el("header", { class: "record-head" }, [
+      el("h2", { id: "record-title", tabindex: "-1", text: j.title || "—" }),
+      el("p", { class: "record-sub", text: [j.company || "Entreprise non communiquée", j.location].filter(Boolean).join(", ") })
+    ]));
+    box.appendChild(el("dl", { class: "props" }, [
+      prop("circle-dot", "Statut", el("span", { class: "band" }, [U.dot(STATUS_HUE[T.rowStatus(j, track.apps)]), T.STATUS_TEXT[T.rowStatus(j, track.apps)]])),
+      prop("briefcase-business", "Contrat", j.contract || "Inconnu"),
+      prop("timer", "Expérience", yearsText(j.required_years)),
+      prop("calendar", "Publiée", j.posted_at ? fmtDate(j.posted_at) : "Date inconnue"),
+      prop("git-branch", "Source", j.source || "—")
+    ]));
+    if (j.description_excerpt) {
+      box.appendChild(el("section", { class: "record-sec" }, [el("h3", { text: "Extrait de l’offre" }), el("p", { class: "record-excerpt", text: j.description_excerpt })]));
+    }
+    box.appendChild(el("section", { class: "record-sec" }, [U.ledger(j, thresholds, { compact: true })]));
+    var form = trackForm(j, "rec");
+    var why = whyPanel(j, form.verdictBlock || null);
+    why.open = true;
+    box.appendChild(el("section", { class: "record-sec" }, [why]));
+    if (j.postings) box.appendChild(el("section", { class: "record-sec" }, [postingsBlock(j)]));
+    box.appendChild(el("section", { class: "record-sec" }, [el("h3", { text: "Suivi" }), form]));
+    return box;
+  }
+
+  function openRecord(j, opener) {
+    var was = recordOpen;
+    recordOpener = opener || document.activeElement;
+    function fill() {
+      clear(record);
+      var close = el("button", { type: "button", class: "icon-btn", "aria-label": "Fermer la fiche", "aria-keyshortcuts": "Escape" }, U.icon("x"));
+      close.addEventListener("click", function () { closeRecord(); });
+      var bar = el("div", { class: "record-bar" }, [el("span", { class: "record-crumb", text: VIEW_TITLE[currentTab] }), el("span", { class: "fill" })]);
+      if (j.url && HTTP.test(j.url)) {
+        bar.appendChild(el("a", { class: "icon-btn", href: j.url, target: "_blank", rel: "noopener noreferrer", "aria-label": "Voir l’offre « " + (j.title || "offre") + " » sur le site source" }, U.icon("external-link")));
+      }
+      bar.appendChild(close);
+      record.appendChild(bar);
+      record.appendChild(recordBody(j));
+      record.hidden = false;
+      record.classList.remove("closing");
+      document.body.classList.add("record-open");
+      recordOpen = true;
+      recordFor = currentTab;
+      recordJob = j;
+      setInert();
+      syncHash();
+    }
+    var shown = (!was && wideScreen()) ? U.transition(fill, ["record"]) : (fill(), Promise.resolve());
+    shown.then(function () { var h = byId("record-title"); if (h) h.focus({ preventScroll: true }); });
+  }
+
+  function closeRecord(animate) {
+    if (!recordOpen) return;
+    var back = recordOpener;
+    function done() {
+      record.hidden = true;
+      record.classList.remove("closing");
+      clear(record);
+      document.body.classList.remove("record-open");
+      recordOpen = false;
+      recordJob = null;
+      setInert();
+      syncHash();
+    }
+    recordOpen = false;
+    if (animate === false || U.reduced()) done();
+    else if (wideScreen()) U.transition(done, ["record"]);
+    else { record.classList.add("closing"); setTimeout(done, 160); }
+    if (back && document.contains(back)) back.focus({ preventScroll: true });
+  }
+
+  var STATUS_HUE = {
+    to_review: "var(--ink-3)", to_apply: "var(--slate-10)", applied: "var(--blue-9)",
+    interview: "var(--green-9)", rejected: "var(--red-9)", ignored: "var(--slate-7)"
+  };
+
+  /* ---------- palette (Ctrl/Cmd+K) and shortcuts ---------- */
+
+  var MOD = /Mac|iPhone|iPad/.test(navigator.platform || "") ? "⌘" : "Ctrl";
+  var GO_KEYS = { tri: "T", candidatures: "C", offres: "O", leads: "L", executions: "E" };
+  var VIEW_ICON = { tri: "layers", candidatures: "briefcase-business", offres: "list", leads: "radar", executions: "activity" };
+
+  function paletteCommands(q) {
+    var groups = [];
+    var j = recordOpen ? recordJob : null;
+    if (j && j.key && canTriage()) {
+      var cur = T.statusOf(track.apps[j.key]);
+      groups.push({ title: "Changer le statut", items: T.STATUSES.filter(function (s) { return s !== cur; }).map(function (s) {
+        return { label: "Statut : " + T.STATUS_TEXT[s], hint: j.title, hue: STATUS_HUE[s], run: function () {
+          setRecord(j.key, { status: s }, "Statut : " + T.STATUS_TEXT[s]);
+          openRecord(j, recordOpener);
+        } };
+      }) });
+    }
+    groups.push({ title: "Aller à", items: TABS.map(function (t) {
+      return { label: "Aller à " + VIEW_TITLE[t], icon: VIEW_ICON[t], keys: ["G", GO_KEYS[t]], run: function () { showTab(t, true, true); } };
+    }) });
+    var offers = q ? rows : tri.items.slice(tri.pos, tri.pos + 4).map(function (it) { return it.row; });
+    groups.push({ title: q ? "Offres" : "À trier ensuite", limit: 6, items: offers.map(function (r) {
+      return { label: r.title || "—", hint: r.company || "", score: typeof r.score === "number" ? r.score : null, icon: "briefcase-business",
+        text: [r.title, r.company, r.location].filter(Boolean).join(" "), run: function () { openRecord(r, null); } };
+    }) });
+    var actions = [{ label: "Raccourcis clavier", icon: "keyboard", keys: ["?"], run: function () { P.openHelp(); } }];
+    if (currentTab === "tri" && undo.size()) actions.unshift({ label: "Annuler la dernière décision", icon: "undo-2", keys: ["Z"], run: undoLast });
+    groups.push({ title: "Actions", items: actions });
+    return groups;
+  }
+
+  var HELP = [
+    ["Général", [[[MOD, "K"], "Palette de commandes"], [["?"], "Cette aide"], [["G", "T"], "Aller au Tri"], [["G", "C"], "Aller aux Candidatures"],
+      [["G", "O"], "Aller aux Offres"], [["G", "L"], "Aller aux Leads"], [["G", "E"], "Aller aux Exécutions"], [["Échap"], "Fermer la fiche ou la palette"]]],
+    ["Tri", [[["→"], "Garder"], [["←"], "Écarter"], [["Z"], "Annuler la dernière décision"], [["1–4"], "Raison de l’écart"], [["↵"], "Ouvrir la fiche"]]],
+    ["Fiche", [[["Échap"], "Fermer"], [["Tab"], "Champ suivant"]]]
+  ];
+
+  var gAt = 0;
+  document.addEventListener("keydown", function (ev) {
+    if ((ev.metaKey || ev.ctrlKey) && !ev.altKey && (ev.key === "k" || ev.key === "K")) { ev.preventDefault(); P.toggle(); return; }
+    if (P.isOpen() || ev.defaultPrevented) return;
+    var t = ev.target, tag = t && t.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (t && t.isContentEditable)) return;
+    if (ev.altKey || ev.ctrlKey || ev.metaKey) return;
+    if (ev.key === "?") { ev.preventDefault(); P.openHelp(); return; }
+    if (ev.key === "g" || ev.key === "G") { gAt = performance.now(); return; }
+    if (performance.now() - gAt < 900) {
+      gAt = 0;
+      var to = { t: "tri", c: "candidatures", o: "offres", l: "leads", e: "executions" }[ev.key.toLowerCase()];
+      if (to) { ev.preventDefault(); showTab(to, true, true); return; }
+    }
+    if (currentTab === "tri" && triKeys(ev)) { ev.preventDefault(); return; }
+    if (ev.key === "Escape" && recordOpen) { ev.preventDefault(); closeRecord(); }
   });
 
   /* ---------- Candidatures ---------- */
@@ -1732,20 +1927,6 @@
     updateCounts();
   }
 
-  function openInJobs(posting) {
-    var j = rows.filter(function (r) {
-      return T.postingsOf(r).some(function (p) { return p.key === posting.key; });
-    })[0] || posting;
-    state.q = (j.title || "").toLowerCase();
-    searchInput.value = j.title || "";
-    state.status = ""; statusSelect.value = "";
-    state.expanded[j.id] = true;
-    renderJobs();
-    showTab("offres", false);
-    var row = byId("jobs-details-" + j.id);
-    if (row) row.scrollIntoView({ block: "center" });
-  }
-
   var debounce;
   searchInput.addEventListener("input", function () {
     clearTimeout(debounce);
@@ -1855,8 +2036,19 @@
     markSortHeader();
     renderJobs();
     showTab(parsed.tab, false);
+    var fiche = p.fiche && rowByKey(p.fiche);
+    if (fiche && (!recordOpen || recordJob !== fiche)) openRecord(fiche, null);
+    else if (!p.fiche && recordOpen) closeRecord(false);
     applyingHash = false;
     syncHash();
+  }
+
+  /* The listed row (a group's best posting stands for the group) that holds this key. */
+  function rowByKey(key) {
+    for (var i = 0; i < rows.length; i++) {
+      if (T.postingsOf(rows[i]).some(function (p) { return p.key === key; })) return rows[i];
+    }
+    return null;
   }
 
   /* ---------- leads ---------- */
@@ -2016,10 +2208,29 @@
 
   /* ---------- boot ---------- */
 
-  byId("generated-at").textContent = "instantané du " + fmtDateTime(data.generated_at);
-  byId("count-jobs").textContent = rows.length;
-  byId("count-leads").textContent = leads.length;
-  byId("count-runs").textContent = runs.length;
+  /* Short in the sidebar; the full date and time zone in the tooltip. */
+  var snap = byId("generated-at");
+  var snapAt = new Date(data.generated_at);
+  snap.textContent = isNaN(snapAt.getTime()) ? "Instantané" : "Instantané du " + snapAt.toLocaleString("fr-FR", {
+    day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "UTC"
+  });
+  snap.title = "Données générées le " + fmtDateTime(data.generated_at);
+  setCount("offres", rows.length);
+  setCount("leads", leads.length);
+  setCount("executions", runs.length);
+
+  var paletteBtn = byId("palette-btn");
+  paletteBtn.insertBefore(U.icon("search"), paletteBtn.firstChild);
+  paletteBtn.appendChild(U.kbd(MOD, "K"));
+  paletteBtn.addEventListener("click", function () { P.open(); });
+  byId("help-btn").addEventListener("click", function () { P.openHelp(); });
+  P.init(paletteCommands, HELP);
+  byId("tri-drop").insertBefore(U.icon("x"), byId("tri-drop").firstChild);
+  byId("tri-drop").appendChild(U.kbd("←"));
+  byId("tri-undo").appendChild(U.icon("undo-2"));
+  byId("tri-undo").appendChild(U.kbd("Z"));
+  byId("tri-keep").insertBefore(U.icon("check"), byId("tri-keep").firstChild);
+  byId("tri-keep").appendChild(U.kbd("→"));
   fillDepartments();
   fillStatuses();
   renderLeads();

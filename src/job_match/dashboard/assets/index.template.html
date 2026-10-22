@@ -2,16 +2,16 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
-<meta name="color-scheme" content="dark light">
-<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#010102">
-<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" id="theme-color" content="#111113">
 <meta name="robots" content="noindex, nofollow">
 <!-- Cloudflare Access needs its cookie on the manifest request too. -->
 <link rel="manifest" href="manifest.webmanifest" crossorigin="use-credentials">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preload" href="fonts/InterVariable-latin.woff2" as="font" type="font/woff2" crossorigin>
 <meta name="apple-mobile-web-app-title" content="job-match">
 <title>job-match</title>
 <style>
@@ -20,62 +20,68 @@ __CSS__
 </head>
 <body>
 <a class="skip" href="#main">Aller au contenu</a>
-<header class="topbar">
-  <div class="brand">
-    <h1 class="wordmark" translate="no">job-match</h1>
-    <span class="generated" id="generated-at"></span>
-  </div>
-  <nav class="tabs" role="tablist" aria-label="Sections">
-    <button class="tab" role="tab" id="tab-tri" aria-controls="panel-tri" aria-selected="true" data-tab="tri">Tri <span class="tab-count" id="count-tri"></span></button>
-    <button class="tab" role="tab" id="tab-candidatures" aria-controls="panel-candidatures" aria-selected="false" tabindex="-1" data-tab="candidatures">Candidatures <span class="tab-count" id="count-candidatures"></span></button>
-    <button class="tab" role="tab" id="tab-offres" aria-controls="panel-offres" aria-selected="false" tabindex="-1" data-tab="offres">Offres <span class="tab-count" id="count-jobs"></span></button>
-    <button class="tab" role="tab" id="tab-leads" aria-controls="panel-leads" aria-selected="false" tabindex="-1" data-tab="leads">Leads <span class="tab-count" id="count-leads"></span></button>
-    <button class="tab" role="tab" id="tab-executions" aria-controls="panel-executions" aria-selected="false" tabindex="-1" data-tab="executions">Exécutions <span class="tab-count" id="count-runs"></span></button>
+<div class="app">
+<aside class="sidebar" aria-label="Navigation">
+  <div class="brand"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name" translate="no">job-match</span></div>
+  <button type="button" class="search" id="palette-btn" aria-keyshortcuts="Control+K Meta+K"><span class="search-label">Rechercher…</span></button>
+  <nav class="nav" aria-label="Vues">
+    <a class="nav-item" href="#tri" data-tab="tri" data-icon="layers"><span class="nav-label">Tri</span><span class="nav-n num" data-count="tri"></span></a>
+    <a class="nav-item" href="#candidatures" data-tab="candidatures" data-icon="briefcase-business"><span class="nav-label">Candidatures</span><span class="nav-n num" data-count="candidatures"></span></a>
+    <a class="nav-item" href="#offres" data-tab="offres" data-icon="list"><span class="nav-label">Offres</span><span class="nav-n num" data-count="offres"></span></a>
+    <a class="nav-item" href="#leads" data-tab="leads" data-icon="radar"><span class="nav-label">Leads</span><span class="nav-n num" data-count="leads"></span></a>
+    <a class="nav-item" href="#executions" data-tab="executions" data-icon="activity"><span class="nav-label">Exécutions</span><span class="nav-n num" data-count="executions"></span></a>
   </nav>
-  <button class="theme-toggle" id="theme-toggle" type="button" aria-pressed="false">Mode clair</button>
-</header>
+  <div class="sidebar-foot">
+    <p class="snapshot" id="generated-at"></p>
+    <!-- Light mode is planned: the toggle stays wired but hidden while the page is dark only. -->
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-pressed="false" hidden>Mode clair</button>
+    <button type="button" class="foot-btn" id="help-btn" aria-keyshortcuts="Shift+?">Raccourcis <kbd aria-hidden="true">?</kbd></button>
+  </div>
+</aside>
 
-<main id="main">
+<main id="main" class="main" tabindex="-1">
 <div class="track-banner" id="track-banner" role="status" hidden>
   <span id="track-banner-text"></span>
-  <button type="button" class="btn" id="track-retry" hidden>Réessayer</button>
+  <button type="button" class="button" id="track-retry" hidden>Réessayer</button>
 </div>
 
-<section class="panel panel-tri" id="panel-tri" role="tabpanel" aria-labelledby="tab-tri">
-  <h2 class="sr-only">Tri</h2>
+<section class="panel view view-tri" id="panel-tri" aria-labelledby="h-tri">
+  <header class="view-head">
+    <h1 id="h-tri">Tri <span class="tri-count num" id="tri-count"></span></h1>
+    <span class="tri-left num" id="tri-left"></span>
+    <span class="fill"></span>
+    <span class="progress" id="tri-progress-bar" role="progressbar" aria-label="Avancement du lot" aria-valuemin="0" aria-valuenow="0" aria-valuemax="20" hidden><i id="tri-progress-fill"></i></span>
+  </header>
   <p class="sr-only" id="tri-live" aria-live="polite" aria-atomic="true"></p>
-  <p class="tri-off" id="tri-off" hidden>Le tri enregistre tes choix : il demande le tableau de bord hébergé, avec le suivi chargé.</p>
+  <p class="tri-note" id="tri-off" hidden>Le tri enregistre tes choix : il demande le tableau de bord hébergé, avec le suivi chargé.</p>
   <div class="tri-pending" id="tri-pending" role="status" hidden>
-    <span id="tri-pending-text"></span>
+    <span id="tri-pending-text" class="fill"></span>
     <button type="button" class="link-btn" id="tri-pending-retry">Réessayer</button>
   </div>
-  <div class="tri-progress" id="tri-progress" hidden>
-    <div class="tri-progress-bar" id="tri-progress-bar" role="progressbar" aria-label="Avancement du lot" aria-valuemin="0" aria-valuenow="0" aria-valuemax="20"><i id="tri-progress-fill"></i></div>
-    <span class="tri-progress-text" id="tri-progress-text"></span>
-  </div>
-  <div class="tri-stage" id="tri-stage"></div>
+  <div class="tri-stack" id="tri-stage"></div>
   <div class="tri-end" id="tri-end" tabindex="-1" hidden></div>
-  <div class="tri-controls" id="tri-controls">
-    <button type="button" class="tri-btn tri-btn-drop" id="tri-drop" aria-keyshortcuts="ArrowLeft">Écarter <kbd aria-hidden="true">←</kbd></button>
-    <button type="button" class="tri-btn tri-btn-undo" id="tri-undo" aria-keyshortcuts="Z" disabled>Annuler <kbd aria-hidden="true">Z</kbd></button>
-    <button type="button" class="tri-btn tri-btn-keep" id="tri-keep" aria-keyshortcuts="ArrowRight">Garder <kbd aria-hidden="true">→</kbd></button>
-  </div>
-  <div class="tri-reasons-bar" id="tri-reasons-bar" role="group" aria-label="Pourquoi l’écarter ?" aria-keyshortcuts="Escape" hidden>
-    <span class="tri-reasons-title" id="tri-reasons-title">Pourquoi l’écarter ?</span>
-    <span class="tri-reason-chips" id="tri-reason-chips"></span>
-    <button type="button" class="link-btn" id="tri-reasons-close">Passer</button>
+  <div class="tri-bar" id="tri-bar">
+    <div class="tri-reasons" id="tri-reasons-bar" role="group" aria-labelledby="tri-reasons-title" hidden>
+      <p class="tri-reasons-title" id="tri-reasons-title">Pourquoi l’écarter ?</p>
+      <div class="tri-reason-chips" id="tri-reason-chips"></div>
+    </div>
+    <div class="tri-actions" id="tri-controls">
+      <button type="button" class="tbtn drop" id="tri-drop" aria-keyshortcuts="ArrowLeft">Écarter</button>
+      <button type="button" class="tbtn undo" id="tri-undo" aria-keyshortcuts="Z" aria-label="Annuler la dernière décision" disabled></button>
+      <button type="button" class="tbtn keep" id="tri-keep" aria-keyshortcuts="ArrowRight">Garder</button>
+    </div>
   </div>
 </section>
 
-<section class="panel" id="panel-candidatures" role="tabpanel" aria-labelledby="tab-candidatures" hidden>
-  <h2 class="sr-only">Candidatures</h2>
+<section class="panel legacy" id="panel-candidatures" aria-labelledby="h-candidatures" hidden>
+  <header class="view-head"><h1 id="h-candidatures">Candidatures <span class="view-n num" data-count="candidatures"></span></h1></header>
   <p class="tri-off" id="kb-off" hidden>Les candidatures viennent du suivi : il demande le tableau de bord hébergé.</p>
   <div class="kb-due" id="kb-due" hidden></div>
   <div class="kb-board" id="kb-board"></div>
 </section>
 
-<section class="panel" id="panel-offres" role="tabpanel" aria-labelledby="tab-offres" hidden>
-  <h2 class="sr-only">Offres</h2>
+<section class="panel legacy" id="panel-offres" aria-labelledby="h-offres" hidden>
+  <header class="view-head"><h1 id="h-offres">Offres <span class="view-n num" data-count="offres"></span></h1></header>
   <div class="kpis">
     <div class="kpi kpi-strong"><span class="kpi-label">Fortes</span><span class="kpi-value" id="kpi-strong">0</span></div>
     <div class="kpi kpi-eligible"><span class="kpi-label">Éligibles</span><span class="kpi-value" id="kpi-eligible">0</span></div>
@@ -162,8 +168,8 @@ __CSS__
   </div>
 </section>
 
-<section class="panel" id="panel-leads" role="tabpanel" aria-labelledby="tab-leads" hidden>
-  <h2 class="sr-only">Leads de financement</h2>
+<section class="panel legacy" id="panel-leads" aria-labelledby="h-leads" hidden>
+  <header class="view-head"><h1 id="h-leads">Leads <span class="view-n num" data-count="leads"></span></h1></header>
   <p class="rowcount" id="leads-rowcount"></p>
   <div class="table-wrap">
     <table class="data leads" id="leads-table">
@@ -184,8 +190,8 @@ __CSS__
   </div>
 </section>
 
-<section class="panel" id="panel-executions" role="tabpanel" aria-labelledby="tab-executions" hidden>
-  <h2 class="sr-only">Exécutions</h2>
+<section class="panel legacy" id="panel-executions" aria-labelledby="h-executions" hidden>
+  <header class="view-head"><h1 id="h-executions">Exécutions <span class="view-n num" data-count="executions"></span></h1></header>
   <p class="rowcount" id="runs-rowcount"></p>
   <div class="legend" aria-hidden="true">
     <span class="legend-item"><i class="swatch sw-rejected"></i>Rejetées</span>
@@ -198,6 +204,15 @@ __CSS__
   <p class="empty" id="runs-empty" hidden>Aucune exécution enregistrée.</p>
 </section>
 </main>
+<aside class="record" id="record" aria-labelledby="record-title" hidden></aside>
+</div>
+<nav class="tabbar" id="tabbar" aria-label="Vues (barre du bas)">
+  <a class="tab-item" href="#tri" data-tab="tri" data-icon="layers"><span class="nav-label">Tri</span><span class="nav-n num" data-count="tri"></span></a>
+  <a class="tab-item" href="#candidatures" data-tab="candidatures" data-icon="briefcase-business"><span class="nav-label">Candidatures</span><span class="nav-n num" data-count="candidatures"></span></a>
+  <a class="tab-item" href="#offres" data-tab="offres" data-icon="list"><span class="nav-label">Offres</span><span class="nav-n num" data-count="offres"></span></a>
+  <a class="tab-item" href="#leads" data-tab="leads" data-icon="radar"><span class="nav-label">Leads</span><span class="nav-n num" data-count="leads"></span></a>
+  <a class="tab-item" href="#executions" data-tab="executions" data-icon="activity"><span class="nav-label">Exécutions</span><span class="nav-n num" data-count="executions"></span></a>
+</nav>
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden>
   <span id="toast-text"></span>
@@ -210,6 +225,18 @@ __TRACKING_JS__
 </script>
 <script>
 __TRIAGE_JS__
+</script>
+<script>
+__ICONS_JS__
+</script>
+<script>
+__SCORE_JS__
+</script>
+<script>
+__UI_JS__
+</script>
+<script>
+__PALETTE_JS__
 </script>
 <script>
 __JS__
