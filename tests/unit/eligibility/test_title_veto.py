@@ -239,3 +239,51 @@ def test_a_devops_job_with_the_same_description_is_still_eligible():
     job = _job("Ingénieur DevOps Java", DEV_DESCRIPTION)
     result = evaluate(job, parse_experience(job.description), _profile(), _settings(), {})
     assert result.eligible is True
+
+
+# ---------- M24: another trade in the title (title_relevance.off_domain) ----------
+
+def _m24_settings() -> Settings:
+    from job_match.config.schema import TitleRelevanceConfig
+    return Settings(
+        relevance=_relevance(target_title_keywords=["devops", "cloud", "infra", "exploitation"]),
+        title_relevance=TitleRelevanceConfig(
+            core=["devops"], off_domain=["recrutement", "mécanique"]
+        ),
+    )
+
+
+def test_an_off_domain_title_is_rejected_with_reason_title_whatever_its_skills():
+    # the skills match; "devsecops" is not the configured "devops" prefix
+    job = _job("Consultant en recrutement DevSecOps", DEV_DESCRIPTION)
+    result = evaluate(job, parse_experience(job.description), _profile(), _m24_settings(), {})
+    assert result.eligible is False
+    assert RejectionReason.TITLE in result.reasons
+
+
+def test_a_core_term_keeps_an_off_domain_word_in_the_title_eligible():
+    job = _job("Ingénieur DevOps - recrutement interne", "Kubernetes et Docker au quotidien.")
+    result = evaluate(job, parse_experience(job.description), _profile(), _m24_settings(), {})
+    assert result.eligible is True
+
+
+def test_without_title_relevance_no_title_veto_runs():
+    job = _job("Ingénieur mécanique", "Kubernetes et Docker au quotidien.")
+    result = evaluate(job, parse_experience(job.description), _profile(), _settings(), {})
+    assert RejectionReason.TITLE not in result.reasons
+
+
+def test_a_core_title_with_a_sales_role_is_kept_and_scored_as_other():
+    from job_match.config.schema import TitleRelevanceConfig
+    from job_match.scoring.native import NativeRuleScorer
+    settings = Settings(
+        relevance=_relevance(target_title_keywords=["devops", "cloud"]),
+        title_relevance=TitleRelevanceConfig(
+            core=["cloud"], off_domain=["commercial"], core_overrides=["commercial"]
+        ),
+    )
+    job = _job("Ingénieur commercial Cloud", "Kubernetes et Docker au quotidien.")
+    result = evaluate(job, parse_experience(job.description), _profile(), settings, {})
+    assert result.eligible is True and RejectionReason.TITLE not in result.reasons
+    scored = NativeRuleScorer({}).score(job, _profile(), settings)
+    assert "Title relevance: other (-15)" in scored.explanations

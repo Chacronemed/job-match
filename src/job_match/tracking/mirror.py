@@ -46,9 +46,10 @@ class MirrorResult:
 
 
 def read_export(path: Path) -> list[dict]:
-    """The `results` rows of a single-statement `wrangler d1 execute --json` export."""
+    """The `results` rows of a single-statement `wrangler d1 execute --json` export. A UTF-8
+    byte order mark is accepted: PowerShell's `>` writes one, bash's does not."""
     try:
-        doc = json.loads(path.read_text(encoding="utf-8"))
+        doc = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise MirrorFormatError(f"unreadable export ({type(exc).__name__})") from None
     if not (isinstance(doc, list) and len(doc) == 1 and isinstance(doc[0], dict)):

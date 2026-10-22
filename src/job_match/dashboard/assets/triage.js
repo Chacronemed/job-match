@@ -33,9 +33,15 @@
   }
 
   /* Every row still waiting for a first look (to_review), newest run first, then most
-     recently collected, then best score. A row is untriaged by definition: no marker. */
-  function triageQueue(rows, apps, runAt) {
-    var queue = rows.filter(function (r) { return T.rowStatus(r, apps) === "to_review"; })
+     recently collected, then best score. A row is untriaged by definition: no marker.
+     `minScore` (the digest threshold, M24): a scored row below it stays in Offres and out of
+     the queue; an unscored row is kept, its score is unknown, not low. */
+  function triageQueue(rows, apps, runAt, minScore) {
+    var floor = typeof minScore === "number" ? minScore : null;
+    var queue = rows.filter(function (r) {
+      if (floor !== null && typeof r.score === "number" && r.score < floor) return false;
+      return T.rowStatus(r, apps) === "to_review";
+    })
       .map(function (r) {
         return { row: r, isNew: runAt > 0 && time(r.collected_at) >= runAt, at: time(r.collected_at) };
       });

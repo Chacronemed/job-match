@@ -1031,6 +1031,10 @@
     [/^Missed preferred: (.+)$/, function (m) { return "Compétence absente de l’offre : " + m[1]; }],
     [/^Matched negative: (.+) \((-?\d+)\)$/, function (m) { return "Malus : " + m[1] + " (" + m[2] + ")"; }],
     [/^Title keyword match: (.+) \((\+?\d+)\)$/, function (m) { return "Mot-clé dans le titre : " + m[1] + " (" + m[2] + ")"; }],
+    [/^Title relevance: (core|near|other) \(([+-]?\d+)\)$/, function (m) {
+      return "Titre : " + { core: "métier visé", near: "métier proche", other: "hors des métiers visés" }[m[1]] + " (" + m[2] + ")";
+    }],
+    [/^Profile section: (.+) \(x([\d.]+)\)$/, function (m) { return "Demandée dans le profil : " + m[1] + " (poids ×" + m[2].replace(".", ",") + ")"; }],
     [/^experience: internships\/work-study excluded from required years$/, function () { return "Expérience : stages et alternance exclus des années requises"; }]
   ];
 
@@ -1191,7 +1195,7 @@
   }
 
   function updateCounts() {
-    setCount("tri", X.triageQueue(rows, track.apps, runAt).length);
+    setCount("tri", X.triageQueue(rows, track.apps, runAt, thresholds.min_score).length);
     setCount("candidatures", boardKeys().length);
   }
 
@@ -1281,7 +1285,7 @@
   }
 
   function buildTri() {
-    tri.items = X.triageQueue(rows, track.apps, runAt);
+    tri.items = X.triageQueue(rows, track.apps, runAt, thresholds.min_score);
     tri.pos = 0;
     tri.built = true;
     tri.pausedAt = -1;
