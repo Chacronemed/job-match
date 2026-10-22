@@ -27,6 +27,7 @@ from job_match.config.schema import (
     SkillWeight,
     SourceLimits,
     SourcesConfig,
+    TitleRelevanceConfig,
 )
 from job_match.domain.models import ContractType
 
@@ -147,6 +148,12 @@ def load_settings(path: Path) -> Settings:
                 "scoring.override_weight",
                 path,
             ),
+            profile_section_multiplier=_multiplier(
+                scoring_raw.get("profile_section_multiplier", 1.0)
+                if isinstance(scoring_raw, dict) else 1.0,
+                "scoring.profile_section_multiplier",
+                path,
+            ),
         ),
         funding=FundingConfig(
             requests_per_second=float(
@@ -165,6 +172,7 @@ def load_settings(path: Path) -> Settings:
             lead_filters=_parse_lead_filters(funding_raw.get("lead_filters"), path),
         ),
         relevance=_parse_relevance(raw.get("relevance"), path),
+        title_relevance=_parse_title_relevance(raw.get("title_relevance"), path),
         digest=_parse_digest(raw.get("digest"), path),
         jobs=_parse_jobs(raw.get("jobs"), path),
         raw_payloads=_parse_raw_payloads(raw.get("raw_payloads"), path),
@@ -275,6 +283,43 @@ def _parse_relevance(value: object, path: Path) -> RelevanceConfig:
         ),
         role_titles=_str_list(raw.get("role_titles"), "relevance.role_titles", path),
         dev_titles=_str_list(raw.get("dev_titles"), "relevance.dev_titles", path),
+    )
+
+
+def _multiplier(value: object, key: str, path: Path) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float) or not 1 <= value <= 3:
+        raise ConfigError(f"{key} must be a number from 1 to 3 (in {path})")
+    return float(value)
+
+
+def _int(value: object, key: str, path: Path) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ConfigError(f"{key} must be an integer (in {path})")
+    return value
+
+
+def _parse_title_relevance(value: object, path: Path) -> TitleRelevanceConfig:
+    raw = _mapping(value, "title_relevance", path)
+    d = TitleRelevanceConfig()
+    return TitleRelevanceConfig(
+        core=_str_list(raw.get("core"), "title_relevance.core", path),
+        near=_str_list(raw.get("near"), "title_relevance.near", path),
+        off_domain=_str_list(raw.get("off_domain"), "title_relevance.off_domain", path),
+        off_domain_sectors=_str_list(
+            raw.get("off_domain_sectors"), "title_relevance.off_domain_sectors", path
+        ),
+        core_overrides=_str_list(
+            raw.get("core_overrides"), "title_relevance.core_overrides", path
+        ),
+        core_points=_int(
+            raw.get("core_points", d.core_points), "title_relevance.core_points", path
+        ),
+        near_points=_int(
+            raw.get("near_points", d.near_points), "title_relevance.near_points", path
+        ),
+        other_points=_int(
+            raw.get("other_points", d.other_points), "title_relevance.other_points", path
+        ),
     )
 
 

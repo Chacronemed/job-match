@@ -1,6 +1,6 @@
-# Numeric thresholds — calibrated in M4 and M6 on real data.
+# Numeric thresholds — calibrated in M4 and M6, recalibrated in M24 on the title families.
 
-strong_threshold: 70
+strong_threshold: 80   # M24: about the top 20 % of kept offers once titles count (docs/diagnostics/m24-scoring.md)
 divergence_threshold: 30
 dedup_window_days: 30
 fuzzy_title_threshold: 0.85
@@ -65,6 +65,9 @@ scoring:
   # A skill marked "je maîtrise" on the dashboard joins the preferred skills with this
   # weight on the next run (D1 `skill_overrides`, mirrored before the jobs pipeline).
   override_weight: 2
+  # A preferred skill the offer asks for in its "Profil" / "Compétences" section counts its
+  # weight times this (rounded half up); a mention elsewhere counts 1x. M24, 1 = off.
+  profile_section_multiplier: 1.5
 
 # Funding pipeline (M10): RSS ingestion. Full article text is never stored.
 funding:
@@ -135,6 +138,151 @@ relevance:
     - administrateur
     - linux
 
+# What the title says the job is (M24, docs/diagnostics/m24-scoring.md). Checked in order:
+#   1. core (the target family, +core_points) protects the title, unless it also names a
+#      core_overrides role (whole words): then it is "other" (-15), never vetoed;
+#   2. off_domain (another trade): vetoed at the gate, reason TITLE, even with a near term;
+#   3. near (adjacent IT, near_points);
+#   4. off_domain_sectors (a sector, not a trade): vetoed only when no core/near term is there;
+#   5. else other (other_points: a penalty, not a veto, so the recall stays wide).
+# Prefix match, accent- and case-insensitive. When core is set, this replaces title_bonus.
+# "exploitation" alone is NOT IT (logistics, hotels, water plants): only its IT forms are near.
+# Sector words lose to near on purpose: "restauration" is also a backup restore, "transport"
+# also Axway Secure Transport, "marketing" also a data engineer's domain.
+title_relevance:
+  core_points: 20
+  near_points: 10
+  other_points: -15
+  core:
+    - devops
+    - devsecops
+    - mlops
+    - sre
+    - site reliability
+    - cloud
+    - platform
+    - plateforme
+    - infrastructure
+    - infra
+    - ops
+    - kubernetes
+    - k8s
+    - aws
+    - azure
+    - gcp
+    - terraform
+  near:
+    - administrateur système
+    - administrateur systèmes
+    - administrateur réseau
+    - administrateur linux
+    - ingénieur système
+    - ingénieur systèmes
+    - ingénieur réseau
+    - ingénieur réseaux
+    - systèmes et réseaux
+    - système et réseau
+    - système réseau
+    - systèmes réseaux
+    - réseau informatique
+    - réseaux et sécurité
+    - linux
+    - exploitation informatique
+    - exploitation it
+    - exploitation des systèmes
+    - ingénieur d'exploitation
+    - production informatique
+    - ingénieur de production
+    - ingénieur production
+    - sysops
+    - intégrateur
+    - cybersécurité
+    - sécurité informatique
+    - secops
+    - data engineer
+    - observabilité
+    - finops
+    - architecte système
+    - architecte systèmes
+    - middleware
+    - inter-applicatif
+    - inter-applicatifs
+    - sauvegarde
+  # A sales, product, project or recruitment role named next to a core term: the job is
+  # that role ("Ingénieur commercial Cloud"), so it is "other", not core. Whole words.
+  core_overrides:
+    - commercial
+    - commerciale
+    - sales
+    - ingénieur d'affaires
+    - ingénieure d'affaires
+    - business developer
+    - product owner
+    - chef de projet
+    - cheffe de projet
+    - account manager
+    - recruteur
+    - recruteuse
+    - recruiter
+  off_domain_sectors:
+    - hôtelier
+    - hôtel
+    - touristique
+    - tourisme
+    - restauration
+    - logistique
+    - transport
+    - btp
+    - bâtiment
+    - marketing
+  off_domain:
+    - recrutement
+    - recruteur
+    - recruiter
+    - talent acquisition
+    - commercial
+    - technico-commercial
+    - business developer
+    - vente
+    - vendeur
+    - mécanique
+    - mécanicien
+    - fluides
+    - hardware
+    - électronique
+    - électronicien
+    - embarqué
+    - systèmes embarqués
+    - optronique
+    - banc de test
+    - data manager
+    - data analyst
+    - analyste de données
+    - product owner
+    - product manager
+    - chef de produit
+    - comptab
+    - juriste
+    - assistance client
+    - service client
+    - conseiller client
+    - relation client
+    - logisticien
+    - entrepôt
+    - magasinier
+    - chauffeur
+    - conducteur
+    - quai
+    - chantier
+    - génie civil
+    - maintenance industrielle
+    - automaticien
+    - agent de sécurité
+    - sécurité incendie
+    - ressources humaines
+    - gestionnaire de paie
+    - acheteur
+
 # Experience stretch tier. A job whose required years (explicit number, or the minimum a
 # seniority keyword implies) exceed the candidate's by at most stretch_years is STRETCH:
 # every other gate still applies, it is scored normally, it gets its own digest section
@@ -159,7 +307,7 @@ eligibility:
     - Talents Handicap
 
 digest:
-  min_score: 60   # eligible jobs below this stay in the DB, not emailed
+  min_score: 55   # M24: keeps every offer I kept in Tri; below it stays in Offres, out of the Tri and the email
   max_leads: 10   # hiring first, then pre-seed..series B, then most recent; the rest roll over
 
 # Offer lifecycle. Each daily run re-checks every visible France Travail offer against the

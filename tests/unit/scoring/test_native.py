@@ -206,3 +206,62 @@ def test_positive_and_missing_never_overlap() -> None:
     all_accounted = set(result.positive_matches) | set(result.missing_preferences)
     assert all_accounted == {s[0] for s in skills}
     assert len(result.positive_matches) + len(result.missing_preferences) == len(skills)
+
+
+# ---------- M24: title family and profile section ----------
+
+from job_match.config.schema import TitleRelevanceConfig  # noqa: E402
+from job_match.scoring.native import profile_weight  # noqa: E402
+
+TITLES = TitleRelevanceConfig(
+    core=["devops"], near=["administrateur système"], off_domain=["recrutement"],
+    core_points=20, near_points=10, other_points=-15,
+)
+M24 = Settings(base_score=50, title_bonus=10, title_relevance=TITLES,
+               scoring=ScoringConfig(profile_section_multiplier=1.5))
+
+
+def test_title_family_replaces_the_keyword_bonus():
+    profile = _make_profile(keywords=["devops"])
+    core = NativeRuleScorer(ALIASES).score(_make_job("Ingénieur DevOps"), profile, M24)
+    assert core.score == 70  # 50 + 20, not + 10 more for the keyword
+    assert "Title relevance: core (+20)" in core.explanations
+    assert not any(e.startswith("Title keyword match") for e in core.explanations)
+    assert core.raw["title_family"] == "core"
+    other = NativeRuleScorer(ALIASES).score(_make_job("Chef de projet"), profile, M24)
+    assert other.score == 35 and "Title relevance: other (-15)" in other.explanations
+    near = NativeRuleScorer(ALIASES).score(_make_job("Administrateur système Linux"), profile, M24)
+    assert near.score == 60 and "Title relevance: near (+10)" in near.explanations
+
+
+def test_without_title_relevance_the_keyword_bonus_still_applies():
+    profile = _make_profile(keywords=["devops"])
+    r = NativeRuleScorer(ALIASES).score(_make_job("DevOps Engineer"), profile, SETTINGS)
+    assert r.score == 60 and r.raw["title_family"] is None
+
+
+def test_a_skill_asked_for_in_the_profile_section_weighs_more():
+    desc = ("Vos missions :\n- maintenir les pipelines Docker\n\n"
+            "Profil recherché\nTu maîtrises Kubernetes et Terraform.")
+    profile = _make_profile(preferred=[("docker", 3), ("kubernetes", 4), ("terraform", 3)])
+    r = NativeRuleScorer(ALIASES).score(_make_job("Ingénieur DevOps", desc), profile, M24)
+    assert r.weights == {"docker": 3, "kubernetes": 6, "terraform": 5}  # 4x1.5, 3x1.5 half up
+    assert "Matched preferred: kubernetes (+6)" in r.explanations
+    assert "Profile section: kubernetes (x1.5)" in r.explanations
+    assert "Profile section: docker (x1.5)" not in r.explanations
+    assert r.score == 50 + 20 + 3 + 6 + 5
+
+
+def test_negatives_are_never_multiplied_and_no_section_means_no_change():
+    desc = "Profil :\nTu connais SAP et Docker."
+    profile = _make_profile(preferred=[("docker", 3)], negative=[("sap", -5)])
+    r = NativeRuleScorer(ALIASES).score(_make_job("Ingénieur DevOps", desc), profile, M24)
+    assert r.weights == {"docker": 5, "sap": -5}
+    flat_job = _make_job("Ingénieur DevOps", "Docker et SAP au quotidien.")
+    flat = NativeRuleScorer(ALIASES).score(flat_job, profile, M24)
+    assert flat.weights == {"docker": 3, "sap": -5}
+
+
+def test_profile_weight_rounds_half_up():
+    assert [profile_weight(w, 1.5) for w in (1, 2, 3, 4, 5)] == [2, 3, 5, 6, 8]
+    assert profile_weight(4, 1.0) == 4

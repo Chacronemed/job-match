@@ -65,10 +65,28 @@ class TestLoadProfileFromEnv:
 class TestLoadSettings:
     def test_happy_path(self):
         settings = load_settings(SETTINGS_FILE)
-        assert settings.strong_threshold == 70
+        assert settings.strong_threshold == 80  # recalibrated in M24
+        assert settings.digest.min_score == 55
         assert settings.divergence_threshold == 30
         assert settings.fuzzy_title_threshold == pytest.approx(0.85)
         assert settings.scoring.jms.enabled is False
+        assert settings.scoring.profile_section_multiplier == pytest.approx(1.5)
+        tr = settings.title_relevance
+        assert tr.enabled and (tr.core_points, tr.near_points, tr.other_points) == (20, 10, -15)
+
+    def test_title_relevance_and_multiplier_are_validated(self, tmp_path):
+        bad = tmp_path / "settings.yaml"
+        bad.write_text("title_relevance:\n  core: devops\n", encoding="utf-8")
+        with pytest.raises(ConfigError, match="title_relevance.core must be a list"):
+            load_settings(bad)
+        bad.write_text("title_relevance:\n  other_points: lots\n", encoding="utf-8")
+        with pytest.raises(ConfigError, match="other_points must be an integer"):
+            load_settings(bad)
+        bad.write_text("scoring:\n  profile_section_multiplier: 5\n", encoding="utf-8")
+        with pytest.raises(ConfigError, match="from 1 to 3"):
+            load_settings(bad)
+        bad.write_text("strong_threshold: 70\n", encoding="utf-8")
+        assert not load_settings(bad).title_relevance.enabled  # absent = legacy title bonus
 
     def test_missing_file_raises(self, tmp_path):
         with pytest.raises(ConfigError, match="Settings file not found"):

@@ -102,6 +102,9 @@ class ScoringConfig:
     # Weight of a skill marked "je maîtrise" on the dashboard (D1 `skill_overrides`): it
     # joins the preferred skills with this weight on the next run.
     override_weight: int = 2
+    # A preferred skill the offer asks for in its profile / skills section (normalization/
+    # sections.py) counts its weight times this; found only elsewhere, times 1. 1 = off.
+    profile_section_multiplier: float = 1.0
 
 
 @dataclass
@@ -120,6 +123,41 @@ class RelevanceConfig:
     # Both empty = veto off.
     role_titles: list[str] = field(default_factory=list)
     dev_titles: list[str] = field(default_factory=list)
+
+
+@dataclass
+class TitleRelevanceConfig:
+    """What the title says the job is (scoring/title.py), checked in this order:
+
+    * `core`: the target family (DevOps, SRE, cloud, platform, infrastructure) ->
+      `core_points`; a core term protects the title from the off-domain lists, unless the
+      title also names a `core_overrides` role (sales, product owner, project manager,
+      recruiter…): then it is `other` ("Ingénieur commercial Cloud" sells, it does not run);
+    * `off_domain`: another trade (recruitment, mechanics, hardware, data management…) ->
+      vetoed at the gate, RejectionReason.TITLE, even when a near term is there too;
+    * `near`: an adjacent IT role (systems, networks, IT operations) -> `near_points`;
+    * `off_domain_sectors`: a sector rather than a trade (transport, marketing, hotels…) ->
+      vetoed only when no core or near term is in the title ("Data engineer - marketing"
+      is near, "Chargé marketing" is out);
+    * none of them -> `other_points`, a penalty, not a veto: the recall stays wide.
+
+    Prefix matching, accent- and case-insensitive ("infra" matches "Infrastructure"), except
+    `core_overrides`: whole words, so "sales" never matches "Salesforce".
+    Empty `core` = feature off: the legacy `title_bonus` keyword bonus applies instead.
+    """
+
+    core: list[str] = field(default_factory=list)
+    near: list[str] = field(default_factory=list)
+    off_domain: list[str] = field(default_factory=list)
+    off_domain_sectors: list[str] = field(default_factory=list)
+    core_overrides: list[str] = field(default_factory=list)
+    core_points: int = 20
+    near_points: int = 0
+    other_points: int = -15
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.core)
 
 
 @dataclass
@@ -201,6 +239,7 @@ class Settings:
     scoring: ScoringConfig = field(default_factory=ScoringConfig)
     funding: FundingConfig = field(default_factory=FundingConfig)
     relevance: RelevanceConfig = field(default_factory=RelevanceConfig)
+    title_relevance: TitleRelevanceConfig = field(default_factory=TitleRelevanceConfig)
     digest: DigestConfig = field(default_factory=DigestConfig)
     experience: ExperienceConfig = field(default_factory=ExperienceConfig)
     eligibility: EligibilityConfig = field(default_factory=EligibilityConfig)

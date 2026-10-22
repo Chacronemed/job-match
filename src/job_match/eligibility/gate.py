@@ -23,6 +23,7 @@ from job_match.normalization.location import (
     parse_department,
 )
 from job_match.normalization.skills import matches_skill, title_keyword, title_term
+from job_match.scoring.title import is_off_domain
 
 
 def is_relevant(
@@ -76,6 +77,10 @@ def evaluate(
         or not is_relevant(job, profile, settings.relevance.target_title_keywords, aliases)
     ):
         reasons.append(RejectionReason.NOT_RELEVANT)
+    # 0a. Another trade in the title (recruitment, mechanics, hardware…): whatever skills the
+    # description cites, the job is not ours. A core-family term saves it (scoring/title.py).
+    if settings and is_off_domain(job.title, settings.title_relevance):
+        reasons.append(RejectionReason.TITLE)
 
     # 0b. Reserved for RQTH / BOETH holders: a job I cannot apply to. Inclusive wording
     # ("ouvert aux personnes en situation de handicap") never matches.

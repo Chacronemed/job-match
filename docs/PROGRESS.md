@@ -3,7 +3,12 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**UI redesign phase 3: port prototype C view by view** (branch `feat/ui-redesign`, ADR 0015, DESIGN.md
+**M24: a score that tells offers apart** (branch `feat/m24-scoring`, ADR 0016 proposed). Done
+locally (2026-10-22): title families + off-domain veto, profile-section weighting, thresholds
+recalibrated (strong 80, digest 55), Tri queue from the digest threshold; diagnostic in
+docs/diagnostics/m24-scoring.md. To do in production: one reprocess (Next step).
+
+Paused: **UI redesign phase 3: port prototype C view by view** (branch `feat/ui-redesign`, ADR 0015, DESIGN.md
 2.0). Steps 1 and 1b done locally (2026-10-22): shell (sidebar, tab bar, palette Ctrl/⌘K, help,
 record panel split at ≥ 1280 px, toast) + Tri, with the whole description on the card. Next:
 step 2 Candidatures, then Offres, Leads, Exécutions,
@@ -17,6 +22,27 @@ production rows. Still pending: the M21 Cloudflare setup, the data-repo cleanup 
 two Cloudflare secrets, M9 manual GitHub setup, `PROFILE_YAML` re-encoding, `SMTP_PORT` variable.
 
 ## Done
+- **M24: scoring that tells offers apart** (2026-10-22). Diagnostic: docs/diagnostics/m24-scoring.md, on a prod copy and the D1 verdicts.
+  - **Before:** 284 of the 586 eligible offers scored 50–54 (IQR 13). « Responsable / agent d'exploitation » (logistics, hospitality) were the most frequent titles, all at 50. They came in through the `exploitation` prefix in `target_title_keywords`.
+  - **`scoring/title.py` + `title_relevance`** (settings.yaml):
+    - core +20 (DevOps, SRE, cloud, platform, infra, Kubernetes…), and a core term protects the title, unless it also names a `core_overrides` role (commercial, sales, ingénieur d'affaires, business developer, product owner, chef de projet, account manager, recruteur): then it is other −15, never vetoed;
+    - off_domain (trades) → veto at the gate, reason `TITLE` (recruitment, mechanics, hardware, data manager…);
+    - off_domain_sectors (transport, marketing, logistique, hôtel, restauration…) → veto only without a core or near term;
+    - near +10 (systems / network, IT operations, IT production);
+    - other −15.
+    - It replaces `title_bonus` when `core` is set.
+  - **`normalization/sections.py`:** a preferred skill asked for under « Profil / Compétences… » counts ×1.5 (`scoring.profile_section_multiplier`), rounded half up.
+  - **Thresholds:** `strong_threshold` 70 → 80 and `digest.min_score` 60 → 55. The Tri queue (`triage.js triageQueue`) starts at `digest.min_score`.
+  - **The page:** `score.js` and `EXPLAIN_FR` read the new lines (« titre : métier visé +20 », « kubernetes (demandée au profil) »).
+  - **Check of 40 random exclusions + the 52 that cite ≥ 3 profile skills:** two false negatives (Secure Transport, data engineer / marketing), fixed by the sector tier.
+  - **After the reprocess on the copy:**
+    - IQR 38 instead of 13; 756 offers vetoed for TITLE;
+    - Tri (open, untriaged) 624 → 330 (−47 %): core 221 → 221, near 104 → 100, other 251 → 9, off-domain 48 → 0;
+    - kept vs dropped offers 68.8 vs 49.3, instead of 65.2 vs 56.1; 7/7 kept offers ≥ 55;
+    - the email digest goes up, 209 → about 300 eligible offers over the window, nearly all relevant (`min_score: 60` is the knob).
+  - **`tracking import`** accepts a UTF-8 BOM (PowerShell's `>`).
+  - **`scripts/diagnose_scoring.py`:** aggregates only.
+  - **ADR 0016** (AI rerank, design only): Workers AI Llama 3.3 70B in JSON-schema mode, hash cache, daily cap and Python fallback, anonymous skills summary, a weekly disagreement report that turns into a Claude Code prompt I review. GitHub Models has been retired since 2026-07-30.
 - **Redesign phase 3, step 1b: a Tri card worth reading** (2026-10-22). ADR 0015 §7.
   - **`data.py`:** `description_excerpt` carries the whole description, up to `DESCRIPTION_MAX = 5000`. Line breaks and list items are kept, the markup stripped, the key unchanged.
   - **Weight, on the local DB (154 offers):**
@@ -835,6 +861,9 @@ two Cloudflare secrets, M9 manual GitHub setup, `PROFILE_YAML` re-encoding, `SMT
   - 26 tests green, `ruff check .` clean
 
 ## Next step
+- **M24 in production:** run "Daily run" once with `reprocess_since=2026-09-07` and `reprocess_scope=jobs`.
+  - The reprocess must show `TITLE` in the rejection reasons and `strong` around 90. The Tri should hold about 330 offers to sort.
+  - After about 30 new Tri verdicts, rerun `scripts/diagnose_scoring.py` and `job-match calibrate` on a fresh copy (docs/diagnostics/m24-scoring.md, last section).
 - **M22 in production:** after the M21 Cloudflare setup, trigger "Daily run" once with
   `reprocess_since` = today minus 45 days and `reprocess_scope` = `jobs`, so the visible rows get
   their evidence. Then open a job's details: the panel should show sentences and a confidence

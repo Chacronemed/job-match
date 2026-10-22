@@ -96,6 +96,13 @@ def test_read_export_missing_file_is_a_format_error(tmp_path):
         read_export(tmp_path / "missing.json")
 
 
+def test_read_export_accepts_a_byte_order_mark(tmp_path):
+    """PowerShell's `>` writes UTF-8 with a BOM; the export must still import."""
+    path = tmp_path / "decisions.json"
+    path.write_bytes(b"\xef\xbb\xbf" + b'[{"results": [{"job_key": "ft:1"}], "success": true}]')
+    assert read_export(path) == [{"job_key": "ft:1"}]
+
+
 def test_cli_prints_counts_only_and_never_a_note_or_url(
     tmp_path, monkeypatch, export, rows, capsys, caplog
 ):

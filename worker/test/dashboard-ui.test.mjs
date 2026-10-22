@@ -129,3 +129,25 @@ describe("description layout", () => {
     assert.ok(texts.some((t) => t.includes("<script>alert(2)</script>")));
   });
 });
+
+describe("M24 explanation lines", () => {
+  test("the title family and the profile weighting add up in the ledger", () => {
+    const b = S.breakdown({ score: 84, section: "strong", explanations: [
+      "Profile section: kubernetes (x1.5)", "Matched preferred: kubernetes (+6)",
+      "Matched preferred: docker (+3)", "Missed preferred: aws", "Matched negative: sap (-5)",
+      "Title relevance: core (+20)",
+    ] });
+    assert.equal(b.start, 60);
+    assert.deepEqual(b.lines.map((l) => [l.kind, l.label, l.value]), [
+      ["up", "kubernetes (demandée au profil)", 6], ["up", "docker", 3], ["down", "sap", -5],
+      ["up", "titre\u00a0: métier visé", 20],
+    ]);
+  });
+
+  test("a penalty is a down line and a zero-point family adds no line", () => {
+    const other = S.breakdown({ score: 35, explanations: ["Title relevance: other (-15)"] });
+    assert.deepEqual(other.lines, [{ kind: "down", label: "titre\u00a0: hors des métiers visés", value: -15 }]);
+    assert.equal(other.start, 50);
+    assert.deepEqual(S.breakdown({ score: 50, explanations: ["Title relevance: near (+0)"] }).lines, []);
+  });
+});

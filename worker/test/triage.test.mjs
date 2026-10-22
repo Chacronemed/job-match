@@ -41,6 +41,13 @@ describe("queue", () => {
     assert.deepEqual(q.map((i) => i.isNew), [true, true, false, false]);
   });
 
+  test("below the digest threshold an offer stays out of the queue; an unscored one stays in", () => {
+    const scored = [job("ft:hi", 70, "2026-10-21T07:10:00+00:00"), job("ft:lo", 40, "2026-10-21T07:10:00+00:00"),
+      job("ft:none", null, "2026-10-21T07:10:00+00:00"), job("ft:edge", 55, "2026-10-21T07:10:00+00:00")];
+    assert.deepEqual(X.triageQueue(scored, {}, 0, 55).map((i) => i.row.key).sort(), ["ft:edge", "ft:hi", "ft:none"]);
+    assert.equal(X.triageQueue(scored, {}, 0).length, 4);  // no threshold: everything, as before
+  });
+
   test("a group is one card and leaves the queue once any posting is triaged", () => {
     const T = require("../../src/job_match/dashboard/assets/tracking.js");
     const grouped = T.groupJobs([

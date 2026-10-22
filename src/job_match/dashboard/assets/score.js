@@ -8,23 +8,37 @@
   var LINE = [
     [/^Matched preferred: (.+) \((\+?-?\d+)\)$/, "up"],
     [/^Matched negative: (.+) \((-?\d+)\)$/, "down"],
-    [/^Title keyword match: (.+) \((\+?\d+)\)$/, "title"]
+    [/^Title keyword match: (.+) \((\+?\d+)\)$/, "title"],
+    [/^Title relevance: (core|near|other) \(([+-]?\d+)\)$/, "family"]
   ];
+  /* M24: what the title says the job is (scoring/title.py). */
+  var FAMILY = { core: "titre : métier visé", near: "titre : métier proche", other: "titre : hors des métiers visés" };
+  var PROFILE = /^Profile section: (.+) \(x[\d.]+\)$/;
   var STRETCH = /^stretch: requires (\S+)y, you have (\S+)$/;
 
   /* {start, lines:[{kind, label, value}], total, capped} or null without a numeric score. */
   function breakdown(job) {
     if (!job || typeof job.score !== "number") return null;
     var lines = [];
+    var inProfile = {};
+    (job.explanations || []).forEach(function (text) {
+      var p = PROFILE.exec(text);
+      if (p) inProfile[p[1]] = true;
+    });
     (job.explanations || []).forEach(function (text) {
       for (var i = 0; i < LINE.length; i++) {
         var m = LINE[i][0].exec(text);
         if (!m) continue;
-        var kind = LINE[i][1];
+        var kind = LINE[i][1], value = Number(m[2]);
+        if (kind === "family") {
+          if (value) lines.push({ kind: value > 0 ? "up" : "down", label: FAMILY[m[1]], value: value });
+          return;
+        }
         lines.push({
           kind: kind === "title" ? "up" : kind,
-          label: kind === "title" ? "titre « " + m[1] + " »" : m[1],
-          value: Number(m[2])
+          label: kind === "title" ? "titre « " + m[1] + " »"
+            : m[1] + (kind === "up" && inProfile[m[1]] ? " (demandée au profil)" : ""),
+          value: value
         });
         return;
       }
