@@ -145,6 +145,7 @@ Under `prefers-reduced-motion: reduce`, everything above is off. The CSS duratio
 | Tri: `Z` | Undo the last decision |
 | Tri: `1`–`4` | Reason for the drop (off topic, too senior, missing skill, location) |
 | Tri: `↵` | Open the card's record |
+| Tri: `↑` `↓`, `Page ↑` `Page ↓`, `Space` | Scroll the card |
 
 Every hint is a `kbd` chip, `aria-hidden`, and the control carries `aria-keyshortcuts`. The hints are hidden on coarse pointers.
 
@@ -152,19 +153,19 @@ Every hint is a `kbd` chip, `aria-hidden`, and the control carries `aria-keyshor
 
 **View head (48 px).** It holds the `h1` title, its count in ink-3, then the view's controls on the right. It is sticky.
 
-**Tri card.** It sits on `--raised` with a 12 px radius and a 20 px padding (16 px on phones), and stacks over the next card. From top to bottom it shows:
-- the company in ink-2, then the badges (Nouveau, À tenter, N départements);
-- the title, a button that opens the record;
-- the properties, as icon + text (place, contract, years, age);
-- the « Relevé du score »;
-- the skills not in the profile (pills);
-- the preferred skills missing from the offer, with "sans effet sur le score";
-- the excerpt, clamped to 3 lines with "Lire la suite";
-- "Voir l’offre".
+**Tri card.** It sits on `--raised` with a 12 px radius. It is as tall as its content, up to the space above the bar, and its content scrolls inside it (`.tcard-scroll`, 20 px padding, 16 px on phones). The bar never moves. The card behind takes the same box and peeks out 10 px below, its text hidden. From top to bottom:
+1. the badges (Nouveau, À tenter, N départements);
+2. the **facts** (`dl`), label above value, two columns: Poste (the title across both, a button that opens the record), Entreprise, Expérience demandée, Lieu, Contrat, Salaire, Publiée (« Hier », « Il y a 3 j », the full date in the tooltip). Salaire appears only when the description has an explicit `Salaire :` / `Rémunération :` line, shown word for word; the data has no salary field;
+3. the « Relevé du score », collapsible;
+4. the **description**, whole (`description.js`):
+   - the usual sections when the text names them (Missions, Le poste, Profil, Compétences, Avantages, Entreprise, Processus de recrutement), as 13 px semibold headings;
+   - bullet lines become lists;
+   - the rest stays paragraphs, with their line breaks (`white-space: pre-line`, line height 1.6);
+5. « Voir l’offre ».
 
-The card scrolls inside itself when it is long. While dragging, the stamps "Garder" (green, left) and "Écarter" (red, right) appear.
+While dragging, the stamps "Garder" (green, left) and "Écarter" (red, right) appear. ↑ ↓, Page ↑ ↓ and Space scroll the card; ← → decide.
 
-**Tri bar.** It is sticky at the bottom: Écarter, the undo icon button and Garder (primary). After a drop, the reason step sits **above** the buttons and never replaces them. It names the offer (« Pourquoi écarter « … » ? ») and offers four chips (1–4) and "Passer". The next decision closes it without a reason. On phones the chips stay on one row that scrolls sideways.
+**Tri bar.** It is fixed at the bottom: Écarter, the undo icon button and Garder (primary). After a drop, the reason step sits **above** the buttons and never replaces them. It names the offer that just left (« Dernière offre écartée : … »), so it can't be read as being about the card on screen, and offers four chips (1–4) and "Passer". The next decision closes it without a reason. On phones the chips stay on one row that scrolls sideways.
 
 **Progress.** The batch counter is prominent (`3 / 20`), and "lot 1 sur 3, 57 restantes" secondary. A 96 px bar uses `scaleX`, with `aria-valuetext`.
 
@@ -177,7 +178,17 @@ The card scrolls inside itself when it is long. While dragging, the stamps "Gard
 
 A capped score (0 or 100) has no start line, because the sum before the cap is not in the data.
 
-**Record panel (Attio).** A bar holds the view name, "Voir l’offre" (icon) and Fermer (`Échap`). Below it come the title (20 px, focused on open), company and place, then a property list: icon + label in ink-3, value in ink-2, 32 px rows. The sections follow, in order: excerpt, ledger, « Pourquoi cette offre ? » (open), postings for a group, tracking (status, dates, CV, note, verdicts).
+On the Tri card it is **collapsible, closed by default**:
+- **Closed:** one summary button reads score, band, sentence (`64 · Éligible · Il manque 11 points pour forte.`).
+- **Open:** the lines, then the counters:
+  - « N compétences de ton profil absentes de l’offre » (sans effet sur le score), which expands to the list;
+  - « Dans l’offre, pas dans ton profil : … ».
+- **State:** the open/closed choice is shared by every card and kept in `localStorage` (`jm.ledger.open.v1`, in try/catch, with a memory fallback).
+- **Motion:** the cascade runs when it is open; the summary score counts up when it is closed.
+
+The record panel shows it open, with no toggle.
+
+**Record panel (Attio).** A bar holds the view name, "Voir l’offre" (icon) and Fermer (`Échap`). Below it come the title (20 px, focused on open), company and place, then a property list: icon + label in ink-3, value in ink-2, 32 px rows. The sections follow, in order: « Description de l’offre » (the same layout as the Tri card), ledger, « Pourquoi cette offre ? » (open), postings for a group, tracking (status, dates, CV, note, verdicts).
 
 **Buttons.** All are 32 px (44 px on phones):
 - `.button`: raised, line-2;

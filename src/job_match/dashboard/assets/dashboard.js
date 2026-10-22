@@ -35,6 +35,7 @@
 
   var U = window.JMUI;
   var S = window.JMScore;
+  var D = window.JMDesc;
   var P = window.JMPalette;
   var el = U.el;
   var clear = U.clear;
@@ -1293,22 +1294,26 @@
     if (card) card.focus({ preventScroll: true });
   }
 
+  /* The "Publiée" fact: how long ago, as of the snapshot. */
   function ageText(days) {
-    if (typeof days !== "number") return "Date de publication inconnue";
-    if (days <= 0) return "Publiée aujourd’hui";
-    return days === 1 ? "Publiée hier" : "Publiée il y a " + days + " j";
+    if (typeof days !== "number") return "Date inconnue";
+    if (days <= 0) return "Aujourd’hui";
+    return days === 1 ? "Hier" : "Il y a " + days + "\u00a0j";
   }
 
   /* The ledger animates only when a card arrives (first view, or the one after a decision),
      not when the same card is drawn again. */
   var triArrive = true;
 
-  /* One card (DESIGN.md "Tri card"). Everything from the data goes through textContent. The
-     ledger carries the weights, so the skills are not listed a second time (AUDIT P2-7); the
-     title opens this exact offer's record (P1-9). */
+  /* One card (DESIGN.md "Tri card"): the facts, the collapsible ledger, then the whole
+     description laid out by description.js; the card's own content scrolls, the buttons stay.
+     Everything from the data goes through textContent. The ledger carries the weights, so the
+     skills are not listed a second time (AUDIT P2-7); the title opens this exact offer's
+     record (P1-9). */
   function triCard(item, isNext) {
     var j = item.row;
     var w = j.why || { skills: [], unlisted: [], lowered: [] };
+    var desc = D.parse(j.description_excerpt || "");
     var card = el("article", {
       class: "tcard" + (isNext ? " is-next" : ""),
       tabindex: isNext ? null : "-1",
@@ -1319,47 +1324,50 @@
       card.appendChild(el("span", { class: "stamp stamp-keep", "aria-hidden": "true", icon: "check" }, "Garder"));
       card.appendChild(el("span", { class: "stamp stamp-drop", "aria-hidden": "true", icon: "x" }, "Écarter"));
     }
-    var top = el("div", { class: "tcard-top" }, [el("p", { class: "tcard-company", text: j.company || "Entreprise non communiquée" }), el("span", { class: "fill" })]);
-    if (item.isNew) top.appendChild(el("span", { class: "badge badge-new", text: "Nouveau" }));
-    if (j.section === "stretch") top.appendChild(el("span", { class: "badge badge-stretch", text: "À tenter" }));
-    if (j.postings) top.appendChild(el("span", { class: "badge", text: j.departments.length + " départements" }));
-    card.appendChild(top);
-    var open = el("button", { type: "button", title: "Ouvrir la fiche", text: j.title || "—", tabindex: isNext ? "-1" : null });
+    var body = el("div", { class: "tcard-scroll" });
+    card.appendChild(body);
+
+    var badges = [];
+    if (item.isNew) badges.push(el("span", { class: "badge badge-new", text: "Nouveau" }));
+    if (j.section === "stretch") badges.push(el("span", { class: "badge badge-stretch", text: "À tenter" }));
+    if (j.postings) badges.push(el("span", { class: "badge", text: j.departments.length + " départements" }));
+    if (badges.length) body.appendChild(el("div", { class: "tcard-badges" }, badges));
+
+    /* The facts first, in a fixed order, scannable at a glance. Salary only when the text
+       states it on its own line (description.js), word for word. */
+    var open = el("button", { type: "button", class: "tcard-open", title: "Ouvrir la fiche", text: j.title || "—", tabindex: isNext ? "-1" : null });
     open.addEventListener("click", function () { openRecord(j, open); });
-    card.appendChild(el("h2", { class: "tcard-title" }, open));
-    card.appendChild(el("ul", { class: "tcard-props" }, [
-      el("li", { icon: "map-pin" }, j.location || (j.department ? "Département " + j.department : "Lieu non précisé")),
-      el("li", { icon: "briefcase-business" }, j.contract || "Contrat inconnu"),
-      el("li", { icon: "timer" }, yearsText(j.required_years)),
-      el("li", { icon: "clock" }, ageText(j.age_days))
-    ]));
-    card.appendChild(U.ledger(j, thresholds, { animate: !isNext && triArrive }));
-    if ((w.unlisted || []).length) {
-      card.appendChild(el("p", { class: "tcard-unlisted" }, ["Non trouvé dans ton profil :"].concat(
-        w.unlisted.map(function (u) { return el("span", { class: "pill", text: u.name }); }))));
+    function fact(label, value, cls) {
+      return el("div", { class: "fact" + (cls ? " " + cls : "") }, [el("dt", { text: label }), el("dd", null, value)]);
     }
-    if ((j.missing || []).length) {
-      card.appendChild(el("p", { class: "tcard-missing", text: "Souhaitées, absentes de l’offre (sans effet sur le score) : " + j.missing.join(", ") }));
+    var facts = [
+      fact("Poste", el("h2", { class: "tcard-title" }, open), "fact-title"),
+      fact("Entreprise", j.company || "Non communiquée"),
+      fact("Expérience demandée", yearsText(j.required_years)),
+      fact("Lieu", j.location || (j.department ? "Département " + j.department : "Non précisé")),
+      fact("Contrat", j.contract || "Inconnu")
+    ];
+    if (desc.salary) facts.push(fact("Salaire", desc.salary));
+    var posted = fact("Publiée", ageText(j.age_days));
+    if (j.posted_at) posted.title = fmtDate(j.posted_at);
+    facts.push(posted);
+    body.appendChild(el("dl", { class: "tcard-facts" }, facts));
+
+    body.appendChild(U.ledger(j, thresholds, {
+      collapsible: true, animate: !isNext && triArrive,
+      missing: j.missing || [], unlisted: (w.unlisted || []).map(function (u) { return u.name; })
+    }));
+
+    if (desc.sections.length) {
+      body.appendChild(el("div", { class: "tcard-desc", "aria-label": "Description de l’offre", role: "group" }, D.render(desc, el)));
+    } else {
+      body.appendChild(el("p", { class: "tcard-empty", text: "La source n’a pas fourni de description." }));
     }
-    if (isNext) return card;
-    if (j.description_excerpt) {
-      var excerpt = el("p", { class: "tcard-excerpt is-clamped", id: "tri-excerpt", text: j.description_excerpt });
-      var more = el("button", { type: "button", class: "link-btn", "aria-expanded": "false", "aria-controls": "tri-excerpt", text: "Lire la suite" });
-      more.addEventListener("click", function () {
-        var opened = excerpt.classList.toggle("is-clamped") === false;
-        more.setAttribute("aria-expanded", opened ? "true" : "false");
-        more.textContent = opened ? "Réduire" : "Lire la suite";
-      });
-      card.appendChild(excerpt);
-      card.appendChild(more);
+    if (!isNext && j.url && HTTP.test(j.url)) {
+      body.appendChild(el("p", { class: "tcard-foot" }, el("a", { class: "link-btn tri-link", href: j.url, target: "_blank", rel: "noopener noreferrer",
+        "aria-label": "Voir l’offre « " + (j.title || "offre") + " » sur le site source", icon: "external-link" }, "Voir l’offre")));
     }
-    var foot = el("div", { class: "tcard-foot" });
-    if (j.url && HTTP.test(j.url)) {
-      foot.appendChild(el("a", { class: "link-btn tri-link", href: j.url, target: "_blank", rel: "noopener noreferrer",
-        "aria-label": "Voir l’offre « " + (j.title || "offre") + " » sur le site source", icon: "external-link" }, "Voir l’offre"));
-    }
-    card.appendChild(foot);
-    if (canTriage()) {
+    if (!isNext && canTriage()) {
       var keepS = card.querySelector(".stamp-keep"), dropS = card.querySelector(".stamp-drop");
       U.draggable(card, {
         canStart: function () { return !flying; },
@@ -1396,7 +1404,7 @@
   function showReasons(item) {
     var bar = byId("tri-reasons-bar");
     var list = byId("tri-reason-chips");
-    var question = "Pourquoi écarter « " + (item.row.title || "cette offre") + " » ?";
+    var question = "Dernière offre écartée : " + (item.row.title || "offre sans titre");
     byId("tri-reasons-title").textContent = question;
     clear(list);
     X.REASONS.forEach(function (label, i) {
@@ -1409,7 +1417,7 @@
     list.appendChild(skip);
     reasonFor = item;
     bar.hidden = false;
-    announce(question + " Touches 1 à 4, ou la décision suivante pour passer.");
+    announce(question + ". Pourquoi\u00a0? Touches 1 à 4, ou la décision suivante pour passer.");
     clearTimeout(reasonTimer);
     reasonTimer = setTimeout(hideReasons, 8000);
   }
@@ -1559,9 +1567,13 @@
       }
       return;
     }
-    if (tri.items[tri.pos + 1]) stage.appendChild(triCard(tri.items[tri.pos + 1], true));
+    /* The front card sizes the pile (up to the stage's height); the back card fills the same
+       box from behind, so it peeks out below whatever the two descriptions' lengths. */
+    var pile = el("div", { class: "tri-pile" });
+    if (tri.items[tri.pos + 1]) pile.appendChild(triCard(tri.items[tri.pos + 1], true));
     var top = triCard(tri.items[tri.pos], false);
-    stage.appendChild(top);
+    pile.appendChild(top);
+    stage.appendChild(pile);
     triArrive = false;
     if (opts && opts.rise) {
       U.rise(top);
@@ -1579,6 +1591,14 @@
     if (record.contains(document.activeElement) || (recordOpen && !wideScreen())) return false;
     if (reasonFor && /^[1-4]$/.test(ev.key)) { giveReason(X.REASONS[Number(ev.key) - 1]); return true; }
     if (ev.key === "Escape" && reasonFor) { hideReasons(); return true; }
+    /* The card scrolls inside itself: ↑ ↓, Page ↑ ↓ and Space move its text (← → decide). */
+    var sc = byId("tri-stage").querySelector(".tcard:not(.is-next) .tcard-scroll");
+    var step = { ArrowDown: 64, ArrowUp: -64, PageDown: 0.9, PageUp: -0.9, " ": 0.9 }[ev.key];
+    if (sc && step !== undefined && !(ev.key === " " && ev.target && ev.target.closest && ev.target.closest("button, a"))) {
+      var by = Math.abs(step) < 1 ? step * sc.clientHeight : step;
+      sc.scrollBy({ top: ev.shiftKey && ev.key === " " ? -by : by, behavior: U.reduced() ? "auto" : "smooth" });
+      return true;
+    }
     if (ev.key === "ArrowRight") { commit("right"); return true; }
     if (ev.key === "ArrowLeft") { commit("left"); return true; }
     if (ev.key === "z" || ev.key === "Z") { undoLast(); return true; }
@@ -1623,7 +1643,7 @@
       prop("git-branch", "Source", j.source || "—")
     ]));
     if (j.description_excerpt) {
-      box.appendChild(el("section", { class: "record-sec" }, [el("h3", { text: "Extrait de l’offre" }), el("p", { class: "record-excerpt", text: j.description_excerpt })]));
+      box.appendChild(el("section", { class: "record-sec record-desc" }, [el("h3", { text: "Description de l’offre" })].concat(D.render(D.parse(j.description_excerpt), el))));
     }
     box.appendChild(el("section", { class: "record-sec" }, [U.ledger(j, thresholds, { compact: true })]));
     var form = trackForm(j, "rec");
@@ -1722,7 +1742,7 @@
   var HELP = [
     ["Général", [[[MOD, "K"], "Palette de commandes"], [["?"], "Cette aide"], [["G", "T"], "Aller au Tri"], [["G", "C"], "Aller aux Candidatures"],
       [["G", "O"], "Aller aux Offres"], [["G", "L"], "Aller aux Leads"], [["G", "E"], "Aller aux Exécutions"], [["Échap"], "Fermer la fiche ou la palette"]]],
-    ["Tri", [[["→"], "Garder"], [["←"], "Écarter"], [["Z"], "Annuler la dernière décision"], [["1–4"], "Raison de l’écart"], [["↵"], "Ouvrir la fiche"]]],
+    ["Tri", [[["→"], "Garder"], [["←"], "Écarter"], [["Z"], "Annuler la dernière décision"], [["1–4"], "Raison de l’écart"], [["↵"], "Ouvrir la fiche"], [["↑", "↓"], "Faire défiler la carte"]]],
     ["Fiche", [[["Échap"], "Fermer"], [["Tab"], "Champ suivant"]]]
   ];
 

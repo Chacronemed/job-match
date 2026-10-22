@@ -4,8 +4,9 @@ Everything the page shows comes from this one dict, so this module is the allow-
 leaves the DB: job descriptions, the profile's search keywords (`by_keyword`, `queries`), raw
 payloads and anything personal never appear here. Two exceptions to "no description": the
 "Pourquoi cette offre ?" panel's single sentence per finding, capped at `EVIDENCE_MAX` (ADR
-0013), and the triage card's `description_excerpt`, plain text capped at `EXCERPT_MAX` (ADR
-0014). Numbers are copied, never recomputed from
+0013), and `description_excerpt`, the description as plain text with its line breaks, capped at
+`DESCRIPTION_MAX` (ADR 0014, widened by ADR 0015 so the Tri card shows it whole). Numbers are
+copied, never recomputed from
 today's config: a job's required years are the parser's own number or the gate's own words.
 """
 from __future__ import annotations
@@ -54,8 +55,12 @@ RUN_KEYS: tuple[str, ...] = (
 
 _STRETCH_YEARS_RE = re.compile(r"requires (\d+(?:\.\d+)?)y")
 EVIDENCE_MAX = 240
-EXCERPT_MAX = 600
+# France Travail cuts its descriptions at 5000 characters, so this keeps them whole.
+DESCRIPTION_MAX = 5000
 _TAG_RE = re.compile(r"<[^>]*>")
+# Tags that end a line in the source's markup; <li> starts a list item.
+_BREAK_RE = re.compile(r"<\s*(br|/p|/div|/h[1-6]|/tr|/ul|/ol)\b[^>]*>", re.I)
+_ITEM_RE = re.compile(r"<\s*li\b[^>]*>", re.I)
 # Statuses a job keeps its place in the Candidatures board for, closed offer or not.
 TRACKED_STATUSES: tuple[str, ...] = ("to_apply", "applied", "interview", "rejected")
 
@@ -156,21 +161,29 @@ def why_entry(job: Job) -> dict:
 
 
 def description_excerpt(text: str | None) -> str:
-    """The start of the description as plain text: markup and entities removed, whitespace
-    collapsed, at most `EXCERPT_MAX` characters, cut at a word with "…". The page sets it with
-    textContent; this only keeps tags from showing up as text."""
+    """The description as plain text the page can lay out: markup and entities removed, the
+    line breaks kept (a block tag or a list item starts a new line), spaces collapsed inside a
+    line, at most one blank line between paragraphs, cut at a word with "…" beyond
+    `DESCRIPTION_MAX`. The page splits it into sections and lists itself (description.js) and
+    sets every piece with textContent; this only keeps tags from showing up as text."""
     if not text:
         return ""
-    plain = " ".join(html.unescape(_TAG_RE.sub(" ", text)).split())
+    raw = text.replace("\r\n", "\n").replace("\r", "\n")
+    raw = _ITEM_RE.sub("\n- ", _BREAK_RE.sub("\n", raw))
+    plain = html.unescape(_TAG_RE.sub(" ", raw))
     plain = _TAG_RE.sub(" ", plain)  # entities that decoded into tags
-    plain = " ".join(plain.split())
-    if len(plain) <= EXCERPT_MAX:
+    out: list[str] = []
+    for line in (" ".join(part.split()) for part in plain.split("\n")):
+        if line or (out and out[-1]):
+            out.append(line)
+    plain = "\n".join(out).strip()
+    if len(plain) <= DESCRIPTION_MAX:
         return plain
-    cut = plain[: EXCERPT_MAX - 1]
-    space = cut.rfind(" ")
-    if space > EXCERPT_MAX * 0.6:
+    cut = plain[: DESCRIPTION_MAX - 1]
+    space = max(cut.rfind(" "), cut.rfind("\n"))
+    if space > DESCRIPTION_MAX * 0.6:
         cut = cut[:space]
-    return cut.rstrip(" ,;:.") + "…"
+    return cut.rstrip(" ,;:.\n") + "…"
 
 
 def group_key(job: Job) -> str | None:

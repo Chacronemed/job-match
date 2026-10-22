@@ -162,8 +162,8 @@ def test_audit_p1_fixes_are_in_the_page():
     # P1-2: a word search, with an example query.
     assert 'placeholder="ex. orbital kubernetes"' in html
     assert "T.matchesWords(j, searchWords())" in html
-    # P1-3: the reason step names the offer.
-    assert 'id="tri-reasons-title"' in html and "Pourquoi écarter « " in html
+    # P1-3: the reason step names the offer, as the one that just left (not the card shown).
+    assert 'id="tri-reasons-title"' in html and '"Dernière offre écartée' in html
     # P2-16: the KPI cards are not a live region (the row count is).
     kpis = re.search(r'<div class="kpis"[^>]*>', html).group(0)
     assert "aria-live" not in kpis
@@ -173,6 +173,11 @@ def test_audit_p1_fixes_are_in_the_page():
 def test_tracking_script_is_inlined_before_the_dashboard_script():
     html = render_index(_EMPTY)
     assert html.index("root.JMTracking = api") < html.index("var T = window.JMTracking;")
+    # every shared module is defined before the page reads it
+    for module, reader in (("root.JMDesc = api", "var D = window.JMDesc;"),
+                           ("root.JMScore = api", "var S = window.JMScore;"),
+                           ("root.JMUI = api", "var U = window.JMUI;")):
+        assert html.index(module) < html.index(reader), module
 
 
 def test_the_interface_is_in_french():

@@ -157,20 +157,118 @@
 
   /* ---------- « Relevé du score » ---------- */
 
+  /* Whether collapsible ledgers start open: one choice for every card, kept across visits.
+     Storage can be missing or full (private window): the choice then lasts for the page. */
+  var LEDGER_KEY = "jm.ledger.open.v1";
+  var ledgerOpen = null;
+  function readLedgerOpen() {
+    if (ledgerOpen === null) {
+      try { ledgerOpen = root.localStorage.getItem(LEDGER_KEY) === "1"; } catch (e) { ledgerOpen = false; }
+    }
+    return ledgerOpen;
+  }
+  function writeLedgerOpen(on) {
+    ledgerOpen = on;
+    try { root.localStorage.setItem(LEDGER_KEY, on ? "1" : "0"); } catch (e) { /* kept in memory */ }
+  }
+  var ledgerSeq = 0;
+
+  function skillCount(n) { return n + (n > 1 ? " compétences" : " compétence"); }
+
+  /* The counters under the lines (opts.missing: preferred skills the offer does not cite, no
+     effect on the score; opts.unlisted: skills the offer cites that the profile lacks). */
+  function ledgerExtras(opts) {
+    var out = [];
+    var missing = opts.missing || [];
+    if (missing.length) {
+      var id = "ledger-miss-" + (++ledgerSeq);
+      var list = el("p", { class: "ledger-pills", id: id, hidden: true }, missing.map(function (m) { return el("span", { class: "pill", text: m }); }));
+      var btn = el("button", { type: "button", class: "ledger-count", "aria-expanded": "false", "aria-controls": id }, [
+        chevron(), skillCount(missing.length) + " de ton profil " + (missing.length > 1 ? "absentes" : "absente") + " de l’offre"
+      ]);
+      btn.appendChild(el("span", { class: "ledger-count-note", text: "sans effet sur le score" }));
+      btn.addEventListener("click", function () {
+        var show = list.hidden;
+        list.hidden = !show;
+        btn.setAttribute("aria-expanded", show ? "true" : "false");
+      });
+      out.push(el("div", { class: "ledger-extra" }, [btn, list]));
+    }
+    var unlisted = opts.unlisted || [];
+    if (unlisted.length) {
+      out.push(el("p", { class: "ledger-unlisted" }, ["Dans l’offre, pas dans ton profil :"].concat(
+        unlisted.map(function (u) { return el("span", { class: "pill", text: u }); }))));
+    }
+    return out;
+  }
+  function chevron() { return el("span", { class: "chev", "aria-hidden": "true" }, I.icon("chevron-right")); }
+
+  function countUp(node, from, to, dur) {
+    var t0 = 0;
+    node.textContent = String(from);
+    var step = function (now) {
+      if (!t0) t0 = now;
+      var p = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - p, 3);
+      node.textContent = String(Math.round(from + (to - from) * e));
+      if (p < 1) root.requestAnimationFrame(step);
+    };
+    root.requestAnimationFrame(step);
+  }
+
   /* opts.animate: the lines come in one after the other and the total counts up from the
-     start, the one orchestrated moment of the page. */
+     start, the one orchestrated moment of the page (closed: the summary's score counts up).
+     opts.collapsible: one summary line (score, band, gap), closed by default, the choice kept. */
   function ledger(job, thresholds, opts) {
     opts = opts || {};
     var b = S.breakdown(job), bd = S.band(job);
     var t = thresholds || {};
-    var rootEl = el("section", { class: "ledger" + (opts.compact ? " compact" : ""), "aria-label": "Relevé du score" });
-    rootEl.appendChild(el("div", { class: "ledger-head" }, [
-      el("h3", { class: "ledger-title", text: "Relevé du score" }),
-      el("span", { class: "band band-" + bd.key }, [el("span", { class: "dot", "aria-hidden": "true" }), bd.label])
-    ]));
-    if (!b) {
-      rootEl.appendChild(el("p", { class: "ledger-gap", text: "Score inconnu pour cette offre." }));
+    var rootEl = el("section", { class: "ledger" + (opts.compact ? " compact" : "") + (opts.collapsible ? " is-collapsible" : ""), "aria-label": "Relevé du score" });
+    var bandEl = el("span", { class: "band band-" + bd.key }, [el("span", { class: "dot", "aria-hidden": "true" }), bd.label]);
+    if (opts.collapsible) {
+      var bodyId = "ledger-body-" + (++ledgerSeq);
+      var sumN = el("span", { class: "ledger-sum-n num", text: b ? String(b.total) : "—" });
+      var sum = el("button", { type: "button", class: "ledger-sum", "aria-controls": bodyId }, [
+        el("span", { class: "sr-only", text: "Relevé du score : " }),
+        sumN, bandEl, el("span", { class: "ledger-sum-gap", text: S.gapSentence(job, t) }), chevron()
+      ]);
+      var body = el("div", { class: "ledger-body", id: bodyId });
+      var setOpen = function (on, animate) {
+        rootEl.classList.toggle("is-open", on);
+        sum.setAttribute("aria-expanded", on ? "true" : "false");
+        body.hidden = !on;
+        if (on && animate && !reduced()) body.animate([{ opacity: 0, transform: "translateY(-4px)" }, { opacity: 1, transform: "none" }], { duration: 160, easing: EASE });
+      };
+      sum.addEventListener("click", function () { var on = body.hidden; writeLedgerOpen(on); setOpen(on, true); });
+      rootEl.appendChild(sum);
+      rootEl.appendChild(body);
+      var inner = ledgerBody(job, b, bd, t, opts, null);
+      inner.forEach(function (n) { body.appendChild(n); });
+      var open = readLedgerOpen();
+      setOpen(open, false);
+      if (opts.animate && !reduced() && b && b.start !== null) {
+        if (open) { rootEl.classList.add("enter"); countUp(rootEl.querySelector(".ledger-total-n"), b.start, b.total, 120 + (b.lines.length + 1) * 45); }
+        else countUp(sumN, b.start, b.total, 360);
+      }
       return rootEl;
+    }
+    rootEl.appendChild(el("div", { class: "ledger-head" }, [el("h3", { class: "ledger-title", text: "Relevé du score" }), bandEl]));
+    ledgerBody(job, b, bd, t, opts, rootEl);
+    if (opts.animate && !reduced() && b && b.start !== null) {
+      rootEl.classList.add("enter");
+      countUp(rootEl.querySelector(".ledger-total-n"), b.start, b.total, 120 + (b.lines.length + 1) * 45);
+    }
+    return rootEl;
+  }
+
+  /* The lines, the total, the scale, the gap sentence and the counters; appended to `into`
+     when given, returned as nodes otherwise. */
+  function ledgerBody(job, b, bd, t, opts, into) {
+    var nodes = [];
+    var push = function (n) { if (into) into.appendChild(n); else nodes.push(n); };
+    if (!b) {
+      push(el("p", { class: "ledger-gap", text: "Score inconnu pour cette offre." }));
+      ledgerExtras(opts).forEach(push);
+      return nodes;
     }
     var list = el("dl", { class: "ledger-lines" });
     var rows = [];
@@ -182,9 +280,9 @@
       list.appendChild(line);
     });
     if (!rows.length) list.appendChild(el("div", { class: "ledger-line start" }, [el("dt", { text: "Aucun facteur enregistré" }), el("dd", { text: "" })]));
-    rootEl.appendChild(list);
+    push(list);
     var total = el("span", { class: "ledger-total-n num", text: String(b.total) });
-    rootEl.appendChild(el("div", { class: "ledger-total" }, [el("span", { text: b.capped ? "Total (plafonné)" : "Total" }), total]));
+    push(el("div", { class: "ledger-total" }, [el("span", { text: b.capped ? "Total (plafonné)" : "Total" }), total]));
 
     if (typeof t.strong === "number" && typeof t.min_score === "number") {
       var scale = el("div", { class: "scale", role: "img",
@@ -197,23 +295,12 @@
         tick.style.left = p[0] + "%";
         scale.appendChild(tick);
       });
-      rootEl.appendChild(scale);
+      push(scale);
     }
-    rootEl.appendChild(el("p", { class: "ledger-gap", text: S.gapSentence(job, t) }));
-
-    if (opts.animate && !reduced() && b.start !== null) {
-      rootEl.classList.add("enter");
-      var from = b.start, to = b.total, dur = 120 + rows.length * 45, t0 = 0;
-      total.textContent = String(from);
-      var step = function (now) {
-        if (!t0) t0 = now;
-        var p = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - p, 3);
-        total.textContent = String(Math.round(from + (to - from) * e));
-        if (p < 1) root.requestAnimationFrame(step);
-      };
-      root.requestAnimationFrame(step);
-    }
-    return rootEl;
+    /* Collapsible: the summary line already says the gap. */
+    if (!opts.collapsible) push(el("p", { class: "ledger-gap", text: S.gapSentence(job, t) }));
+    ledgerExtras(opts).forEach(push);
+    return nodes;
   }
 
   /* Placeholder rows while the tracking loads. */

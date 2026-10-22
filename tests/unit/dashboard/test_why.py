@@ -81,16 +81,22 @@ def test_group_key_joins_employer_and_normalized_title():
     assert group_key(replace(a, company="Other")) != group_key(a)
 
 
-def test_description_excerpt_is_plain_text_and_capped():
-    from job_match.dashboard.data import EXCERPT_MAX, description_excerpt
+def test_description_is_plain_text_with_its_lines_and_capped():
+    from job_match.dashboard.data import DESCRIPTION_MAX, description_excerpt
 
     raw = ("<p>Rejoignez   notre <b>équipe</b> DevOps.</p><script>alert(1)</script>"
-           "<img src=x onerror=alert(2)> &lt;b&gt;gras&lt;/b&gt; &amp; Kubernetes\n\n"
-           + "mot " * 300)
+           "<img src=x onerror=alert(2)> &lt;b&gt;gras&lt;/b&gt; &amp; Kubernetes\r\n\n\n\n"
+           "Missions :<ul><li>Clusters</li><li>CI/CD</li></ul>")
     out = description_excerpt(raw)
-    assert len(out) <= EXCERPT_MAX and out.endswith("…")
     assert "<" not in out and ">" not in out
-    assert out.startswith("Rejoignez notre équipe DevOps. alert(1) gras & Kubernetes mot")
+    # block tags and list items keep their lines; runs of blank lines become one
+    assert out == ("Rejoignez notre équipe DevOps.\nalert(1) gras & Kubernetes\n\n"
+                   "Missions :\n- Clusters\n- CI/CD")
+    # the full text fits (France Travail stops at 5000); beyond, a cut at a word
+    whole = "mot " * 1200
+    assert description_excerpt(whole) == whole.strip()
+    long = description_excerpt("mot " * 1300)
+    assert len(long) <= DESCRIPTION_MAX and long.endswith("…")
     assert description_excerpt("Court.") == "Court."
     assert description_excerpt(None) == ""
 
@@ -98,7 +104,8 @@ def test_description_excerpt_is_plain_text_and_capped():
 def test_the_excerpt_reaches_the_page_escaped():
     from job_match.dashboard.render import render_index
 
-    job = {"id": 1, "key": "ft:1", "description_excerpt": "</script><img src=x onerror=alert(1)>"}
+    job = {"id": 1, "key": "ft:1",
+           "description_excerpt": "Missions :\n- </script><img src=x onerror=alert(1)>\n<!-- x -->"}
     html = render_index({"generated_at": "", "thresholds": {}, "jobs": [job], "tracked": [],
                          "leads": [], "runs": []})
     block = html.split('<script type="application/json" id="data">')[1].split("</script>")[0]
@@ -109,7 +116,8 @@ def test_scripts_never_parse_html():
     from pathlib import Path
 
     assets = Path(__file__).resolve().parents[3] / "src" / "job_match" / "dashboard" / "assets"
-    for name in ("dashboard.js", "tracking.js", "triage.js"):
+    for name in ("dashboard.js", "tracking.js", "triage.js", "lucide.js", "score.js",
+                 "description.js", "ui.js", "palette.js"):
         source = (assets / name).read_text(encoding="utf-8")
         for sink in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write"):
             assert sink not in source, (name, sink)

@@ -8,6 +8,7 @@ import { describe, test } from "node:test";
 const require = createRequire(import.meta.url);
 const S = require("../../src/job_match/dashboard/assets/score.js");
 const Pal = require("../../src/job_match/dashboard/assets/palette.js");
+const D = require("../../src/job_match/dashboard/assets/description.js");
 
 const T = { strong: 75, min_score: 50 };
 const job = (score, explanations, extra = {}) => ({ score, explanations, section: "eligible", ...extra });
@@ -79,5 +80,52 @@ describe("palette match", () => {
     assert.deepEqual(Pal.match("ingenieur", "Ingénieur DevOps"), [[0, 9]]);
     assert.equal(Pal.match("orbital lyon", "Orbital Data Nantes"), null);
     assert.deepEqual(Pal.match("  ", "anything"), []);
+  });
+});
+
+describe("description layout", () => {
+  const text = [
+    "Quartz Santé recrute un ingénieur DevOps.", "Poste en CDI.", "",
+    "Vos missions :", "- Gérer les clusters", "- Écrire du Terraform", "",
+    "Profil recherché", "Bac+5, 2 ans.", "• Kubernetes", "• Docker",
+    "Salaire : 42 - 48 k€ brut annuel",
+    "Avantages : tickets restaurant, télétravail",
+  ].join("\n");
+
+  test("finds the usual sections, their lists and their paragraphs", () => {
+    const p = D.parse(text);
+    assert.deepEqual(p.sections.map((s) => s.title), [null, "Vos missions", "Profil recherché", "Avantages"]);
+    assert.deepEqual(p.sections[0].blocks, [{ p: "Quartz Santé recrute un ingénieur DevOps.\nPoste en CDI." }]);
+    assert.deepEqual(p.sections[1].blocks, [{ list: ["Gérer les clusters", "Écrire du Terraform"] }]);
+    assert.deepEqual(p.sections[2].blocks[1], { list: ["Kubernetes", "Docker"] });
+    assert.deepEqual(p.sections[3].blocks, [{ p: "tickets restaurant, télétravail" }]);
+  });
+
+  test("keeps plain paragraphs when no section is named", () => {
+    const p = D.parse("Une équipe de huit.\nAstreinte une semaine sur six.\n\nHybride, deux jours sur site.");
+    assert.equal(p.sections.length, 1);
+    assert.equal(p.sections[0].title, null);
+    assert.equal(p.sections[0].blocks.length, 2);
+    assert.equal(D.parse("").sections.length, 0);
+  });
+
+  test("reads a salary only from an explicit line, word for word", () => {
+    assert.equal(D.parse(text).salary, "42 - 48 k€ brut annuel");
+    assert.equal(D.parse("Rémunération annuelle : selon profil").salary, "selon profil");
+    assert.equal(D.parse("Un salaire attractif et des primes.").salary, null);
+  });
+
+  test("hostile text stays text: only section/h3/p/ul/li, strings never parsed", () => {
+    const hostile = "Missions :\n- <img src=x onerror=alert(1)>\n<script>alert(2)</script>\n</section><h1>x";
+    const calls = [];
+    const el = (tag, attrs, kids) => { calls.push({ tag, attrs: Object.keys(attrs || {}) }); return { tag, text: attrs && attrs.text, kids }; };
+    const out = D.render(D.parse(hostile), el);
+    assert.ok(calls.every((c) => ["section", "h3", "p", "ul", "li"].includes(c.tag)));
+    assert.ok(calls.every((c) => c.attrs.every((a) => a === "class" || a === "text")));
+    const texts = [];
+    const walk = (n) => { if (n.text) texts.push(n.text); (n.kids || []).forEach(walk); };
+    out.forEach(walk);
+    assert.ok(texts.includes("<img src=x onerror=alert(1)>"));
+    assert.ok(texts.some((t) => t.includes("<script>alert(2)</script>")));
   });
 });
