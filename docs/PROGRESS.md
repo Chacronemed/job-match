@@ -22,6 +22,11 @@ production rows. Still pending: the M21 Cloudflare setup, the data-repo cleanup 
 two Cloudflare secrets, M9 manual GitHub setup, `PROFILE_YAML` re-encoding, `SMTP_PORT` variable.
 
 ## Done
+- **Tri: counters and record panel on demand** (2026-10-24). DESIGN.md "Counters".
+  - **Header:** `N / total restantes · lot X de Y` (`triage.js triProgress`). Both numbers shrink with each decision, and the bar fills with the batch.
+  - **Sidebar:** the five counters come from `triage.js sidebarCounts`. `triage.test.mjs` checks the invariants: Tri ⊂ Offres, Tri + triaged ≥ digest = Offres ≥ digest, and one decision takes one offer out of the Tri.
+  - **Record panel in the Tri:** it opens only on a click on the title or `↵`, a decision closes it, and there is no `fiche=` in the hash. It leaves out the description the card already shows.
+  - Checked at 1440 and 390 with `/api/` mocked: 20/84 → 19/83 → 18/82, sidebar Tri 84 → 82, Candidatures +1 after Garder.
 - **M24: scoring that tells offers apart** (2026-10-22). Diagnostic: docs/diagnostics/m24-scoring.md, on a prod copy and the D1 verdicts.
   - **Before:** 284 of the 586 eligible offers scored 50–54 (IQR 13). « Responsable / agent d'exploitation » (logistics, hospitality) were the most frequent titles, all at 50. They came in through the `exploitation` prefix in `target_title_keywords`.
   - **`scoring/title.py` + `title_relevance`** (settings.yaml):

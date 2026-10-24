@@ -227,3 +227,70 @@ describe("pending actions survive a reload", () => {
     assert.equal(X.retryQueue(offline, null, X.localStore("k", store)).size(), X.PENDING_MAX);
   });
 });
+
+describe("Tri header (triProgress)", () => {
+  test("N / total both shrink with each decision; the batch is X of Y", () => {
+    const a = X.triProgress(0, 45, -1);
+    assert.deepEqual([a.leftInBatch, a.left, a.batch, a.batches, a.decided, a.size], [20, 45, 1, 3, 0, 20]);
+    const b = X.triProgress(7, 45, -1);
+    assert.deepEqual([b.leftInBatch, b.left, b.batch, b.decided], [13, 38, 1, 7]);
+    for (let pos = 0; pos < 19; pos++) {
+      const now = X.triProgress(pos, 45, -1), next = X.triProgress(pos + 1, 45, -1);
+      assert.equal(next.leftInBatch, now.leftInBatch - 1);
+      assert.equal(next.left, now.left - 1);
+    }
+  });
+
+  test("an unacknowledged batch end shows the finished batch, full; then the next one", () => {
+    const end = X.triProgress(20, 45, -1);
+    assert.deepEqual([end.atBoundary, end.batch, end.leftInBatch, end.decided, end.size, end.left], [true, 1, 0, 20, 20, 25]);
+    const next = X.triProgress(20, 45, 20);
+    assert.deepEqual([next.atBoundary, next.batch, next.leftInBatch, next.left], [false, 2, 20, 25]);
+    const last = X.triProgress(40, 45, 40);
+    assert.deepEqual([last.batch, last.leftInBatch, last.size], [3, 5, 5]);
+    const done = X.triProgress(45, 45, 40);
+    assert.deepEqual([done.done, done.left, done.leftInBatch], [true, 0, 0]);
+    assert.deepEqual([X.triProgress(0, 0, -1).left, X.triProgress(0, 0, -1).batch], [0, 0]);
+  });
+});
+
+describe("sidebar counters (DESIGN.md Counters): invariants", () => {
+  const T = require("../../src/job_match/dashboard/assets/tracking.js");
+  const MIN = 55;
+  const listed = T.groupJobs([
+    job("ft:1", 80, "2026-10-21T07:10:00+00:00"), job("ft:2", 60, "2026-10-20T07:10:00+00:00"),
+    job("ft:3", 40, "2026-10-20T07:10:00+00:00"), job("ft:4", null, "2026-10-19T07:10:00+00:00"),
+    job("ft:5", 70, "2026-10-19T07:10:00+00:00", { group: "acme|devops", department: "75" }),
+    job("ft:6", 65, "2026-10-19T07:10:00+00:00", { group: "acme|devops", department: "69" }),
+    job("ft:7", 55, "2026-10-18T07:10:00+00:00"),
+  ]);
+  const apps = {
+    "ft:2": { status: "to_apply" }, "ft:6": { status: "ignored" },
+    "ft:old": { status: "applied" }, "ft:old2": { status: "interview" }, "ft:x": { status: "to_review" },
+  };
+  const aboveDigest = (r) => r.score === null || r.score >= MIN;
+
+  test("each counter has its definition", () => {
+    const n = X.sidebarCounts(listed, apps, 0, MIN, [{}, {}], [{}]);
+    // tri: ft:1, ft:4 (no score), the ft:5/ft:6 group (one posting ignored, the other untouched), ft:7 (= 55)
+    assert.deepEqual(n, { tri: 4, candidatures: 3, offres: 6, leads: 2, executions: 1 });
+  });
+
+  test("Tri ⊂ Offres, and Tri + triaged = offers at or above the digest", () => {
+    const queue = X.triageQueue(listed, apps, 0, MIN).map((i) => i.row);
+    assert.ok(queue.every((r) => listed.includes(r)));
+    const triaged = listed.filter((r) => aboveDigest(r) && T.rowStatus(r, apps) !== "to_review");
+    assert.equal(queue.length + triaged.length, listed.filter(aboveDigest).length);
+    assert.ok(queue.every(aboveDigest));
+  });
+
+  test("a decision moves exactly one offer from Tri to triaged, and keep adds one candidature", () => {
+    const before = X.sidebarCounts(listed, apps, 0, MIN, [], []);
+    const after = X.sidebarCounts(listed, { ...apps, "ft:1": { status: "to_apply" } }, 0, MIN, [], []);
+    assert.equal(after.tri, before.tri - 1);
+    assert.equal(after.candidatures, before.candidatures + 1);
+    assert.equal(after.offres, before.offres);
+    const dropped = X.sidebarCounts(listed, { ...apps, "ft:1": { status: "ignored" } }, 0, MIN, [], []);
+    assert.deepEqual([dropped.tri, dropped.candidatures], [before.tri - 1, before.candidatures]);
+  });
+});

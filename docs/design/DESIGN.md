@@ -117,6 +117,25 @@ Lucide icons (ISC) are 16 px with a 1.5 stroke and `currentColor`. They are alwa
 - **Phone tab bar.** Five icons with labels. A badge shows the Tri count, and hides at zero.
 - **Hash.** It carries the state: `#<view>?q=…&hide=…&dept=…&st=…&min=…&from=…&to=…&sort=…&fiche=<key>`. Old hashes still work (`today` → `tri`, `jobs` → `offres`, `runs` → `executions`).
 
+## Counters
+
+Every number in the sidebar, the tab bar and the view heads comes from one function, `triage.js sidebarCounts`. `worker/test/triage.test.mjs` checks the invariants.
+
+| Counter | Definition |
+|---|---|
+| Tri | Listed offers still « À examiner » (untriaged) whose score is at or above `digest.min_score`; an offer with no score counts, its score is unknown, not low (`triageQueue`) |
+| Candidatures | Tracked offers whose status is on the board (À candidater, Envoyée, Entretien, Refusée), listed or not (a closed offer still counts) |
+| Offres | Listed rows: open offers within `jobs.max_age_days`; a group of postings counts once |
+| Leads | Funding leads in the snapshot |
+| Exécutions | Runs in the snapshot (the last 30) |
+
+Invariants:
+- **Tri ⊂ Offres.**
+- **Tri + triaged offers at or above the digest = Offres at or above the digest.** An offer below the threshold stays in Offres and is never in the Tri.
+- **Each decision takes exactly one offer out of the Tri.** « Garder » adds one to Candidatures; « Écarter » adds none; Offres doesn't change.
+
+The Tri header (`N / total`) counts the session's queue, which is fixed when the Tri starts, so a card never moves under the finger. The sidebar's Tri count is live; the two agree until data reloads.
+
 ## Motion
 
 Hover and focus are instant. Only state changes move, at 120 to 200 ms with `--ease` (expo out); nothing bounces.
@@ -167,7 +186,7 @@ While dragging, the stamps "Garder" (green, left) and "Écarter" (red, right) ap
 
 **Tri bar.** It is fixed at the bottom: Écarter, the undo icon button and Garder (primary). After a drop, the reason step sits **above** the buttons and never replaces them. It names the offer that just left (« Dernière offre écartée : … »), so it can't be read as being about the card on screen, and offers four chips (1–4) and "Passer". The next decision closes it without a reason. On phones the chips stay on one row that scrolls sideways.
 
-**Progress.** The batch counter is prominent (`3 / 20`), and "lot 1 sur 3, 57 restantes" secondary. A 96 px bar uses `scaleX`, with `aria-valuetext`.
+**Progress.** The header reads `N / total restantes · lot X de Y` (`triage.js triProgress`): N is what is left in this batch, total what is left in the queue, and both shrink by one with each decision. X of Y is the batch. The 96 px bar fills with the batch (`scaleX`), with `aria-valuetext`. At a batch end the finished batch stays shown, full, until « Lot suivant ».
 
 **« Relevé du score » (`ui.js ledger`, `score.js`).** The score adds up line by line, read from the scorer's own explanation lines:
 - "Point de départ";
@@ -188,7 +207,9 @@ On the Tri card it is **collapsible, closed by default**:
 
 The record panel shows it open, with no toggle.
 
-**Record panel (Attio).** A bar holds the view name, "Voir l’offre" (icon) and Fermer (`Échap`). Below it come the title (20 px, focused on open), company and place, then a property list: icon + label in ink-3, value in ink-2, 32 px rows. The sections follow, in order: « Description de l’offre » (the same layout as the Tri card), ledger, « Pourquoi cette offre ? » (open), postings for a group, tracking (status, dates, CV, note, verdicts).
+**Record panel (Attio).** In the Tri it opens only on demand (a click on the title, or `↵`), never by itself: a decision closes it, and its key is not kept in the hash there. Opened from the Tri it leaves out the description, which the card already shows.
+
+**Record panel, contents.** A bar holds the view name, "Voir l’offre" (icon) and Fermer (`Échap`). Below it come the title (20 px, focused on open), company and place, then a property list: icon + label in ink-3, value in ink-2, 32 px rows. The sections follow, in order: « Description de l’offre » (the same layout as the Tri card), ledger, « Pourquoi cette offre ? » (open), postings for a group, tracking (status, dates, CV, note, verdicts).
 
 **Buttons.** All are 32 px (44 px on phones):
 - `.button`: raised, line-2;
