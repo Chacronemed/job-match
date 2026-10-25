@@ -192,8 +192,49 @@
     };
   }
 
+  /* The Tri header (DESIGN.md "Counters"): what is left in this batch and in the session's
+     queue, both shrinking with each decision, and which batch of how many. `pausedAt`: the
+     batch boundary already acknowledged ("Lot suivant"); at an unacknowledged boundary the
+     finished batch is still the one shown, full. */
+  function triProgress(pos, total, pausedAt) {
+    var done = pos >= total;
+    var atBoundary = pos > 0 && pos < total && pos % BATCH === 0 && pausedAt !== pos;
+    var b = batchOf(Math.min(pos, Math.max(total - 1, 0)), total, BATCH);
+    var decided = done ? b.size : (atBoundary ? BATCH : pos - b.start);
+    var size = done ? b.size : (atBoundary ? BATCH : b.size);
+    return {
+      left: Math.max(total - pos, 0),             /* the whole queue, this session */
+      leftInBatch: Math.max(size - decided, 0),   /* the prominent N */
+      decided: decided, size: size,               /* the progress bar: decided / size */
+      batch: total ? (atBoundary ? b.index : b.index + 1) : 0,
+      batches: b.count,
+      done: done, atBoundary: atBoundary
+    };
+  }
+
+  /* Statuses shown on the Candidatures board. */
+  var BOARD = ["to_apply", "applied", "interview", "rejected"];
+
+  /* The sidebar's five counters, one definition each (DESIGN.md "Counters"):
+     tri = untriaged offers at or above the digest threshold (triageQueue);
+     candidatures = tracked offers whose status is on the board, listed or not;
+     offres = listed rows (a group of postings counts once);
+     leads, executions = what the snapshot carries. */
+  function sidebarCounts(rows, apps, runAt, minScore, leads, runs) {
+    return {
+      tri: triageQueue(rows, apps, runAt, minScore).length,
+      candidatures: Object.keys(apps || {}).filter(function (k) { return BOARD.indexOf(T.statusOf(apps[k])) >= 0; }).length,
+      offres: rows.length,
+      leads: (leads || []).length,
+      executions: (runs || []).length
+    };
+  }
+
   var api = {
     BATCH: BATCH,
+    BOARD: BOARD,
+    triProgress: triProgress,
+    sidebarCounts: sidebarCounts,
     UNDO_MAX: UNDO_MAX,
     REASONS: REASONS,
     SWIPE: SWIPE,

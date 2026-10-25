@@ -211,7 +211,8 @@
       if (state.to) parts.push("to=" + state.to);
       if (state.sortKey !== "score" || state.sortDir !== "desc") parts.push("sort=" + state.sortKey + ":" + state.sortDir);
       /* The open record, so a link or a reload shows the same offer. */
-      if (typeof recordOpen !== "undefined" && recordOpen && recordJob && recordJob.key) parts.push("fiche=" + encodeURIComponent(recordJob.key));
+      /* Not in Tri: a record there opens only on a click or Enter, never from a reload. */
+      if (currentTab !== "tri" && typeof recordOpen !== "undefined" && recordOpen && recordJob && recordJob.key) parts.push("fiche=" + encodeURIComponent(recordJob.key));
     }
     var next = "#" + currentTab + (parts.length ? "?" + parts.join("&") : "");
     if (location.hash !== next) {
@@ -1174,7 +1175,7 @@
 
   var X = window.JMTriage;
   var runAt = X.latestRunAt(runs);
-  var BOARD = ["to_apply", "applied", "interview", "rejected"];
+  var BOARD = X.BOARD;
   var BOARD_TEXT = { to_apply: "À candidater", applied: "Envoyée", interview: "Entretien", rejected: "Refus" };
 
   /* Every posting the page knows, listed or only tracked (closed or old offers). */
@@ -1194,9 +1195,10 @@
     });
   }
 
+  /* One definition per counter, shared with the tests (triage.js sidebarCounts). */
   function updateCounts() {
-    setCount("tri", X.triageQueue(rows, track.apps, runAt, thresholds.min_score).length);
-    setCount("candidatures", boardKeys().length);
+    var n = X.sidebarCounts(rows, track.apps, runAt, thresholds.min_score, leads, runs);
+    Object.keys(n).forEach(function (view) { setCount(view, n[view]); });
   }
 
   /* ---------- Tri ---------- */
@@ -1435,6 +1437,7 @@
     if (flying) { var f = flying; flying = null; f.anim.onfinish = null; f.advance(); }
     if (!canTriage() || tri.pos >= tri.items.length) return;
     hideReasons();
+    if (recordOpen && recordFor === "tri") closeRecord(false);
     var item = tri.items[tri.pos];
     var targets = direction === "right" ? [item.row] : T.postingsOf(item.row);
     var entry = { key: item.row.key, pos: tri.pos, direction: direction, prev: [], decisionIds: [] };
@@ -1528,22 +1531,21 @@
       ]));
       return;
     }
-    var b = X.batchOf(Math.min(tri.pos, Math.max(total - 1, 0)), total, X.BATCH);
-    var atBoundary = tri.pos > 0 && tri.pos < total && tri.pos % X.BATCH === 0 && tri.pausedAt !== tri.pos;
-    var done = tri.pos >= total;
+    var pr = X.triProgress(tri.pos, total, tri.pausedAt);
+    var atBoundary = pr.atBoundary;
+    var done = pr.done;
     byId("tri-progress-bar").hidden = total === 0;
-    /* One prominent counter (this batch), the rest of the queue secondary (AUDIT P2-8). */
-    var inBatch = done ? b.size : (atBoundary ? X.BATCH : tri.pos - b.start);
-    var size = done ? b.size : (atBoundary ? X.BATCH : b.size);
-    byId("tri-count").textContent = total ? (done ? "" : Math.min(inBatch + 1, size) + " / " + size) : "";
-    byId("tri-left").textContent = total ? (b.count > 1 ? "lot " + (atBoundary ? b.index : b.index + 1) + " sur " + b.count + ", " : "") +
-      Math.max(total - tri.pos, 0) + (total - tri.pos > 1 ? " restantes" : " restante") : "";
+    /* « N / total restantes · lot X de Y »: what is left in this batch over what is left in
+       the queue, both shrinking with each decision; the bar fills with the batch (AUDIT P2-8). */
+    byId("tri-count").textContent = total ? pr.leftInBatch + " / " + pr.left : "";
+    byId("tri-left").textContent = total
+      ? (pr.left > 1 ? "restantes" : "restante") + " · lot " + pr.batch + " de " + pr.batches : "";
     if (total) {
-      byId("tri-progress-fill").style.transform = "scaleX(" + (inBatch / Math.max(size, 1)) + ")";
+      byId("tri-progress-fill").style.transform = "scaleX(" + (pr.decided / Math.max(pr.size, 1)) + ")";
       var bar = byId("tri-progress-bar");
-      bar.setAttribute("aria-valuenow", String(inBatch));
-      bar.setAttribute("aria-valuemax", String(size));
-      bar.setAttribute("aria-valuetext", inBatch + " sur " + size + " dans ce lot");
+      bar.setAttribute("aria-valuenow", String(pr.decided));
+      bar.setAttribute("aria-valuemax", String(pr.size));
+      bar.setAttribute("aria-valuetext", pr.decided + " sur " + pr.size + " dans ce lot");
     }
     end.hidden = !(done || atBoundary);
     if (!end.hidden) hideReasons();
@@ -1556,12 +1558,12 @@
       toApps.addEventListener("click", function () { showTab("candidatures", true, true); });
       end.appendChild(U.icon("circle-check"));
       if (atBoundary) {
-        end.appendChild(el("h2", { text: "Lot " + b.index + " terminé" }));
+        end.appendChild(el("h2", { text: "Lot " + pr.batch + " terminé" }));
         end.appendChild(el("p", { text: session + " pendant cette session. " + (total - tri.pos) + " offres attendent encore." }));
         var next = el("button", { type: "button", class: "button primary", text: "Lot suivant" });
         next.addEventListener("click", function () { tri.pausedAt = tri.pos; triArrive = true; renderTri(); focusTriCard(); });
         end.appendChild(el("div", { class: "tri-end-actions" }, [next, toApps]));
-        announce("Lot " + b.index + " sur " + b.count + " terminé.");
+        announce("Lot " + pr.batch + " de " + pr.batches + " terminé.");
       } else {
         end.appendChild(el("h2", { text: "Tri terminé" }));
         end.appendChild(el("p", { text: total === 0
@@ -1646,7 +1648,8 @@
       prop("calendar", "Publiée", j.posted_at ? fmtDate(j.posted_at) : "Date inconnue"),
       prop("git-branch", "Source", j.source || "—")
     ]));
-    if (j.description_excerpt) {
+    /* From Tri the card already shows the whole description: not twice. */
+    if (j.description_excerpt && currentTab !== "tri") {
       box.appendChild(el("section", { class: "record-sec record-desc" }, [el("h3", { text: "Description de l’offre" })].concat(D.render(D.parse(j.description_excerpt), el))));
     }
     box.appendChild(el("section", { class: "record-sec" }, [U.ledger(j, thresholds, { compact: true })]));
@@ -2060,7 +2063,7 @@
     markSortHeader();
     renderJobs();
     showTab(parsed.tab, false);
-    var fiche = p.fiche && rowByKey(p.fiche);
+    var fiche = parsed.tab !== "tri" && p.fiche && rowByKey(p.fiche);
     if (fiche && (!recordOpen || recordJob !== fiche)) openRecord(fiche, null);
     else if (!p.fiche && recordOpen) closeRecord(false);
     applyingHash = false;
@@ -2239,9 +2242,6 @@
     day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "UTC"
   });
   snap.title = "Données générées le " + fmtDateTime(data.generated_at);
-  setCount("offres", rows.length);
-  setCount("leads", leads.length);
-  setCount("executions", runs.length);
 
   var paletteBtn = byId("palette-btn");
   paletteBtn.insertBefore(U.icon("search"), paletteBtn.firstChild);
