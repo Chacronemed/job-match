@@ -324,3 +324,13 @@ jobs:
 # at the end of each jobs run.
 raw_payloads:
   retention_days: 60
+
+# The AI rerank (ADR 0016). The calls run in the Cloudflare Worker's cron (worker/src/ai.js),
+# which keeps the same values as constants (a test keeps them equal; a `vars` block is not
+# allowed in wrangler.jsonc). daily_limit caps the calls per day, retries included;
+# disagreement_gap is the AI vs Python score gap that `job-match ai-report` reports;
+# prompt_version is bumped with the prompt, so the Worker judges every offer again.
+ai:
+  daily_limit: 100
+  disagreement_gap: 25
+  prompt_version: "1"

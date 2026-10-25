@@ -43,8 +43,19 @@ def test_one_d1_database_with_the_repo_migrations():
 def test_access_identifiers_are_secrets_not_config():
     text = (ROOT / "wrangler.jsonc").read_text(encoding="utf-8")
     cfg = _config()
-    assert "vars" not in cfg
+    # `vars` carries plain knobs only (the AI cap): never an Access identifier nor a key.
+    for key, value in cfg.get("vars", {}).items():
+        assert key.startswith("AI_"), key
+        assert not key.startswith("CF_ACCESS") and "KEY" not in key and "SECRET" not in key
+        assert isinstance(value, str) and "sk-" not in value
     assert "cloudflareaccess.com" not in text
+
+
+def test_the_ai_rerank_has_two_crons_a_cap_and_the_workers_ai_binding():
+    cfg = _config()
+    assert cfg["triggers"]["crons"] == ["30 7 * * *", "30 9 * * *"]
+    assert cfg["vars"]["AI_DAILY_LIMIT"].isdigit()
+    assert cfg["ai"] == {"binding": "AI"}
 
 
 def test_site_and_deploy_tooling_are_gitignored():

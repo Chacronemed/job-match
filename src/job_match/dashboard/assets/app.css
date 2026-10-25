@@ -166,6 +166,17 @@ kbd.kbd-i .i { width: 12px; height: 12px; }
 .badge { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 var(--s2); border-radius: var(--r-sm); font-size: var(--fs-sm); font-weight: 500; color: var(--ink-2); background: var(--slate-4); }
 .badge-new { color: var(--accent-ink); background: var(--accent-soft); }
 .badge-stretch { color: var(--amber-11); background: var(--amber-3); }
+/* « IA 84 » (ADR 0016): the model's score, tinted by its level. */
+.badge-ai { font-variant-numeric: tabular-nums; color: var(--ink-2); background: var(--slate-4); }
+.badge-ai.ai-fort { color: var(--green-11); background: var(--green-3); }
+.badge-ai.ai-tenter { color: var(--amber-11); background: var(--amber-3); }
+.badge-ai.ai-hors_sujet { color: var(--red-11); background: var(--red-3); }
+/* The AI passes (Exécutions): a stopped pass is red, with its HTTP status. */
+.badge-ok { color: var(--green-11); background: var(--green-3); }
+.badge-bad { color: var(--red-11); background: var(--red-3); }
+.score-ai { margin-left: 6px; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; color: var(--ink-3); }
+.score-ai.ai-fort { color: var(--green-11); }
+.score-ai.ai-hors_sujet { color: var(--red-11); }
 
 .tri-bar { position: sticky; bottom: 0; z-index: 4; display: flex; flex-direction: column; gap: var(--s2); padding: var(--s3) var(--s4) calc(var(--s3) + env(safe-area-inset-bottom)); background: var(--surface); }
 .tri-actions { display: grid; grid-template-columns: 1fr auto 1fr; gap: var(--s2); }
@@ -202,6 +213,17 @@ kbd.kbd-i .i { width: 12px; height: 12px; }
 .band-strong .dot { --hue: var(--green-9); }
 .band-stretch .dot { --hue: var(--amber-9); }
 .band-low .dot { --hue: var(--ink-3); }
+.band-ai-fort .dot { --hue: var(--green-9); }
+.band-ai-tenter .dot { --hue: var(--amber-9); }
+.band-ai-hors_sujet .dot { --hue: var(--red-9); }
+/* « Selon l’IA », under the ledger: the model's opinion, apart from the Python lines. */
+.ledger-ai { display: flex; flex-direction: column; gap: var(--s2); margin-top: var(--s2); padding-top: var(--s2); border-top: 1px dashed var(--line); }
+.ledger-ai-head { display: flex; align-items: center; gap: var(--s2); }
+.ledger-ai-title { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: var(--ink-2); }
+.ledger-ai-score { font-weight: 600; color: var(--ink); }
+.ledger-ai-reasons { margin: 0; padding-left: 18px; color: var(--ink-2); font-size: var(--fs-sm); line-height: 1.5; display: flex; flex-direction: column; gap: 2px; }
+.ledger-ai-reasons li { overflow-wrap: anywhere; }
+.ledger-ai-flags { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; }
 .ledger-lines { display: flex; flex-direction: column; margin: 0; }
 .ledger-line { display: flex; justify-content: space-between; align-items: center; gap: var(--s3); min-height: 26px; color: var(--ink-2); }
 .ledger-line dt { min-width: 0; overflow-wrap: anywhere; }

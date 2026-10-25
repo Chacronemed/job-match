@@ -3,10 +3,15 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**M24: a score that tells offers apart** (branch `feat/m24-scoring`, ADR 0016 proposed). Done
-locally (2026-10-22): title families + off-domain veto, profile-section weighting, thresholds
-recalibrated (strong 80, digest 55), Tri queue from the digest threshold; diagnostic in
-docs/diagnostics/m24-scoring.md. To do in production: one reprocess (Next step).
+**M25: AI rerank** (branch `feat/m25-ai-rerank`, ADR 0016 accepted). **Done locally
+(2026-10-25), not deployed:** a Worker cron (07:30 UTC) sends each new offer above the digest
+threshold to the Claude API (Haiku 5.5), falls back to Workers AI, stores strict JSON verdicts
+in D1, the dashboard orders the Tri by them, and `job-match ai-report` turns the week's
+disagreements into a correction prompt. To do in production: deploy the Worker, apply D1
+migration 0004, set the `ANTHROPIC_API_KEY` secret (Next step).
+
+Before it: **M24: a score that tells offers apart** (merged). Done locally (2026-10-22); to do
+in production: one reprocess (Next step).
 
 Paused: **UI redesign phase 3: port prototype C view by view** (branch `feat/ui-redesign`, ADR 0015, DESIGN.md
 2.0). Steps 1 and 1b done locally (2026-10-22): shell (sidebar, tab bar, palette Ctrl/⌘K, help,
@@ -22,6 +27,69 @@ production rows. Still pending: the M21 Cloudflare setup, the data-repo cleanup 
 two Cloudflare secrets, M9 manual GitHub setup, `PROFILE_YAML` re-encoding, `SMTP_PORT` variable.
 
 ## Done
+- **M25: AI rerank** (2026-10-25, ADR 0016 accepted, revised from the M24 draft: the Claude API
+  first, Workers AI as the fallback, run from the Worker's cron rather than the daily run).
+  - **Worker (`worker/src/ai.js`, no dependency):** `scheduled` at `30 7 * * *` and `30 9 * * *`
+    (wrangler `triggers`; the second pass catches a late daily run, the cache makes it free),
+    reads `data.json` and `ai-profile.json` through the assets binding (D1 holds no offer
+    text), picks the listed offers with a Python score ≥ `thresholds.min_score` without a
+    verdict for `(key, ai_hash, PROMPT_VERSION)`, best score first, the wrangler var
+    `AI_DAILY_LIMIT = "100"` calls a day (retries included, `ai_usage` counters; `DAILY_LIMIT`
+    in ai.js is the fallback). Every pass writes an `ai_runs` row (outcome, HTTP status,
+    provider, counters); any 4xx that is not a quota (401, 404, 400 schema…) stops the run with
+    `outcome = stopped` and the status alone, shown in red under « Rerank IA » in Exécutions.
+    `AI_PROVIDER=workers_ai` (dev `--var`) forces the fallback for the smoke test.
+  - **`scripts/ai-smoke.mjs`:** local `wrangler dev --test-scheduled --var AI_DAILY_LIMIT:3`,
+    triggers `/__scheduled` (or `/cdn-cgi/local/scheduled`), real Claude and Workers AI calls
+    (Workers AI is always remote in local dev, assets always local, D1 local), prints counters
+    and codes only, rows in the local D1. `--fallback`, `--reset`. Not run by me (real API).
+    - **Claude API:** plain `fetch`, `claude-haiku-5-5`, `anthropic-version: 2026-10-21`,
+      `output_config.format` json_schema (strict, `additionalProperties: false`) +
+      `effort: low`, one cached system block (barème + anonymous profile, sorted keys).
+    - **Fallback:** 402, a 400 naming the credit, or 429 → Workers AI
+      (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`, binding `AI`, json_schema) for the rest of
+      the run; a 5xx or invalid JSON → one retry then the offer is skipped; a refusal is not
+      retried. Without a key and a binding the cron counts an error and stops.
+    - **D1 migration 0004:** `ai_verdicts` (unique on job_key + hash + prompt_version),
+      `ai_usage`, `disagreements` (`gap` > 25 points, `off_topic_strong`).
+    - `GET /api/applications` adds `ai_verdicts` (latest per offer, reasons parsed).
+    - Logs: counters only (`eligible, candidates, cached, scored, invalid, refused,
+      skipped_cap, fallback, errors, skipped_no_profile, disagreements`); `ai.js` has no
+      `console` call, and a test spies on the log for the key, the offer and a reason.
+  - **Python:** `ai/summary.py` (`skills_summary`: preferred skills with a fort/moyen band,
+    negative skills, years, contract types, `mobility` france/departements; a trap profile
+    proves nothing personal leaks), written by `write_site` to `site/ai-profile.json` only
+    (never in the page nor in `data.json`; `job-match dashboard --no-ai-profile` skips it);
+    `data.py ai_hash` = sha256(normalized title + description_excerpt); migration
+    `0010_ai_mirror.sql` + `tracking import --ai-verdicts --ai-usage --disagreements`
+    (validated row by row, `AiRepository.replace_all`); `settings.yaml ai:` block
+    (`AiConfig`) kept equal to the Worker constants by `tests/unit/ai/test_worker_constants.py`;
+    `daily.yml` « Export tracking » exports the three tables.
+  - **`job-match ai-report [--since] [--out]`** (`ai/report.py`): 7 days of disagreements
+    ranked (hors_sujet on a strong offer first, then the gap), my latest Tri verdict on each
+    and whom it sides with, counts by kind and title family, the profile skills most present,
+    usage and a cost upper bound, then a correction prompt for Claude Code (10 largest, the
+    question about `title_relevance`, "do not apply"). Writes `data/ai-report-<date>.md`,
+    local, never committed. Nothing is applied.
+  - **Dashboard:** `triage.js aiOf` (a verdict counts only for the row's current hash),
+    `rankScore` (AI score when it exists, Python otherwise) orders the Tri after the Nouveau
+    rows; `hors_sujet` leaves the Tri and the sidebar count and stays in Offres behind the
+    « Avis de l’IA » select (`ia=` in the hash, allow-listed); « IA 84 » badge on the card and
+    in the Score cell (tinted by level); « Selon l’IA » block under the Relevé (card and
+    record): score, level, reasons, red flags as warning pills. The Offres filter panel is a
+    wrapping flex row now (the nine fields no longer clip the section chips at 1280/1440).
+    DESIGN.md updated.
+  - **Cost (ADR 0016):** about $0.0003 a call, $0.03 a day for 100 offers, about $0.90 a
+    month; Workers AI fallback about 8 000 of the 10 000 free neurons for 100 offers.
+  - **Verified** with playwright-cli at 1440 and 390 on the test seed, `/api/` mocked with
+    three verdicts (fort 84, tenter 62, hors_sujet 18 on the strong offer): Tri 2/2 with the
+    IA 84 card first, the badge and the « Selon l’IA » block, Offres `ia=hors_sujet` showing
+    the one hidden offer with « IA 18 » in red, the record panel block, no horizontal
+    overflow, 0 console errors. Screenshots stay in the session scratchpad.
+  - **Tests:** 162 Node (25 new: request shape, cache by hash and prompt version, daily cap,
+    402 / 400-credit / 429 fallback, Workers AI failing too, retries, refusals, disagreements,
+    no profile, the log, triage order, aiBand), 1471 Python (summary anonymity, mirror
+    validation, hash, profile file, workflow, constants, report), ruff clean.
 - **Tri: counters and record panel on demand** (2026-10-24). DESIGN.md "Counters".
   - **Header:** `N / total restantes · lot X de Y` (`triage.js triProgress`). Both numbers shrink with each decision, and the bar fills with the batch.
   - **Sidebar:** the five counters come from `triage.js sidebarCounts`. `triage.test.mjs` checks the invariants: Tri ⊂ Offres, Tri + triaged ≥ digest = Offres ≥ digest, and one decision takes one offer out of the Tri.
@@ -866,6 +934,25 @@ two Cloudflare secrets, M9 manual GitHub setup, `PROFILE_YAML` re-encoding, `SMT
   - 26 tests green, `ruff check .` clean
 
 ## Next step
+- **M25 smoke test (before merging), to run yourself:** put `ANTHROPIC_API_KEY=…` in
+  `.dev.vars`, then `npx wrangler@4 d1 migrations apply job-match --local`,
+  `job-match dashboard --out site` (with config/profile.yaml), then
+  `node scripts/ai-smoke.mjs` (expect `new verdicts {"anthropic":3}`, `outcome ok`) and
+  `node scripts/ai-smoke.mjs --fallback` (expect `{"workers_ai":3}`). `--reset` empties the
+  local AI tables.
+- **M25 in production (one-time):**
+  1. `npx wrangler@4 secret put ANTHROPIC_API_KEY` (done, per the brief); the cap is the
+     wrangler var `AI_DAILY_LIMIT`; check the Workers AI binding is allowed on the account.
+  2. The next daily run applies D1 migration 0004 and deploys the Worker with the cron and
+     the `AI` binding; `site/ai-profile.json` is written from `PROFILE_YAML`.
+  3. At 07:30 and 09:30 UTC the cron logs `ai rerank ok {...}` (Workers → Logs): expect
+     `candidates` ≈ `scored`, `fallback 0`, `invalid` low. Then the Tri shows « IA » badges and
+     Exécutions lists the pass under « Rerank IA » (a red « Arrêté · HTTP n » means a bad key,
+     an unknown model or a refused schema: nothing was sent after it).
+  4. After a week: restore the DB locally, `job-match ai-report`, read
+     `data/ai-report-<date>.md`, hand the prompt to Claude Code if the disagreements make sense.
+  - If the daily run overruns 30 minutes, the cron judges the previous snapshot: move the cron
+    later in `wrangler.jsonc` (and the test in `tests/unit/ai/test_worker_constants.py`).
 - **M24 in production:** run "Daily run" once with `reprocess_since=2026-09-07` and `reprocess_scope=jobs`.
   - The reprocess must show `TITLE` in the rejection reasons and `strong` around 90. The Tri should hold about 330 offers to sort.
   - After about 30 new Tri verdicts, rerun `scripts/diagnose_scoring.py` and `job-match calibrate` on a fresh copy (docs/diagnostics/m24-scoring.md, last section).
@@ -1044,6 +1131,10 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
 - ~~**M9 — WAL flush before data-repo push:**~~ **Resolved in M9.** `PRAGMA wal_checkpoint(TRUNCATE)` + `VACUUM` run in daily.yml before DB push. `*.sqlite-wal` and `*.sqlite-shm` added to `.gitignore`.
 
 ## Known issues
+- **AI rerank:** the SQLite mirror of the verdicts is a day behind (the export runs before the
+  pipeline); only `ai-report` reads it, the dashboard reads D1 live. `ai.js` trusts the
+  `ai_hash` field of `data.json` (it does not recompute it). The Claude 400 "credit" detection
+  is a message match; a 402 is the documented code.
 - Closure check covers France Travail only; Jooble/Adzuna rows are never asked and rely on
   `jobs.max_age_days`. A job whose check keeps answering UNKNOWN stays visible and is asked
   again daily until the age cut-off hides it (counted in `errors`). 404 is read as closed
@@ -1111,6 +1202,13 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
   use fixtures.
 
 ## Session log
+- 2026-10-25: M25 AI rerank (ADR 0016 accepted). Worker cron → Claude Haiku 5.5 (strict JSON,
+  cached system block) → Workers AI fallback → D1 verdicts/usage/disagreements/runs, anonymous
+  profile summary as a separate site file, SQLite mirror + `ai-report`, Tri ordered by the AI
+  score with `hors_sujet` out and an « Avis de l’IA » filter in Offres, « Rerank IA » in
+  Exécutions. Second cron 09:30, `AI_DAILY_LIMIT` as a var, non-quota 4xx stop the run,
+  `scripts/ai-smoke.mjs`. Verified at 1440/390 with a mocked `/api/`. 167 Node + 1484 Python
+  tests, ruff clean.
 - 2026-10-20 (3): Application tracking (M21). D1 + Worker API with Access JWT checks,
   "Aujourd'hui" view, details form, D1 → jobs DB mirror, digest exclusion and "Relances du
   jour". Verified with wrangler dev + a local Access proxy + playwright-cli. ADR 0012.

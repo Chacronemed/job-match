@@ -206,6 +206,18 @@ class RawPayloadsConfig:
 
 
 @dataclass
+class AiConfig:
+    """The AI rerank (ADR 0016) as the Python side sees it. The calls run in the Worker
+    (worker/src/ai.js), whose constants these repeat: a test keeps them equal. `daily_limit`
+    is the cap on calls per day, `disagreement_gap` the score gap that makes a disagreement,
+    `prompt_version` the version whose verdicts count."""
+
+    daily_limit: int = 100
+    disagreement_gap: int = 25
+    prompt_version: str = "1"
+
+
+@dataclass
 class FundingConfig:
     requests_per_second: float = 1.0
     extract_max_chars: int = 600
@@ -245,3 +257,4 @@ class Settings:
     eligibility: EligibilityConfig = field(default_factory=EligibilityConfig)
     jobs: JobsConfig = field(default_factory=JobsConfig)
     raw_payloads: RawPayloadsConfig = field(default_factory=RawPayloadsConfig)
+    ai: AiConfig = field(default_factory=AiConfig)

@@ -11,6 +11,7 @@ today's config: a job's required years are the parser's own number or the gate's
 """
 from __future__ import annotations
 
+import hashlib
 import html
 import re
 from datetime import datetime, timedelta
@@ -26,6 +27,7 @@ from job_match.domain.models import (
 )
 from job_match.normalization.company import normalize_company
 from job_match.normalization.location import department_of
+from job_match.normalization.text import normalize_text
 from job_match.normalization.title import normalize_title
 from job_match.persistence.db import Database
 from job_match.persistence.repositories import JobRepository, LeadRepository, RunRepository
@@ -195,9 +197,18 @@ def group_key(job: Job) -> str | None:
     return f"{company}|{normalize_title(job.title or '')}"
 
 
+def ai_hash(title: str | None, excerpt: str) -> str:
+    """What the AI verdict is about (ADR 0016 §3): the normalized title and the plain
+    description the Worker sends. A changed description gets a new verdict, a repost or a
+    reprocess does not. The prompt version is kept apart, in the verdict row."""
+    payload = normalize_text(title or "") + "\n" + excerpt
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def job_entry(job: Job, strong_threshold: int, now: datetime) -> dict:
     bd = job.scoring_breakdown
     posted = posted_at(job)
+    excerpt = description_excerpt(job.description)
     return {
         "id": job.id,
         # The tracking key in D1 (`source:source_job_id`), stable across DB rebuilds.
@@ -223,7 +234,8 @@ def job_entry(job: Job, strong_threshold: int, now: datetime) -> dict:
         "negative": list(bd.negative_matches) if bd else [],
         "missing": list(bd.missing_preferences) if bd else [],
         "why": why_entry(job),
-        "description_excerpt": description_excerpt(job.description),
+        "description_excerpt": excerpt,
+        "ai_hash": ai_hash(job.title, excerpt),
     }
 
 

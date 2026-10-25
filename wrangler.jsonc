@@ -5,6 +5,23 @@
 	// dashboard. Cloudflare Access protects both. CF_ACCESS_AUD and CF_ACCESS_TEAM_DOMAIN are
 	// Worker secrets (`wrangler secret put`), never vars: vars missing here are wiped on deploy.
 	"main": "worker/src/index.js",
+	// The AI rerank (ADR 0016): 30 minutes after the daily run (07:00 UTC), and once more at
+	// 09:30 to catch a late run (the content cache makes the second pass free when nothing is
+	// new). ANTHROPIC_API_KEY is a Worker secret. AI_DAILY_LIMIT is the cap on calls per day
+	// (retries included); config/settings.yaml ai.daily_limit repeats it, a test keeps them equal.
+	"triggers": {
+		"crons": [
+			"30 7 * * *",
+			"30 9 * * *"
+		]
+	},
+	"vars": {
+		"AI_DAILY_LIMIT": "100"
+	},
+	// Workers AI, the fallback once the Claude API says the credit is spent.
+	"ai": {
+		"binding": "AI"
+	},
 	"assets": {
 		"directory": "./site",
 		"binding": "ASSETS",

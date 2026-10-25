@@ -75,6 +75,19 @@ def main() -> None:
     )
     dash_p.add_argument("--out", default="site", metavar="DIR",
                         help="Output directory (default: site)")
+    dash_p.add_argument("--no-ai-profile", action="store_true",
+                        help="Do not write ai-profile.json (the anonymous skills summary "
+                             "the Worker's AI rerank reads)")
+
+    ai_p = sub.add_parser(
+        "ai-report",
+        help="Weekly AI vs Python disagreements + my Tri verdicts -> a correction prompt "
+             "(local file, never applied)",
+    )
+    ai_p.add_argument("--since", metavar="YYYY-MM-DD",
+                      help="Disagreements recorded on/after this date (default: 7 days ago)")
+    ai_p.add_argument("--out", metavar="PATH",
+                      help="Report file (default: data/ai-report-<date>.md)")
 
     cal_p = sub.add_parser(
         "calibrate",
@@ -95,6 +108,13 @@ def main() -> None:
     timp_p.add_argument("--skill-overrides", metavar="PATH",
                         help="Export of SELECT * FROM skill_overrides "
                              "(default: keep the current mirror)")
+    timp_p.add_argument("--ai-verdicts", metavar="PATH",
+                        help="Export of SELECT * FROM ai_verdicts (with --ai-usage and "
+                             "--disagreements; default: keep the current AI mirror)")
+    timp_p.add_argument("--ai-usage", metavar="PATH", help="Export of SELECT * FROM ai_usage")
+    timp_p.add_argument("--disagreements", metavar="PATH",
+                        help="Export of SELECT * FROM disagreements")
+    timp_p.add_argument("--ai-runs", metavar="PATH", help="Export of SELECT * FROM ai_runs")
 
     funding_p = sub.add_parser("funding", help="Funding / news pipeline")
     funding_sub = funding_p.add_subparsers(dest="funding_command", metavar="SUBCOMMAND")
@@ -126,6 +146,8 @@ def main() -> None:
         _cmd_dashboard(args)
     elif args.command == "calibrate":
         _cmd_calibrate(args)
+    elif args.command == "ai-report":
+        _cmd_ai_report(args)
     elif args.command == "tracking":
         if args.tracking_command == "import":
             _cmd_tracking_import(args)
@@ -382,7 +404,7 @@ def _cmd_tracking_import(args: argparse.Namespace) -> None:
 
     from job_match.config.loader import load_skill_vocabulary
     from job_match.persistence.db import Database
-    from job_match.tracking.mirror import MirrorFormatError, import_tracking
+    from job_match.tracking.mirror import MirrorFormatError, import_ai, import_tracking
 
     db_path = _data_dir() / "jobs.sqlite"
     if not db_path.exists():
@@ -390,6 +412,12 @@ def _cmd_tracking_import(args: argparse.Namespace) -> None:
         sys.exit(1)
     overrides_arg = getattr(args, "skill_overrides", None)
     overrides_path = Path(overrides_arg) if overrides_arg else None
+    ai_args = [getattr(args, k, None)
+               for k in ("ai_verdicts", "ai_usage", "disagreements", "ai_runs")]
+    if any(ai_args) and not all(ai_args):
+        print("--ai-verdicts, --ai-usage, --disagreements and --ai-runs go together.",
+              file=sys.stderr)
+        sys.exit(2)
     vocabulary = load_skill_vocabulary(_config_dir() / "skill_vocabulary.yaml")
     with Database(path=str(db_path)) as db:
         try:
@@ -400,12 +428,24 @@ def _cmd_tracking_import(args: argparse.Namespace) -> None:
         except MirrorFormatError as exc:
             print(f"Tracking export rejected ({exc}); previous mirror kept.", file=sys.stderr)
             sys.exit(1)
+        ai_result = None
+        if all(ai_args):
+            try:
+                ai_result = import_ai(db.conn, *(Path(a) for a in ai_args))
+            except MirrorFormatError as exc:
+                print(f"AI export rejected ({exc}); previous AI mirror kept.", file=sys.stderr)
     print(
         f"Tracking mirror: {result.applications} applications, {result.decisions} decisions,"
         f" {result.skill_overrides} skill overrides"
         f"{' (changed)' if result.overrides_changed else ''},"
         f" {result.skipped} invalid rows skipped"
     )
+    if ai_result is not None:
+        print(
+            f"AI mirror: {ai_result.verdicts} verdicts, {ai_result.usage} usage rows,"
+            f" {ai_result.disagreements} disagreements, {ai_result.runs} runs,"
+            f" {ai_result.skipped} invalid rows skipped"
+        )
     # The daily workflow reprocesses stored jobs only when the overrides changed.
     github_output = os.environ.get("GITHUB_OUTPUT")
     if github_output:
@@ -480,7 +520,7 @@ def _cmd_dashboard(args: argparse.Namespace) -> None:
 
     with Database(path=str(db_path)) as db:
         data = build_dashboard_data(db, settings, datetime.now(UTC))
-    write_site(data, Path(args.out))
+    write_site(data, Path(args.out), _ai_profile(args))
 
     by_section = {s: 0 for s in ("strong", "eligible", "stretch")}
     for job in data["jobs"]:
@@ -489,6 +529,57 @@ def _cmd_dashboard(args: argparse.Namespace) -> None:
         f"Dashboard: {len(data['jobs'])} jobs ({by_section['strong']} strong, "
         f"{by_section['eligible']} eligible, {by_section['stretch']} stretch), "
         f"{len(data['leads'])} leads, {len(data['runs'])} runs -> {args.out}"
+    )
+
+
+def _ai_profile(args: argparse.Namespace) -> dict | None:
+    """The anonymous skills summary for the Worker's AI rerank, when a profile is at hand
+    (config/profile.yaml or PROFILE_YAML). None keeps the summary off the site."""
+    if getattr(args, "no_ai_profile", False):
+        return None
+    from job_match.ai.summary import skills_summary
+    from job_match.config.loader import ConfigError, load_profile
+
+    try:
+        return skills_summary(load_profile(_config_dir() / "profile.yaml"))
+    except ConfigError:
+        print("No profile: ai-profile.json not written, the AI rerank will skip the day.")
+        return None
+
+
+def _cmd_ai_report(args: argparse.Namespace) -> None:
+    """Local only: the report names offers and skills, so it never runs in the public CI
+    log, and it writes a file that is not committed."""
+    from datetime import UTC, date, datetime, timedelta
+
+    from job_match.ai.report import build_report, format_report
+    from job_match.config.loader import load_settings
+    from job_match.persistence.db import Database
+    from job_match.persistence.repositories import AiRepository
+
+    today = datetime.now(UTC).date()
+    since = today - timedelta(days=7)
+    if args.since:
+        try:
+            since = date.fromisoformat(args.since)
+        except ValueError:
+            print(f"--since must be YYYY-MM-DD, got {args.since!r}", file=sys.stderr)
+            sys.exit(1)
+    db_path = _data_dir() / "jobs.sqlite"
+    if not db_path.exists():
+        print(f"No database at {db_path}: run `job-match run` first.", file=sys.stderr)
+        sys.exit(1)
+    settings = load_settings(_config_dir() / "settings.yaml")
+    with Database(path=str(db_path)) as db:
+        repo = AiRepository(db.conn)
+        report = build_report(repo.list_disagreements(since), repo.usage_since(since),
+                              settings, since, today, runs=repo.list_runs(since))
+    out = Path(args.out) if args.out else _data_dir() / f"ai-report-{today.isoformat()}.md"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(format_report(report), encoding="utf-8")
+    print(
+        f"AI report: {report.total} disagreements since {since.isoformat()}"
+        f" ({report.with_decision} with a Tri verdict) -> {out}"
     )
 
 

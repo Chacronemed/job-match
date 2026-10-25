@@ -1,14 +1,16 @@
 // job-match Worker. Everything outside /api/ is the static dashboard (served by the assets
 // binding, behind Cloudflare Access). /api/ is the application-tracking API over D1:
-//   GET  /api/applications       -> {applications, decisions, skill_overrides}
+//   GET  /api/applications       -> {applications, decisions, skill_overrides, ai_verdicts, ai_runs}
 //   PUT  /api/applications/:key  -> {application}
 //   POST /api/decisions          -> {decision}
 //   DELETE /api/decisions/:id    -> {deleted}  (undo in the triage view)
 //   PUT    /api/skill-overrides/:skill -> {skill_override}  ("je maîtrise", no body)
 //   DELETE /api/skill-overrides/:skill -> {deleted}         (undo)
 // Every API call needs a valid Access JWT and a same-origin request. JSON only, no CORS.
-// Request bodies, notes and URLs are never logged.
+// Request bodies, notes and URLs are never logged. The cron (`scheduled`) runs the AI rerank
+// (ai.js, ADR 0016) and logs its counters only.
 
+import { listRuns, listVerdicts, recordRun, runRerank } from "./ai.js";
 import { JwksUnavailable, verifyAccessJwt } from "./auth.js";
 import { isJobKey, isSkill, validateApplication, validateDecision } from "./validate.js";
 
@@ -65,6 +67,8 @@ async function listApplications(env) {
     applications: apps.results,
     decisions: decisions.results,
     skill_overrides: overrides.results,
+    ai_verdicts: await listVerdicts(env.DB),
+    ai_runs: await listRuns(env.DB),
   });
 }
 
@@ -194,4 +198,27 @@ export default {
     }
     return env.ASSETS.fetch(request);
   },
+  // After the daily run (wrangler.jsonc `triggers`, twice a day): judge the day's new offers.
+  // The log carries counters and an HTTP status at most; the row in ai_runs the same.
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runScheduled(env));
+  },
 };
+
+export async function runScheduled(env) {
+  const startedAt = new Date().toISOString();
+  let run;
+  try {
+    run = await runRerank(env);
+  } catch {
+    run = { outcome: "failed", http_status: null, provider: null, counters: {} };
+  }
+  const status = run.http_status === null ? "" : " http=" + run.http_status;
+  console.log("ai rerank " + run.outcome + status + " " + JSON.stringify(run.counters));
+  try {
+    await recordRun(env.DB, startedAt, new Date().toISOString(), run);
+  } catch {
+    console.log("ai rerank: run row not written");
+  }
+  return run;
+}

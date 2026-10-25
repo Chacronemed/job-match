@@ -409,15 +409,24 @@ English-only, French postings are penalized, and the upstream repo is new with 2
 
 ---
 
+**AI rerank (M25, ADR 0016).** A separate, optional engine: the Worker's cron (`worker/src/ai.js`) reads the
+deployed `data.json`, sends each new offer above the digest threshold with an anonymous skills summary to the
+Claude API (Haiku), falls back to Workers AI, stores strict JSON verdicts in D1, and the dashboard orders the
+Tri by them. The core runs without it; the scores are never averaged.
+
+---
+
 ## 10. career-ops companion-tool strategy
 
 - **Manual only. Never imported, never called, never a CI dependency.**
 - **Division of labour.** This system does discovery, FR sources, the experience gate, dedup, triage scoring,
   funding signals and the daily digest. career-ops does deep A–G evaluation, CV tailoring, the application tracker
   and interview prep.
-  - We do **not** build CV generation or LLM evaluation. Since M21 (ADR 0012) job-match records application
+  - We do **not** build CV generation. Since M21 (ADR 0012) job-match records application
     *statuses* (D1, edited from the dashboard) so the digest can skip handled jobs; career-ops keeps the
-    evaluation and CV work.
+    deep evaluation and CV work. Since M25 (ADR 0016) a Worker cron asks a model for a second opinion on
+    the offers the Python filter kept (a score, a level, reasons); it never replaces the Python score and
+    never writes the config.
   - We do **not** write into career-ops' tracker or `scan-history.tsv`.
 - **Optional integration point** (late, only if useful): `job-match export-career-ops --job-ids …` (in
   `export/career_ops.py`) writes two things into a user-given career-ops checkout path:

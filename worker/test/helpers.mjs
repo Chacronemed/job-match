@@ -76,12 +76,34 @@ export async function identityProvider() {
       return `${input}.${b64url(new Uint8Array(sig))}`;
     },
   };
-  globalThis.fetch = async (url) => {
-    if (String(url) !== `${TEAM}/cdn-cgi/access/certs`) throw new Error("unexpected fetch");
-    idp.jwksCalls += 1;
-    return new Response(JSON.stringify({ keys: idp.keys() }), { status: idp.jwksStatus });
+  // Every other URL is refused, unless a test registers a handler in `idp.hosts` (the
+  // AI tests mock api.anthropic.com this way).
+  idp.hosts = {};
+  globalThis.fetch = async (url, init) => {
+    const u = String(url);
+    if (u === `${TEAM}/cdn-cgi/access/certs`) {
+      idp.jwksCalls += 1;
+      return new Response(JSON.stringify({ keys: idp.keys() }), { status: idp.jwksStatus });
+    }
+    const handler = idp.hosts[new URL(u).host];
+    if (!handler) throw new Error("unexpected fetch");
+    return handler(u, init);
   };
   return idp;
+}
+
+// The assets binding serving a few JSON files, as the deployed site does.
+export function fakeAssets(files = {}) {
+  return {
+    fetch: async (request) => {
+      const path = new URL(request.url).pathname;
+      if (!(path in files)) return new Response("not found", { status: 404 });
+      return new Response(JSON.stringify(files[path]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+  };
 }
 
 export function env(db, overrides = {}) {

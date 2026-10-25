@@ -8,12 +8,13 @@ Notes and URLs are private: nothing here logs a row, only counts.
 """
 
 import json
+import re
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from job_match.persistence.repositories import ApplicationRepository
+from job_match.persistence.repositories import AiRepository, ApplicationRepository
 from job_match.tracking.constants import (
     JOB_KEY_RE,
     LABELS,
@@ -28,6 +29,26 @@ APPLICATION_FIELDS = (
 )
 DECISION_FIELDS = ("id", "job_key", "label", "score_at_decision", "created_at")
 SKILL_OVERRIDE_FIELDS = ("skill", "created_at")
+# The AI rerank tables (worker/migrations/0004_ai_verdicts.sql, ADR 0016).
+AI_VERDICT_FIELDS = (
+    "id", "job_key", "hash", "provider", "model", "prompt_version", "score", "level",
+    "reasons", "red_flags", "created_at",
+)
+AI_USAGE_FIELDS = ("day", "provider", "calls", "tokens_in", "tokens_out")
+DISAGREEMENT_FIELDS = (
+    "id", "job_key", "hash", "python_score", "python_section", "ai_score", "ai_level", "kind",
+    "created_at",
+)
+AI_RUN_FIELDS = (
+    "id", "started_at", "finished_at", "outcome", "http_status", "provider", "counters",
+)
+AI_RUN_OUTCOMES = ("ok", "stopped", "no_profile", "failed")
+AI_PROVIDERS = ("anthropic", "workers_ai")
+AI_LEVELS = ("fort", "tenter", "hors_sujet")
+DISAGREEMENT_KINDS = ("gap", "off_topic_strong")
+AI_REASONS_MAX = 3
+AI_REASON_LENGTH = 160
+_HASH_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 class MirrorFormatError(ValueError):
@@ -122,6 +143,124 @@ def valid_skill_override(row: dict, vocabulary: frozenset[str]) -> bool:
         and isinstance(row["skill"], str) and SKILL_RE.match(row["skill"]) is not None
         and row["skill"] in vocabulary
         and _is_timestamp(row["created_at"])
+    )
+
+
+def _is_int(value, lo: int = 0, hi: int | None = None) -> bool:
+    if isinstance(value, bool) or not isinstance(value, int) or value < lo:
+        return False
+    return hi is None or value <= hi
+
+
+def _is_reasons(value) -> bool:
+    """A JSON list of at most AI_REASONS_MAX short strings, as the Worker stores it."""
+    if not isinstance(value, str):
+        return False
+    try:
+        items = json.loads(value)
+    except json.JSONDecodeError:
+        return False
+    return (
+        isinstance(items, list) and len(items) <= AI_REASONS_MAX
+        and all(isinstance(i, str) and 0 < len(i) <= AI_REASON_LENGTH for i in items)
+    )
+
+
+def valid_ai_verdict(row: dict) -> bool:
+    return (
+        set(row) == set(AI_VERDICT_FIELDS)
+        and _is_int(row["id"], 1)
+        and isinstance(row["job_key"], str) and JOB_KEY_RE.match(row["job_key"]) is not None
+        and isinstance(row["hash"], str) and _HASH_RE.match(row["hash"]) is not None
+        and row["provider"] in AI_PROVIDERS
+        and isinstance(row["model"], str) and 0 < len(row["model"]) <= 80
+        and isinstance(row["prompt_version"], str) and 0 < len(row["prompt_version"]) <= 16
+        and _is_int(row["score"], 0, 100)
+        and row["level"] in AI_LEVELS
+        and _is_reasons(row["reasons"]) and _is_reasons(row["red_flags"])
+        and _is_timestamp(row["created_at"])
+    )
+
+
+def valid_ai_usage(row: dict) -> bool:
+    return (
+        set(row) == set(AI_USAGE_FIELDS)
+        and row["day"] is not None and _is_date(row["day"])
+        and row["provider"] in AI_PROVIDERS
+        and all(_is_int(row[k]) for k in ("calls", "tokens_in", "tokens_out"))
+    )
+
+
+def valid_disagreement(row: dict) -> bool:
+    return (
+        set(row) == set(DISAGREEMENT_FIELDS)
+        and _is_int(row["id"], 1)
+        and isinstance(row["job_key"], str) and JOB_KEY_RE.match(row["job_key"]) is not None
+        and isinstance(row["hash"], str) and _HASH_RE.match(row["hash"]) is not None
+        and _is_int(row["python_score"], 0, 100)
+        and isinstance(row["python_section"], str) and len(row["python_section"]) <= 16
+        and _is_int(row["ai_score"], 0, 100)
+        and row["ai_level"] in AI_LEVELS
+        and row["kind"] in DISAGREEMENT_KINDS
+        and _is_timestamp(row["created_at"])
+    )
+
+
+def _is_counters(value) -> bool:
+    """A JSON object of non-negative integers, as the Worker writes its counters."""
+    if not isinstance(value, str) or len(value) > 1000:
+        return False
+    try:
+        obj = json.loads(value)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(obj, dict) and all(
+        isinstance(k, str) and _is_int(v) for k, v in obj.items()
+    )
+
+
+def valid_ai_run(row: dict) -> bool:
+    status = row.get("http_status")
+    return (
+        set(row) == set(AI_RUN_FIELDS)
+        and _is_int(row["id"], 1)
+        and _is_timestamp(row["started_at"]) and _is_timestamp(row["finished_at"])
+        and row["outcome"] in AI_RUN_OUTCOMES
+        and (status is None or _is_int(status, 100, 599))
+        and (row["provider"] is None or row["provider"] in AI_PROVIDERS)
+        and _is_counters(row["counters"])
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class AiMirrorResult:
+    verdicts: int
+    usage: int
+    disagreements: int
+    skipped: int
+    runs: int = 0
+
+
+def import_ai(
+    conn, verdicts_path: Path, usage_path: Path, disagreements_path: Path,
+    runs_path: Path | None = None,
+) -> AiMirrorResult:
+    """Validate the AI exports, then replace the mirror tables in one transaction. Without
+    `runs_path` the runs mirror is emptied too: the four tables travel together."""
+    v_rows = read_export(verdicts_path)
+    u_rows = read_export(usage_path)
+    d_rows = read_export(disagreements_path)
+    r_rows = read_export(runs_path) if runs_path else []
+    verdicts = [r for r in v_rows if valid_ai_verdict(r)]
+    usage = [r for r in u_rows if valid_ai_usage(r)]
+    disagreements = [r for r in d_rows if valid_disagreement(r)]
+    runs = [r for r in r_rows if valid_ai_run(r)]
+    AiRepository(conn).replace_all(verdicts, usage, disagreements, runs)
+    return AiMirrorResult(
+        verdicts=len(verdicts), usage=len(usage), disagreements=len(disagreements),
+        skipped=len(v_rows) + len(u_rows) + len(d_rows) + len(r_rows)
+        - len(verdicts) - len(usage) - len(disagreements) - len(runs),
+        runs=len(runs),
     )
 
 

@@ -112,6 +112,10 @@ __CSS__
         <span class="field-label">Statut</span>
         <select id="f-status" name="status"><option value="">Tous</option></select>
       </label>
+      <label class="field">
+        <span class="field-label">Avis de l’IA</span>
+        <select id="f-ai" name="ai"><option value="">Tous</option></select>
+      </label>
       <div class="field field-score">
         <label class="field-label" for="f-min-score">Score minimum <span class="field-hint" id="min-score-hint"></span></label>
         <div class="score-row">
@@ -192,6 +196,12 @@ __CSS__
 
 <section class="panel legacy" id="panel-executions" aria-labelledby="h-executions" hidden>
   <header class="view-head"><h1 id="h-executions">Exécutions <span class="view-n num" data-count="executions"></span></h1></header>
+  <section class="ai-runs" aria-labelledby="h-ai-runs">
+    <h2 id="h-ai-runs" class="section-title">Rerank IA</h2>
+    <div class="runs" id="ai-runs-list"></div>
+    <p class="empty empty-sm" id="ai-runs-empty" hidden>Aucun passage de l’IA.</p>
+  </section>
+  <h2 class="section-title">Collectes</h2>
   <p class="rowcount" id="runs-rowcount"></p>
   <div class="legend" aria-hidden="true">
     <span class="legend-item"><i class="swatch sw-rejected"></i>Rejetées</span>

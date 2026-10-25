@@ -35,10 +35,44 @@ describe("queue", () => {
     assert.equal(X.latestRunAt([]), 0);
   });
 
-  test("only to_review rows; newest run first, then collected desc, then score", () => {
+  test("only to_review rows; newest run first, then score, then collected desc", () => {
     const q = X.triageQueue(rows, apps, X.latestRunAt(RUNS));
     assert.deepEqual(q.map((i) => i.row.key), ["ft:new-high", "ft:new-low", "ft:mid", "ft:old-high"]);
     assert.deepEqual(q.map((i) => i.isNew), [true, true, false, false]);
+  });
+
+  describe("AI verdicts (M25)", () => {
+    const H = "a".repeat(64);
+    const withHash = rows.map((r) => ({ ...r, ai_hash: H }));
+    const verdict = (key, score, level = "fort", hash = H) => ({ job_key: key, hash, score, level, reasons: [], red_flags: [] });
+
+    test("aiOf keeps a verdict for the row's current hash only", () => {
+      const row = withHash[0];
+      assert.equal(X.aiOf(row, { "ft:old-high": verdict("ft:old-high", 84) }).score, 84);
+      assert.equal(X.aiOf(row, { "ft:old-high": verdict("ft:old-high", 84, "fort", "b".repeat(64)) }), null);
+      assert.equal(X.aiOf(row, {}), null);
+      assert.equal(X.aiOf(row, undefined), null);
+      assert.equal(X.aiOf(row, { "ft:old-high": { hash: H, score: "84" } }), null);
+    });
+
+    test("the AI score orders the queue when it exists, the Python score otherwise", () => {
+      const ai = { "ft:new-low": verdict("ft:new-low", 95), "ft:old-high": verdict("ft:old-high", 10, "tenter") };
+      const q = X.triageQueue(withHash, apps, X.latestRunAt(RUNS), undefined, ai);
+      // new first: new-low (IA 95) over new-high (Python 90); then mid (99) over old-high (IA 10)
+      assert.deepEqual(q.map((i) => i.row.key), ["ft:new-low", "ft:new-high", "ft:mid", "ft:old-high"]);
+      assert.deepEqual(q.map((i) => i.rank), [95, 90, 99, 10]);
+      assert.equal(X.rankScore({ key: "x", score: null }, {}), -1);
+    });
+
+    test("hors_sujet leaves the Tri and the sidebar count, a stale verdict changes nothing", () => {
+      const ai = { "ft:mid": verdict("ft:mid", 12, "hors_sujet"), "ft:new-high": verdict("ft:new-high", 5, "hors_sujet", "c".repeat(64)) };
+      const q = X.triageQueue(withHash, apps, X.latestRunAt(RUNS), undefined, ai);
+      assert.deepEqual(q.map((i) => i.row.key), ["ft:new-high", "ft:new-low", "ft:old-high"]);
+      const before = X.sidebarCounts(withHash, apps, 0, undefined, [], []);
+      const after = X.sidebarCounts(withHash, apps, 0, undefined, [], [], ai);
+      assert.equal(after.tri, before.tri - 1);
+      assert.equal(after.offres, before.offres);  // still listed in Offres
+    });
   });
 
   test("below the digest threshold an offer stays out of the queue; an unscored one stays in", () => {
