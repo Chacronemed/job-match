@@ -8,7 +8,7 @@
 	// The AI rerank (ADR 0016): 30 minutes after the daily run (07:00 UTC), and once more at
 	// 09:30 to catch a late run (the content cache makes the second pass free when nothing is
 	// new). ANTHROPIC_API_KEY is a Worker secret. AI_DAILY_LIMIT is the cap on calls per day
-	// (retries included); config/settings.yaml ai.daily_limit repeats it, a test keeps them equal.
+	// (billed answers only, 4xx/5xx are free); config/settings.yaml ai.daily_limit repeats it, a test keeps them equal.
 	"triggers": {
 		"crons": [
 			"30 7 * * *",

@@ -1,6 +1,6 @@
 """Integration tests for pipelines/jobs.py using in-memory SQLite and a fake source."""
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -22,7 +22,9 @@ from job_match.persistence.repositories import JobRepository
 from job_match.pipelines.jobs import run_jobs
 
 MIGRATIONS = Path(__file__).parent.parent.parent.parent / "src" / "job_match" / "migrations"
-_NOW = datetime(2026, 10, 1, 12, 0, 0, tzinfo=UTC)
+# Relative to the real clock: run_jobs measures the dedup window from datetime.now(UTC), so a fixed
+# date would fall out of the 30-day window and silently disable the cross-source dedup tests.
+_NOW = datetime.now(UTC).replace(microsecond=0) - timedelta(hours=1)
 
 
 # ---------------------------------------------------------------------------

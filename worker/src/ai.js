@@ -159,6 +159,9 @@ function parseVerdict(text) {
 }
 
 const NO_USAGE = () => ({ tokens_in: 0, tokens_out: 0 });
+// Outcomes the provider bills (an answer came back, valid or not). Only these count against the
+// daily cap: a 4xx, a 5xx or a network failure never consumes it.
+const BILLED = new Set(["ok", "invalid", "refused"]);
 
 // One call to the Claude API. The answer never leaves this function as text: either a
 // validated verdict or an outcome, plus the token counts the usage table keeps.
@@ -287,6 +290,7 @@ async function usedToday(db, today) {
   return row ? row.n | 0 : 0;
 }
 
+// One billed call (see BILLED). Retries that got an answer count; failed requests do not.
 async function countCall(db, today, provider, usage) {
   await db
     .prepare(
@@ -356,9 +360,11 @@ export async function runRerank(env, opts = {}) {
     let attempts = 0;
     while (verdict === null && attempts < 2 && remaining > 0) {
       attempts += 1;
-      remaining -= 1;
       const r = await call(user);
-      await countCall(env.DB, today, provider, r.usage);
+      if (BILLED.has(r.outcome)) {
+        remaining -= 1;
+        await countCall(env.DB, today, provider, r.usage);
+      }
       if (r.outcome === "credit" || r.outcome === "rate_limited") {
         // The API is out for today: Workers AI takes the rest of the run, if it is bound.
         if (provider === "anthropic" && env.AI) {

@@ -62,6 +62,7 @@ function anthropic(answers) {
   const handler = async (url, init) => {
     calls.push({ url, init, body: JSON.parse(init.body) });
     const next = answers.length ? answers.shift() : verdict(80);
+    if (next instanceof Error) throw next; // a network failure
     if (next && typeof next.status === "number") {
       return new Response(JSON.stringify(next.body || {}), { status: next.status });
     }
@@ -253,7 +254,7 @@ describe("runRerank", () => {
     assert.equal(count("ai_verdicts"), 3);
   });
 
-  test("the daily cap counts calls already made today, retries included", async () => {
+  test("the daily cap counts calls already made today, billed retries included", async () => {
     const api = anthropic([]);
     idp.hosts["api.anthropic.com"] = api.handler;
     db.raw.prepare("INSERT INTO ai_usage VALUES ('2026-10-25', 'anthropic', 2, 0, 0)").run();
@@ -295,7 +296,27 @@ describe("runRerank", () => {
     const providers = db.raw.prepare("SELECT provider FROM ai_verdicts ORDER BY id").all().map((r) => r.provider);
     assert.deepEqual(providers, ["workers_ai", "workers_ai"]);
     const usage = db.raw.prepare("SELECT provider, calls FROM ai_usage ORDER BY provider").all().map((r) => ({ ...r }));
-    assert.deepEqual(usage, [{ provider: "anthropic", calls: 1 }, { provider: "workers_ai", calls: 2 }]);
+    // The 402 is not billed: no anthropic row, and the cap is untouched by it.
+    assert.deepEqual(usage, [{ provider: "workers_ai", calls: 2 }]);
+  });
+
+  test("a network error, a 429 and a 5xx do not consume the cap; billed answers do", async () => {
+    const api = anthropic([new Error("ECONNRESET"), { status: 529, body: {} }, verdict(80)]);
+    idp.hosts["api.anthropic.com"] = api.handler;
+    const c = await run(aiEnv({ "/data.json": data([job("ft:1", 90), job("ft:2", 80)]) }), { limit: 2 });
+    // ft:1 failed twice (free) and was skipped, ft:2 got its verdict: one billed call
+    assert.deepEqual([c.scored, c.errors, c.skipped_cap], [1, 2, 0]);
+    assert.equal(api.calls.length, 3);
+    assert.equal(db.raw.prepare("SELECT COALESCE(SUM(calls), 0) AS n FROM ai_usage").get().n, 1);
+    db = fakeD1();
+    const ai = workersAI([]);
+    const api429 = anthropic([{ status: 429, body: { error: { type: "rate_limit_error", message: "slow down" } } }]);
+    idp.hosts["api.anthropic.com"] = api429.handler;
+    const c2 = await run(aiEnv({ "/data.json": data([job("ft:1", 90)]) }, { AI: ai }), { limit: 1 });
+    // the 429 is free, the Workers AI answer that replaced it is the only billed call
+    assert.deepEqual([c2.scored, c2.fallback], [1, 1]);
+    const rows = db.raw.prepare("SELECT provider, calls FROM ai_usage").all().map((r) => ({ ...r }));
+    assert.deepEqual(rows, [{ provider: "workers_ai", calls: 1 }]);
   });
 
   test("a 400 that names the credit balance and a 429 fall back the same way", async () => {
@@ -335,6 +356,8 @@ describe("runRerank", () => {
     const c = await run(aiEnv({ "/data.json": data([job("ft:1", 90), job("ft:2", 80)]) }));
     assert.deepEqual([c.scored, c.errors, c.refused], [1, 1, 1]);
     assert.equal(api.calls.length, 3);
+    // the 529 is free; the verdict and the refusal are billed
+    assert.equal(db.raw.prepare("SELECT calls FROM ai_usage").get().calls, 2);
   });
 
   test("disagreements are stored with both scores", async () => {
@@ -381,7 +404,8 @@ describe("runRerank", () => {
       assert.equal(ai.calls.length, 0, "no fallback");
       assert.equal(r.counters.scored, 0);
       assert.equal(count("ai_verdicts"), 0);
-      assert.equal(db.raw.prepare("SELECT calls FROM ai_usage").get().calls, 1);
+      // a 401/404/400 is not billed and must not eat the quota
+      assert.equal(db.raw.prepare("SELECT COALESCE(SUM(calls), 0) AS n FROM ai_usage").get().n, 0);
     }
   });
 

@@ -17,10 +17,16 @@
 // config says `remote: true`, which this repo forbids (never the production D1 in dev). So the
 // calls are real, and the rows land in the local D1 (.wrangler/state), read back here.
 //
-// Output: counters and HTTP codes only. The Worker's own log line (`ai rerank ...`) is the same.
-// Never the key, never a prompt, never an answer.
+// Output: counters and HTTP codes only, plus wrangler's stderr when a command fails. The Worker's
+// own log line (`ai rerank ...`) is the same. Never the key, never a prompt, never an answer.
+//
+// Windows: wrangler is launched through `shell: true` (npx.cmd), and Node does not quote arguments
+// in that mode, so cmd.exe would split a `--command "SELECT ..."` into words. The SQL therefore
+// always goes through a temp file and `--file`.
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(name);
@@ -34,16 +40,29 @@ const CRON = "30 7 * * *";
 const npx = process.platform === "win32" ? "npx.cmd" : "npx";
 const WRANGLER = [npx, "--yes", "wrangler@4"];
 
+const TMP = mkdtempSync(join(tmpdir(), "ai-smoke-"));
+const SQL_FILE = join(TMP, "query.sql");
+process.on("exit", () => rmSync(TMP, { recursive: true, force: true }));
+
+function fail(msg, r) {
+  console.error(msg);
+  const err = (r.stderr || "").trim();
+  const out = (r.stdout || "").trim();
+  if (err) console.error(err);
+  else if (out) console.error(out.slice(-1500));
+  if (r.error) console.error(String(r.error));
+  process.exit(1);
+}
+
 function d1(sql) {
-  const r = spawnSync(WRANGLER[0], [...WRANGLER.slice(1), "d1", "execute", "job-match", "--local", "--json", "--command", sql], {
+  writeFileSync(SQL_FILE, sql + "\n");
+  const r = spawnSync(WRANGLER[0], [...WRANGLER.slice(1), "d1", "execute", "job-match", "--local", "--json", "--file", SQL_FILE], {
     encoding: "utf8", shell: process.platform === "win32",
   });
-  if (r.status !== 0) {
-    console.error("d1 execute failed (status " + r.status + ")");
-    process.exit(1);
-  }
-  const text = r.stdout.slice(r.stdout.indexOf("["));
-  return JSON.parse(text)[0].results;
+  if (r.status !== 0) fail("d1 execute failed (status " + r.status + ")", r);
+  const start = r.stdout.indexOf("[");
+  if (start < 0) fail("d1 execute returned no JSON", r);
+  return JSON.parse(r.stdout.slice(start))[0].results;
 }
 
 if (flag("--reset")) {
@@ -66,9 +85,12 @@ if (flag("--fallback")) devArgs.push("--var", "AI_PROVIDER:workers_ai");
 const dev = spawn(WRANGLER[0], devArgs, { stdio: ["ignore", "pipe", "pipe"], shell: process.platform === "win32" });
 
 let ready = false;
+const tail = [];
 const onLine = (chunk) => {
   for (const line of String(chunk).split(/\r?\n/)) {
     if (!line) continue;
+    tail.push(line.trim());
+    if (tail.length > 40) tail.shift();
     if (/ai rerank/.test(line)) console.log("worker: " + line.trim());
     if (/Ready on|http:\/\/(127\.0\.0\.1|localhost):\d+/.test(line)) ready = true;
   }
@@ -78,17 +100,24 @@ dev.stderr.on("data", onLine);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+const statuses = [];
 async function trigger() {
   for (const path of ["/__scheduled", "/cdn-cgi/local/scheduled"]) {
     const url = "http://127.0.0.1:" + PORT + path + "?cron=" + encodeURIComponent(CRON);
     try {
       const res = await fetch(url);
       if (res.status === 200) return path;
-    } catch {
-      /* not up yet */
+      statuses.push(path + " -> " + res.status);
+    } catch (e) {
+      statuses.push(path + " -> " + (e.cause && e.cause.code ? e.cause.code : e.message));
     }
   }
   return null;
+}
+
+function dumpTail() {
+  console.error("--- wrangler dev output (last lines) ---");
+  for (const l of tail) console.error(l);
 }
 
 function stop() {
@@ -100,13 +129,15 @@ function stop() {
   for (let i = 0; i < 60 && !ready; i++) await sleep(1000);
   if (!ready) {
     console.error("wrangler dev did not come up in 60 s");
+    dumpTail();
     stop();
     process.exit(1);
   }
   await sleep(1500);
   const route = await trigger();
   if (!route) {
-    console.error("the scheduled route answered neither /__scheduled nor /cdn-cgi/local/scheduled");
+    console.error("the scheduled route answered neither /__scheduled nor /cdn-cgi/local/scheduled: " + statuses.join(", "));
+    dumpTail();
     stop();
     process.exit(1);
   }

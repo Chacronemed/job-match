@@ -34,7 +34,7 @@ two Cloudflare secrets, M9 manual GitHub setup, `PROFILE_YAML` re-encoding, `SMT
     reads `data.json` and `ai-profile.json` through the assets binding (D1 holds no offer
     text), picks the listed offers with a Python score ≥ `thresholds.min_score` without a
     verdict for `(key, ai_hash, PROMPT_VERSION)`, best score first, the wrangler var
-    `AI_DAILY_LIMIT = "100"` calls a day (retries included, `ai_usage` counters; `DAILY_LIMIT`
+    `AI_DAILY_LIMIT = "100"` billed calls a day (HTTP 200 only, since 2026-11-01; `ai_usage` counters; `DAILY_LIMIT`
     in ai.js is the fallback). Every pass writes an `ai_runs` row (outcome, HTTP status,
     provider, counters); any 4xx that is not a quota (401, 404, 400 schema…) stops the run with
     `outcome = stopped` and the status alone, shown in red under « Rerank IA » in Exécutions.
@@ -940,6 +940,15 @@ two Cloudflare secrets, M9 manual GitHub setup, `PROFILE_YAML` re-encoding, `SMT
   `node scripts/ai-smoke.mjs` (expect `new verdicts {"anthropic":3}`, `outcome ok`) and
   `node scripts/ai-smoke.mjs --fallback` (expect `{"workers_ai":3}`). `--reset` empties the
   local AI tables.
+  - 2026-11-01: the Windows failure (`d1 execute failed`) was Node's `shell: true` splitting the
+    `--command` SQL; the script now passes SQL through `--file` and prints wrangler's
+    stderr/stdout on failure, plus the last `wrangler dev` lines when the scheduled route
+    does not answer. `--reset` verified. The real runs are still blocked here: the AI binding
+    makes `wrangler dev` open a remote proxy session, and `job-match.entchacrone.workers.dev`
+    is behind Access, so in a non-interactive shell wrangler stops with "no Access Service
+    Token credentials". Either run it from your own terminal (wrangler may open the Access
+    login) or create an Access service token and set `CLOUDFLARE_ACCESS_CLIENT_ID` /
+    `CLOUDFLARE_ACCESS_CLIENT_SECRET` in the shell env (not in `.dev.vars`).
 - **M25 in production (one-time):**
   1. `npx wrangler@4 secret put ANTHROPIC_API_KEY` (done, per the brief); the cap is the
      wrangler var `AI_DAILY_LIMIT`; check the Workers AI binding is allowed on the account.
@@ -1131,6 +1140,10 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
 - ~~**M9 — WAL flush before data-repo push:**~~ **Resolved in M9.** `PRAGMA wal_checkpoint(TRUNCATE)` + `VACUUM` run in daily.yml before DB push. `*.sqlite-wal` and `*.sqlite-shm` added to `.gitignore`.
 
 ## Known issues
+- 2026-11-01: `test_jobs.py` used a fixed `_NOW` (2026-10-01) that aged out of the 30-day dedup
+  window measured from the real clock (fixed: `_NOW` is now relative). Other test files still
+  carry fixed October 2026 dates (`tests/unit/conftest.py`, repositories, funding, leads); they
+  pass today, but any that go through a `datetime.now()` window will age the same way.
 - **AI rerank:** the SQLite mirror of the verdicts is a day behind (the export runs before the
   pipeline); only `ai-report` reads it, the dashboard reads D1 live. `ai.js` trusts the
   `ai_hash` field of `data.json` (it does not recompute it). The Claude 400 "credit" detection
