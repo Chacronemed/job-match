@@ -240,7 +240,10 @@
       },
       /* The generated CV + letter versions of an offer, and a new version on demand (ADR 0017). */
       documents: function (key) { return call("GET", "documents/" + encodeURIComponent(key)); },
-      regenerate: function (key) { return call("POST", "documents/" + encodeURIComponent(key) + "/regenerate"); }
+      regenerate: function (key) { return call("POST", "documents/" + encodeURIComponent(key) + "/regenerate"); },
+      /* « Lancer maintenant » in Exécutions: the Worker answers 202 and runs the pass after. */
+      runAi: function () { return call("POST", "ai/run"); },
+      runDocuments: function () { return call("POST", "documents/run"); }
     };
   }
 

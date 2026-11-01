@@ -386,3 +386,39 @@ describe("decision undo", () => {
     assert.equal((await call(`/api/decisions/${id}`)).status, 405);
   });
 });
+
+describe("run now (POST /api/ai/run, /api/documents/run)", () => {
+  function ctx() {
+    const waits = [];
+    return { waits, waitUntil: (p) => waits.push(p) };
+  }
+  async function start(path, opts = {}) {
+    const c = ctx();
+    const res = await worker.fetch(request(path, { method: "POST", token, ...opts }), env(db), c);
+    return { res, c };
+  }
+
+  test("needs a JWT and a same-origin request; other methods are 405", async () => {
+    assert.equal((await start("/api/ai/run", { token: null })).res.status, 401);
+    assert.equal((await start("/api/documents/run", { origin: "https://evil.example" })).res.status, 403);
+    assert.equal((await call("/api/ai/run")).status, 405);
+    assert.equal((await call("/api/documents/run")).status, 405);
+  });
+
+  test("answers 202 at once and runs the AI pass after, writing its ai_runs row", async () => {
+    const { res, c } = await start("/api/ai/run");
+    assert.equal(res.status, 202);
+    assert.deepEqual(await res.json(), { started: true, kind: "ai" });
+    assert.equal(c.waits.length, 1); // the pass is handed to waitUntil, not awaited by the request
+    await Promise.all(c.waits);
+    assert.equal(rows("ai_runs"), 1); // no profile asset here: the pass stops, the row says so
+  });
+
+  test("the documents pass on an empty table is idle: 202, no row, no throw", async () => {
+    const { res, c } = await start("/api/documents/run");
+    assert.equal(res.status, 202);
+    assert.deepEqual(await res.json(), { started: true, kind: "documents" });
+    await Promise.all(c.waits);
+    assert.equal(rows("document_runs"), 0);
+  });
+});

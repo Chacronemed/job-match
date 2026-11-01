@@ -3,6 +3,15 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
+**Fix M26 in production: Candidatures vide + « Lancer maintenant »** (branch
+`fix/m26-candidatures` from `main` at PR #8, 2026-11-01). **Done locally, to deploy** (Next
+step). Prod showed an empty Candidatures with `TypeError: statusSelect is not a function`:
+`dashboard.js` is one scope, and part 4 named the card / row status menu `statusSelect`, the
+same name as the Offres status filter `var statusSelect = byId("f-status")`; the `var`
+assignment at boot replaced the hoisted function. Neither the Node tests (pure modules only)
+nor `node --check` (a legal redeclaration) nor the part-4 browser check (not done on
+Candidatures) caught it. Fixed, with two guards and the on-demand runs; see Done.
+
 **M26: application documents** (branch `feat/m26-application-docs`, ADR 0017 accepted).
 **All four parts done locally (2026-11-01), prompt v3 waiting for its real run:** parts 3
 (ATS PDF/DOCX rendering in the Worker, downloads behind Access) and 4 (Candidatures as a
@@ -42,6 +51,38 @@ production rows. Still pending: the M21 Cloudflare setup, the data-repo cleanup 
 two Cloudflare secrets, M9 manual GitHub setup, `PROFILE_YAML` re-encoding, `SMTP_PORT` variable.
 
 ## Done
+- **Fix M26: Candidatures menu shadowed; run AI and documents on demand** (2026-11-01):
+  - **Fix:** the menu is `statusMenu(key, j, status)`; the filter keeps `statusSelect`.
+  - **Guard 1 (Node, `dashboard-ui.test.mjs`):** no name declared twice at the top level of
+    the `dashboard.js` IIFE (`var` or `function`, two-space indent).
+  - **Guard 2 (browser, `tests/unit/browser/`):** Python Playwright, Chromium, in CI
+    (`playwright>=1.48` in the dev extra; ci.yml `python -m playwright install --with-deps
+    chromium`; without `CI` a missing browser skips). No server: `page.route` serves the
+    rendered page at `http://jm.test/` and a mocked `GET /api/applications` (one application
+    per board status, one whose offer is gone, a ready and a failed document, one AI run);
+    console errors and `pageerror` collected. Kanban: 4 columns, a card and a `select.kb-status`
+    each, « J’ai postulé » once, « Relances dues (1) ». Tableau: 4 rows, 8 columns, 4 download
+    links, 2 « Échec » badges, `view=table` in the hash, back to the Kanban. 0 errors in both.
+    Re-introducing the clash fails both guards (checked, then reverted). Locally once:
+    `.venv\Scripts\pip install -e .[dev]` then `.venv\Scripts\python -m playwright install chromium`.
+  - **Isolation:** `safeNode(key, build, fallback)` wraps every card (`appCard`) and every row
+    (`appRow`, extracted from `renderAppsTable`): a throw logs `candidatures: carte illisible`
+    + the key + the exception (never the record) and renders `brokenCard` / `brokenRow`
+    (`.kb-card-broken`, the status menu when it still works). `renderCurrent` catches a view
+    failure and shows « Affichage interrompu : recharge la page. » in the panel. Browser test:
+    `Intl.DateTimeFormat.prototype.format` made to throw on one sentinel date through
+    `add_init_script` (the property is an accessor: the getter is wrapped) → 3 cards + 1 broken,
+    3 rows + 1 broken, exactly 2 console errors, no uncaught exception.
+  - **« Lancer maintenant »:** `POST /api/ai/run` and `POST /api/documents/run` (Access JWT and
+    same-origin as every write; 405 otherwise) answer `202 {started, kind}` and hand
+    `runScheduled` / `runDocumentsScheduled` to `ctx.waitUntil` (`handleApi(request, env, ctx)`);
+    the pass writes its usual `ai_runs` / `document_runs` row. The documents route is matched
+    before `/api/documents/:key`. No lock: the AI pass is cached per hash, the documents pass
+    takes pending rows by id. Dashboard: `client.runAi()` / `runDocuments()`; two buttons in
+    Exécutions (« Rerank IA » header, new « Documents » section), disabled until tracking is
+    `ready`; a toast with « Actualiser » (reloads tracking) on 202, `failureText` otherwise.
+  - **Tests:** 223 Node (+5), 1511 Python (+6, 4 in the browser), ruff clean.
+
 - **M26 parts 1–2: application documents** (2026-11-01, ADR 0017; amends ADR 0016 §12,
   ARCHITECTURE §10 and CLAUDE.md rule 10):
   - **Part 1, Python.** `src/job_match/documents/`: `master.py` (dataclasses, YAML → sorted JSON),
@@ -973,6 +1014,9 @@ two Cloudflare secrets, M9 manual GitHub setup, `PROFILE_YAML` re-encoding, `SMT
   - 26 tests green, `ruff check .` clean
 
 ## Next step
+- **Deploy the fix:** merge `fix/m26-candidatures`, `npx wrangler deploy` (no migration), open
+  Candidatures (Kanban and Tableau) and Exécutions → « Lancer maintenant » (202 in the network
+  tab, a new « Rerank IA » line after « Actualiser »). Then the M26 round 4 below.
 - **M26 review, round 4 (you):** costs at list price, two attempts each time: v1 $0.069 /
   $0.076, v2 $0.074 / $0.084, v3 $0.078 / $0.081 (first-attempt codes: `unsourced_tool` ×2;
   `unknown_name` ×2 + `unsourced_tool` ×2). Prompt v4 (availability as a full sentence, once
@@ -1204,6 +1248,8 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
 - ~~**M9 — WAL flush before data-repo push:**~~ **Resolved in M9.** `PRAGMA wal_checkpoint(TRUNCATE)` + `VACUUM` run in daily.yml before DB push. `*.sqlite-wal` and `*.sqlite-shm` added to `.gitignore`.
 
 ## Known issues
+- The browser tests cover Candidatures and the Exécutions buttons only; Tri, Offres, Leads and
+  the record panel are still checked by hand (docs/design/AUDIT.md).
 - 2026-11-01: `test_jobs.py` used a fixed `_NOW` (2026-10-01) that aged out of the 30-day dedup
   window measured from the real clock (fixed: `_NOW` is now relative). Other test files still
   carry fixed October 2026 dates (`tests/unit/conftest.py`, repositories, funding, leads); they

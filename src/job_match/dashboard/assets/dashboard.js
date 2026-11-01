@@ -456,6 +456,28 @@
     retry.hidden = track.status !== "error";
   }
 
+  /* « Lancer maintenant » (Exécutions): hosted page only, one click starts one pass. */
+  var RUN_NOW = {
+    "ai-run-now": { call: function () { return api.runAi(); }, text: "Rerank IA lancé · le résultat s’affiche ici dans une minute" },
+    "docs-run-now": { call: function () { return api.runDocuments(); }, text: "Génération des documents lancée · l’état est dans la fiche de chaque offre" }
+  };
+  function runNowButtons() {
+    Object.keys(RUN_NOW).forEach(function (id) { var b = byId(id); if (b) b.disabled = track.status !== "ready"; });
+  }
+  Object.keys(RUN_NOW).forEach(function (id) {
+    var b = byId(id);
+    if (!b) return;
+    b.addEventListener("click", function () {
+      if (!api || track.status !== "ready") return;
+      b.disabled = true;
+      RUN_NOW[id].call().then(function () {
+        showToast(RUN_NOW[id].text, [{ text: "Actualiser", run: function () { loadTracking(); } }]);
+      }).catch(function (err) {
+        showToast("Non lancé (" + failureText(err) + ")");
+      }).then(function () { setTimeout(function () { b.disabled = track.status !== "ready"; }, 3000); });
+    });
+  });
+
   function loadTracking() {
     if (!api || !/^https?:$/.test(location.protocol)) { track.status = "off"; trackBanner(); return; }
     track.status = "loading";
@@ -488,11 +510,13 @@
       tri.built = false;  /* the queue depends on the statuses just loaded */
       renderPending();
       flushRetry();
+      runNowButtons();
       renderJobs();
       renderCurrent();
     }).catch(function () {
       track.status = "error";
       trackBanner();
+      runNowButtons();
       renderJobs();
       renderCurrent();
     });
@@ -1925,7 +1949,7 @@
     card.appendChild(el("p", { class: "kb-docs" }, docBadgeEl(track.documents[key] || null)));
 
     var actions = el("div", { class: "kb-actions" });
-    actions.appendChild(statusSelect(key, j, status));
+    actions.appendChild(statusMenu(key, j, status));
     if (status === "to_apply") {
       var applied = el("button", { type: "button", class: "btn btn-primary btn-small", text: "J’ai postulé" });
       applied.addEventListener("click", function () {
@@ -1940,8 +1964,30 @@
     return card;
   }
 
+  /* One broken card or row never empties the view: the error is logged with the key only
+     (never the record), a placeholder takes its place and the others render. */
+  function safeNode(key, build, fallback) {
+    try { return build(); } catch (err) {
+      console.error("candidatures: carte illisible", key, err);
+      try { return fallback(); } catch (e2) { return el("p", { class: "kb-empty", text: "Carte illisible" }); }
+    }
+  }
+  function brokenTitle(key) { var j = postingByKey[key]; return j && j.title ? j.title : key; }
+  function brokenCard(key) {
+    var card = el("article", { class: "kb-card kb-card-broken", "data-key": key, tabindex: "-1" });
+    card.appendChild(el("h4", { class: "kb-title", text: brokenTitle(key) }));
+    card.appendChild(el("p", { class: "kb-meta", text: "Carte illisible · les autres s’affichent" }));
+    try { card.appendChild(el("div", { class: "kb-actions" }, statusMenu(key, postingByKey[key], T.statusOf(track.apps[key])))); } catch (e) { /* no menu */ }
+    return card;
+  }
+  function brokenRow(key) {
+    var tr = el("tr", { "data-key": key, class: "kb-card-broken" });
+    tr.appendChild(el("td", { colspan: String(APP_COLUMNS.length), text: brokenTitle(key) + " · ligne illisible, les autres s’affichent" }));
+    return tr;
+  }
+
   /* The status menu of a card or a table row: every status, the board's short labels. */
-  function statusSelect(key, j, status) {
+  function statusMenu(key, j, status) {
     var sel = el("select", { class: "kb-status", name: "status", "aria-label": "Statut de " + (j ? j.title : key) });
     T.STATUSES.forEach(function (s) { sel.appendChild(el("option", { value: s, text: BOARD_TEXT[s] || T.STATUS_TEXT[s] })); });
     sel.value = status;
@@ -2052,7 +2098,7 @@
       var col = el("section", { class: "kb-col kb-" + status, "data-status": status, "aria-label": BOARD_TEXT[status] });
       col.appendChild(el("h3", { class: "kb-col-title" }, [BOARD_TEXT[status] + " ", el("span", { class: "tab-count", text: String(inCol.length) })]));
       var body = el("div", { class: "kb-col-body" });
-      inCol.forEach(function (k) { body.appendChild(appCard(k, today)); });
+      inCol.forEach(function (k) { body.appendChild(safeNode(k, function () { return appCard(k, today); }, function () { return brokenCard(k); })); });
       if (!inCol.length) body.appendChild(el("p", { class: "kb-empty", text: status === "to_apply" ? "Garde des offres dans Tri pour les voir ici." : "Aucune." }));
       col.appendChild(body);
       board.appendChild(col);
@@ -2080,7 +2126,12 @@
     var head = el("tr");
     APP_COLUMNS.forEach(function (h) { head.appendChild(el("th", { scope: "col", class: h === "Score IA" ? "num" : null, text: h })); });
     var body = el("tbody");
-    rows.forEach(function (k) {
+    rows.forEach(function (k) { body.appendChild(safeNode(k, function () { return appRow(k, today); }, function () { return brokenRow(k); })); });
+    wrap.appendChild(el("table", { class: "data apps", "aria-label": "Candidatures" }, [el("thead", null, head), body]));
+  }
+
+  function appRow(k, today) {
+    {
       var app = track.apps[k];
       var j = postingByKey[k];
       var doc = track.documents[k] || null;
@@ -2092,7 +2143,7 @@
       tr.appendChild(el("td", { text: j ? (j.company || "—") : "offre plus affichée" }));
       var ai = j ? aiOf(j) : null;
       tr.appendChild(el("td", { class: "num", text: ai ? String(ai.score) : "—" }));
-      tr.appendChild(el("td", null, statusSelect(k, j, T.statusOf(app))));
+      tr.appendChild(el("td", null, statusMenu(k, j, T.statusOf(app))));
       tr.appendChild(el("td", null, fileCell(links, "cv", doc, "CV")));
       tr.appendChild(el("td", null, fileCell(links, "letter", doc, "Lettre")));
       tr.appendChild(el("td", { class: "link-col" }, j && j.url && HTTP.test(j.url)
@@ -2103,14 +2154,20 @@
       tr.appendChild(el("td", { class: due ? "is-due" : null, text: app.follow_up_at
         ? shortDay(app.follow_up_at) + (late > 0 ? " (" + late + " j de retard)" : due ? " (aujourd’hui)" : "")
         : "—" }));
-      body.appendChild(tr);
-    });
-    wrap.appendChild(el("table", { class: "data apps", "aria-label": "Candidatures" }, [el("thead", null, head), body]));
+      return tr;
+    }
   }
 
+  /* A view that fails to render says so instead of leaving the panel blank. */
   function renderCurrent() {
-    if (currentTab === "tri") renderTri();
-    else if (currentTab === "candidatures") renderApps();
+    try {
+      if (currentTab === "tri") renderTri();
+      else if (currentTab === "candidatures") renderApps();
+    } catch (err) {
+      console.error("affichage interrompu", currentTab, err);
+      var host = byId(currentTab === "tri" ? "tri-stage" : "kb-board");
+      if (host) { clear(host); host.hidden = false; host.appendChild(el("p", { class: "kb-empty", text: "Affichage interrompu : recharge la page." })); }
+    }
     updateCounts();
   }
 

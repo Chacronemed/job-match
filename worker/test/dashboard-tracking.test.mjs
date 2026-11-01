@@ -279,3 +279,15 @@ describe("Offres search", () => {
     assert.ok(!find("nordwind lille", grouped[0]));
   });
 });
+
+describe("run now", () => {
+  test("Lancer maintenant posts to the two run routes, no body", async () => {
+    const calls = [];
+    const f = async (url, init) => { calls.push({ url, init }); return new Response(JSON.stringify({ started: true }), { status: 202 }); };
+    f.calls = calls;
+    await T.client(f).runAi();
+    await T.client(f).runDocuments();
+    assert.deepEqual(f.calls.map((c) => [c.init.method, c.url, c.init.body]),
+      [["POST", "/api/ai/run", undefined], ["POST", "/api/documents/run", undefined]]);
+  });
+});
