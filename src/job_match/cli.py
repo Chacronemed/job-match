@@ -6,6 +6,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from job_match import clock
 from job_match.domain.models import RunSummary
 
 _logger = logging.getLogger(__name__)
@@ -257,7 +258,7 @@ def _print_reprocess_summary(
 def _cmd_digest(args: argparse.Namespace) -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
 
-    from datetime import UTC, date, datetime
+    from datetime import date
 
     from job_match.config.loader import load_settings
     from job_match.notification.assemble import build_digest
@@ -286,7 +287,7 @@ def _cmd_digest(args: argparse.Namespace) -> None:
         print(f"  Reset notified_at for {n_jobs} job(s) and {n_leads} lead(s) since {since}")
 
     with Database(path=db_path) as db:
-        batch = build_digest(db, settings, datetime.now(UTC))
+        batch = build_digest(db, settings, clock.now())
     data = batch.data
 
     print(
@@ -323,7 +324,7 @@ def _cmd_digest(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     # Mark only after a successful send, so a failed send is retried next run.
-    sent_at = datetime.now(UTC)
+    sent_at = clock.now()
     with Database(path=db_path) as db:
         JobRepository(db.conn).mark_notified(list(batch.job_ids), sent_at)
         LeadRepository(db.conn).mark_notified(list(batch.lead_ids), sent_at)
@@ -505,7 +506,6 @@ def _cmd_dashboard(args: argparse.Namespace) -> None:
     """Write the static dashboard. Prints counts only: the CI log is public."""
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
 
-    from datetime import UTC, datetime
 
     from job_match.config.loader import load_settings
     from job_match.dashboard.data import build_dashboard_data
@@ -519,7 +519,7 @@ def _cmd_dashboard(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     with Database(path=str(db_path)) as db:
-        data = build_dashboard_data(db, settings, datetime.now(UTC))
+        data = build_dashboard_data(db, settings, clock.now())
     write_site(data, Path(args.out), _ai_profile(args))
 
     by_section = {s: 0 for s in ("strong", "eligible", "stretch")}
@@ -550,14 +550,14 @@ def _ai_profile(args: argparse.Namespace) -> dict | None:
 def _cmd_ai_report(args: argparse.Namespace) -> None:
     """Local only: the report names offers and skills, so it never runs in the public CI
     log, and it writes a file that is not committed."""
-    from datetime import UTC, date, datetime, timedelta
+    from datetime import date, timedelta
 
     from job_match.ai.report import build_report, format_report
     from job_match.config.loader import load_settings
     from job_match.persistence.db import Database
     from job_match.persistence.repositories import AiRepository
 
-    today = datetime.now(UTC).date()
+    today = clock.now().date()
     since = today - timedelta(days=7)
     if args.since:
         try:

@@ -1,6 +1,7 @@
 """Integration tests for pipelines/jobs.py using in-memory SQLite and a fake source."""
 import json
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from pathlib import Path
 
 import pytest
@@ -19,12 +20,13 @@ from job_match.config.schema import (
 from job_match.domain.models import ContractType, Eligibility, Job, WorkplaceType
 from job_match.persistence.db import Database
 from job_match.persistence.repositories import JobRepository
-from job_match.pipelines.jobs import run_jobs
+from job_match.pipelines.jobs import run_jobs as _run_jobs
 
 MIGRATIONS = Path(__file__).parent.parent.parent.parent / "src" / "job_match" / "migrations"
-# Relative to the real clock: run_jobs measures the dedup window from datetime.now(UTC), so a fixed
-# date would fall out of the 30-day window and silently disable the cross-source dedup tests.
-_NOW = datetime.now(UTC).replace(microsecond=0) - timedelta(hours=1)
+_NOW = datetime(2026, 10, 1, 12, 0, 0, tzinfo=UTC)
+# The pipeline measures its windows (dedup, raw retention, closure) from `now`: pin it to the
+# fixture date, otherwise the tests would depend on the day they run.
+run_jobs = partial(_run_jobs, now=_NOW)
 
 
 # ---------------------------------------------------------------------------
@@ -694,8 +696,12 @@ def test_raw_payloads_are_stored_once_per_unchanged_offer(db):
 
 
 def test_a_changed_raw_payload_is_stored_again(db):
+    # two distinct runs: one raw copy per (item, fetched_at), so the second run is a day later
     run_jobs(DictSource([{"id": "R1", "note": "a"}]), _profile(), _settings(), db, {})
-    summary = run_jobs(DictSource([{"id": "R1", "note": "z"}]), _profile(), _settings(), db, {})
+    summary = _run_jobs(
+        DictSource([{"id": "R1", "note": "z"}]), _profile(), _settings(), db, {},
+        now=_NOW + timedelta(days=1),
+    )
     assert summary.raw_stored == 1
     assert len(_raw_rows(db)) == 2
 

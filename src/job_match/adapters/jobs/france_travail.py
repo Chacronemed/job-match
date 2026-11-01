@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 
 import httpx
 
+from job_match import clock
 from job_match.adapters.http import HttpClient
 from job_match.adapters.jobs.base import OfferStatus, QueryStat, RawItem
 from job_match.config.schema import Profile
@@ -251,7 +252,7 @@ class FranceTravailSource:
             description=raw.get("description", ""),
             url=(raw.get("origineOffre") or {}).get("urlOrigine", ""),
             published_at=_parse_dt(raw.get("dateCreation")),
-            collected_at=datetime.now(UTC),
+            collected_at=clock.now(),
             search_query=raw.get(QUERY_KEY),
         )
 

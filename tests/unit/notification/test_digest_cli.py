@@ -78,8 +78,9 @@ def _notified_ids(db_path: str) -> list[int]:
 # send failure → no jobs marked
 # ---------------------------------------------------------------------------
 
-def test_send_failure_does_not_mark_jobs(tmp_project, monkeypatch):
+def test_send_failure_does_not_mark_jobs(tmp_project, monkeypatch, frozen_clock):
     monkeypatch.chdir(tmp_project)
+    frozen_clock(_NOW)
     db_path = str(tmp_project / "data" / "jobs.sqlite")
     _seed_db(db_path)
 
@@ -106,8 +107,9 @@ def test_send_failure_does_not_mark_jobs(tmp_project, monkeypatch):
 # missing SMTP config → exit 1, no marking
 # ---------------------------------------------------------------------------
 
-def test_missing_smtp_config_exits_1(tmp_project, monkeypatch):
+def test_missing_smtp_config_exits_1(tmp_project, monkeypatch, frozen_clock):
     monkeypatch.chdir(tmp_project)
+    frozen_clock(_NOW)
     db_path = str(tmp_project / "data" / "jobs.sqlite")
     _seed_db(db_path)
 
@@ -130,8 +132,9 @@ def test_missing_smtp_config_exits_1(tmp_project, monkeypatch):
 # successful send → jobs are marked
 # ---------------------------------------------------------------------------
 
-def test_successful_send_marks_jobs(tmp_project, monkeypatch):
+def test_successful_send_marks_jobs(tmp_project, monkeypatch, frozen_clock):
     monkeypatch.chdir(tmp_project)
+    frozen_clock(_NOW)
     db_path = str(tmp_project / "data" / "jobs.sqlite")
     ids = _seed_db(db_path)
 
@@ -154,8 +157,9 @@ def test_successful_send_marks_jobs(tmp_project, monkeypatch):
 # --resend-since resets and re-sends
 # ---------------------------------------------------------------------------
 
-def test_resend_since_resets_notified_at(tmp_project, monkeypatch):
+def test_resend_since_resets_notified_at(tmp_project, monkeypatch, frozen_clock):
     monkeypatch.chdir(tmp_project)
+    frozen_clock(_NOW)
     db_path = str(tmp_project / "data" / "jobs.sqlite")
     ids = _seed_db(db_path)
 

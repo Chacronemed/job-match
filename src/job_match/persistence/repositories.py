@@ -1,8 +1,9 @@
 import json
 import sqlite3
 from dataclasses import dataclass, replace
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 
+from job_match import clock
 from job_match.domain.models import (
     Article,
     Company,
@@ -647,7 +648,7 @@ class JobScoreRepository:
         self._conn = conn
 
     def save(self, job_id: int, result: ScoreResult, scored_at: datetime | None = None) -> None:
-        ts = (scored_at or datetime.now(UTC)).isoformat()
+        ts = (scored_at or clock.now()).isoformat()
         self._conn.execute(
             """
             INSERT INTO job_scores(job_id, engine, available, score, result_json, scored_at)
@@ -690,7 +691,7 @@ class JobDuplicateRepository:
             "INSERT OR IGNORE INTO job_duplicates"
             "(canonical_job_id, duplicate_job_id, reason, similarity, detected_at)"
             " VALUES (?, ?, ?, ?, ?)",
-            (canonical_id, duplicate_id, reason, similarity, datetime.now(UTC).isoformat()),
+            (canonical_id, duplicate_id, reason, similarity, clock.now().isoformat()),
         )
         self._conn.commit()
         return cursor.rowcount > 0

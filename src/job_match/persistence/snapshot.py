@@ -19,8 +19,10 @@ import gzip
 import shutil
 import subprocess
 import sys
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
+
+from job_match import clock
 
 CURRENT = "jobs.sqlite.gz"
 PREVIOUS = "jobs.prev.sqlite.gz"
@@ -84,7 +86,7 @@ def publish(
 
     # A parentless commit built from an empty index: no branch to switch, works on an empty
     # repo, and the force-push replaces the whole history with this one commit.
-    stamp = (now or datetime.now(UTC)).strftime("%Y-%m-%d")
+    stamp = (now or clock.now()).strftime("%Y-%m-%d")
     files = [f for f in (CURRENT, PREVIOUS, "README.md") if (repo / f).exists()]
     _git(repo, "read-tree", "--empty")
     _git(repo, "add", *files)

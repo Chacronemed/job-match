@@ -1140,10 +1140,12 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
 - ~~**M9 — WAL flush before data-repo push:**~~ **Resolved in M9.** `PRAGMA wal_checkpoint(TRUNCATE)` + `VACUUM` run in daily.yml before DB push. `*.sqlite-wal` and `*.sqlite-shm` added to `.gitignore`.
 
 ## Known issues
-- 2026-11-01: `test_jobs.py` used a fixed `_NOW` (2026-10-01) that aged out of the 30-day dedup
-  window measured from the real clock (fixed: `_NOW` is now relative). Other test files still
-  carry fixed October 2026 dates (`tests/unit/conftest.py`, repositories, funding, leads); they
-  pass today, but any that go through a `datetime.now()` window will age the same way.
+- 2026-11-01 (closed): `test_jobs.py` used a fixed `_NOW` that aged out of the 30-day dedup
+  window measured from the real clock. Fix: `job_match/clock.py` is the only clock production
+  code reads (`clock.now()`, frozen by the test-only env `JOB_MATCH_FAKE_NOW`); `run_jobs`,
+  `reprocess_jobs`, `run_funding`, `reprocess_funding` take `now=`; the `frozen_clock` fixture
+  pins the clock for CLI tests. `tests/unit/test_clock.py` re-runs the Python suite with the
+  clock 90 days ahead (adds ~55 s to `pytest -q`; the Node suite is left out of the re-run).
 - **AI rerank:** the SQLite mirror of the verdicts is a day behind (the export runs before the
   pipeline); only `ai-report` reads it, the dashboard reads D1 live. `ai.js` trusts the
   `ai_hash` field of `data.json` (it does not recompute it). The Claude 400 "credit" detection

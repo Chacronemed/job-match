@@ -24,9 +24,10 @@ def tmp_project(tmp_path):
 
 
 def test_dashboard_writes_site_and_prints_counts_only(
-    tmp_project, seed_dashboard, monkeypatch, capsys
+    tmp_project, seed_dashboard, monkeypatch, capsys, frozen_clock
 ):
     monkeypatch.chdir(tmp_project)
+    frozen_clock()
     with Database(path=str(tmp_project / "data" / "jobs.sqlite")) as db:
         seed = seed_dashboard(db)
 
@@ -50,8 +51,9 @@ def test_dashboard_without_a_database_exits_1(tmp_project, monkeypatch, capsys):
     assert not (tmp_project / "data" / "jobs.sqlite").exists()  # never created on the side
 
 
-def test_dashboard_subcommand_is_registered(tmp_project, seed_dashboard, monkeypatch):
+def test_dashboard_subcommand_is_registered(tmp_project, seed_dashboard, monkeypatch, frozen_clock):
     monkeypatch.chdir(tmp_project)
+    frozen_clock()
     with Database(path=str(tmp_project / "data" / "jobs.sqlite")) as db:
         seed_dashboard(db)
     with patch("sys.argv", ["job-match", "dashboard", "--out", "out-dir"]):

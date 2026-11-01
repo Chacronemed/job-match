@@ -9,6 +9,7 @@ With no employer name the block is the normalized title plus the department inst
 the descriptions decide as before. Two different departments are two different offers.
 """
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from pathlib import Path
 
 import pytest
@@ -26,10 +27,11 @@ from job_match.config.schema import (
 from job_match.domain.models import ContractType, Job, WorkplaceType
 from job_match.persistence.db import Database
 from job_match.persistence.repositories import JobRepository
-from job_match.pipelines.jobs import run_jobs
+from job_match.pipelines.jobs import run_jobs as _run_jobs
 
 MIGRATIONS = Path(__file__).parent.parent.parent.parent / "src" / "job_match" / "migrations"
 _NOW = datetime(2026, 10, 11, 12, 0, 0, tzinfo=UTC)
+run_jobs = partial(_run_jobs, now=_NOW)  # the dedup window is measured from `now`
 
 DESC = (
     "Au sein de notre equipe infrastructure vous administrez nos clusters Kubernetes, "

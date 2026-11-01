@@ -25,6 +25,7 @@ import time
 from collections.abc import Iterator
 from datetime import UTC, datetime
 
+from job_match import clock
 from job_match.adapters.http import HttpClient
 from job_match.adapters.jobs.base import QueryStat, RawItem
 from job_match.config.schema import Profile
@@ -166,7 +167,7 @@ class JoobleSource:
             description=snippet,  # Jooble returns a snippet, never the full description
             url=str(raw.get("link") or ""),
             published_at=_parse_dt(raw.get("updated")),
-            collected_at=datetime.now(UTC),
+            collected_at=clock.now(),
             search_query=raw.get(QUERY_KEY),
         )
 

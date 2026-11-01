@@ -1,8 +1,9 @@
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 
+from job_match import clock
 from job_match.adapters.funding.base import FeedError, FundingSource
 from job_match.config.schema import Settings
 from job_match.domain.models import Article, Company, FundingEvent, RunSummary
@@ -151,13 +152,14 @@ def run_funding(
     *,
     limit: int | None = None,
     dry_run: bool = False,
+    now: datetime | None = None,
 ) -> RunSummary:
     """Feeds → ArticleRef → URL dedup → fetch → extract funding → store extract + event + lead.
 
     The full article text is a local variable and is discarded after extraction.
     """
     ctx = _context(settings, db)
-    now = datetime.now(UTC)
+    now = now or clock.now()
     max_chars = settings.funding.extract_max_chars
 
     feeds = found = new = skipped = errors = processed = api_calls = 0
@@ -247,6 +249,7 @@ def reprocess_funding(
     since: date | None = None,
     limit: int | None = None,
     dry_run: bool = False,
+    now: datetime | None = None,
 ) -> RunSummary:
     """Refetch stored articles and (re)run funding extraction.
 
@@ -254,7 +257,7 @@ def reprocess_funding(
     after that date, idempotently (events are updated in place, lead status is preserved).
     """
     ctx = _context(settings, db)
-    now = datetime.now(UTC)
+    now = now or clock.now()
     articles = (
         ctx.articles.list_unprocessed(limit)
         if since is None

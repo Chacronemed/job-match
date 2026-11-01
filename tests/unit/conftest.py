@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from job_match import clock
 from job_match.domain.models import (
     Article,
     Company,
@@ -191,3 +192,18 @@ def _seed(db: Database) -> DashboardSeed:
 def seed_dashboard():
     """A factory: `seed_dashboard(db)` populates `db` and returns a `DashboardSeed`."""
     return _seed
+
+
+@pytest.fixture
+def frozen_clock(monkeypatch):
+    """`frozen_clock(dt)` pins `job_match.clock.now()` to `dt` for the test.
+
+    For code reached through the CLI, which reads the clock itself. Pipeline functions take
+    `now=` directly. Defaults to the seed date, so seeded rows are never "too old".
+    """
+
+    def freeze(dt: datetime = _NOW) -> datetime:
+        monkeypatch.setenv(clock.FAKE_NOW_ENV, dt.isoformat())
+        return dt
+
+    return freeze

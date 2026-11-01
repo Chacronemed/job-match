@@ -1,7 +1,8 @@
 import importlib.resources
 import sqlite3
-from datetime import UTC, datetime
 from pathlib import Path
+
+from job_match import clock
 
 
 def _default_migrations() -> Path:
@@ -65,7 +66,7 @@ class Database:
             conn.executescript(f.read_text(encoding="utf-8"))
             conn.execute(
                 "INSERT INTO schema_version(version, applied_at) VALUES (?, ?)",
-                (version, datetime.now(UTC).isoformat()),
+                (version, clock.now().isoformat()),
             )
             conn.commit()
             count += 1

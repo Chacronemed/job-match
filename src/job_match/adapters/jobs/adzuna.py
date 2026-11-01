@@ -12,6 +12,7 @@ import time
 from collections.abc import Iterator
 from datetime import UTC, datetime
 
+from job_match import clock
 from job_match.adapters.http import HttpClient
 from job_match.adapters.jobs.base import QueryStat, RawItem
 from job_match.config.schema import Profile
@@ -99,7 +100,7 @@ class AdzunaSource:
         if region:
             params["where"] = region
         if since is not None:
-            params["max_days_old"] = str(max(1, (datetime.now(UTC) - since).days))
+            params["max_days_old"] = str(max(1, (clock.now() - since).days))
 
         try:
             self._throttle()
@@ -140,7 +141,7 @@ class AdzunaSource:
             description=description,
             url=str(raw.get("redirect_url") or ""),
             published_at=_parse_dt(raw.get("created")),
-            collected_at=datetime.now(UTC),
+            collected_at=clock.now(),
             search_query=raw.get(QUERY_KEY),
         )
 

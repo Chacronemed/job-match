@@ -2,6 +2,7 @@
 .env
 config/profile.yaml
 config/resume.md
+private/
 
 # Data (stored in private repo)
 data/

@@ -1,8 +1,9 @@
 import json
 import logging
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
+from job_match import clock
 from job_match.adapters.jobs.base import source_payload
 from job_match.config.schema import Profile, Settings
 from job_match.dedup.engine import DedupEngine
@@ -46,6 +47,7 @@ def run_jobs(
     *,
     dry_run: bool = False,
     vocabulary: tuple[str, ...] = (),
+    now: datetime | None = None,
 ) -> RunSummary:
     """Fetch → normalize → experience gate → dedup → score → store.
 
@@ -56,7 +58,7 @@ def run_jobs(
     Volume is capped by each source, per query. The pipeline never caps globally: a
     global cap starves every query after the first one.
     """
-    started_at = datetime.now(UTC)
+    started_at = now or clock.now()
     source_list = _as_sources(sources)
     job_repo = JobRepository(db.conn)
     company_repo = CompanyRepository(db.conn)
@@ -66,7 +68,7 @@ def run_jobs(
     dedup_engine = DedupEngine(settings)
     scoring_engine = ScoringEngine([NativeRuleScorer(aliases, vocabulary)])
 
-    window = datetime.now(UTC) - timedelta(days=settings.dedup_window_days)
+    window = started_at - timedelta(days=settings.dedup_window_days)
 
     fetched = 0
     rejected_jobs = 0
@@ -205,7 +207,7 @@ def run_jobs(
 
     # Closure check: what the search just returned is open, everything else still shown
     # is asked at its source. Check calls count as API calls of their source.
-    now = datetime.now(UTC)
+    now = started_at
     if not dry_run:
         job_repo.mark_open(seen_ids, now)
     closure = check_closed(source_list, settings, db, now, dry_run=dry_run)
@@ -255,7 +257,7 @@ def run_jobs(
     )
 
     if not dry_run:
-        RunRepository(db.conn).save(summary, started_at, datetime.now(UTC))
+        RunRepository(db.conn).save(summary, started_at, clock.now())
 
     return summary
 
@@ -286,6 +288,7 @@ def reprocess_jobs(
     since: datetime | None = None,
     dry_run: bool = False,
     vocabulary: tuple[str, ...] = (),
+    now: datetime | None = None,
 ) -> RunSummary:
     """Re-apply the gate and the scorer to jobs already in the DB. No network calls.
 
@@ -298,7 +301,7 @@ def reprocess_jobs(
 
     `notified_at` is never touched, so a job already emailed is not emailed twice.
     """
-    started_at = datetime.now(UTC)
+    started_at = now or clock.now()
     job_repo = JobRepository(db.conn)
     company_repo = CompanyRepository(db.conn)
     dup_repo = JobDuplicateRepository(db.conn)
@@ -407,7 +410,7 @@ def reprocess_jobs(
         by_department=by_department,
     )
     if not dry_run:
-        RunRepository(db.conn).save(summary, started_at, datetime.now(UTC))
+        RunRepository(db.conn).save(summary, started_at, clock.now())
     return summary
 
 
