@@ -271,7 +271,7 @@ export function disagreement(pythonScore, section, verdict, gap = DISAGREEMENT_G
   return null;
 }
 
-async function loadAsset(env, path) {
+export async function loadAsset(env, path) {
   try {
     const res = await env.ASSETS.fetch(new Request("https://assets.invalid" + path));
     if (!res || res.status !== 200) return null;
@@ -281,7 +281,7 @@ async function loadAsset(env, path) {
   }
 }
 
-function day(date) {
+export function day(date) {
   return date.toISOString().slice(0, 10);
 }
 
@@ -291,14 +291,16 @@ async function usedToday(db, today) {
 }
 
 // One billed call (see BILLED). Retries that got an answer count; failed requests do not.
-async function countCall(db, today, provider, usage) {
+// Per day, provider and model: the documents (documents.js) share the table, not the price.
+export async function countCall(db, today, provider, model, usage) {
   await db
     .prepare(
-      "INSERT INTO ai_usage (day, provider, calls, tokens_in, tokens_out) VALUES (?, ?, 1, ?, ?)" +
-        " ON CONFLICT(day, provider) DO UPDATE SET calls = calls + 1," +
+      "INSERT INTO ai_usage (day, provider, model, calls, tokens_in, tokens_out)" +
+        " VALUES (?, ?, ?, 1, ?, ?)" +
+        " ON CONFLICT(day, provider, model) DO UPDATE SET calls = calls + 1," +
         " tokens_in = tokens_in + excluded.tokens_in, tokens_out = tokens_out + excluded.tokens_out",
     )
-    .bind(today, provider, usage.tokens_in | 0, usage.tokens_out | 0)
+    .bind(today, provider, model, usage.tokens_in | 0, usage.tokens_out | 0)
     .run();
 }
 
@@ -363,7 +365,7 @@ export async function runRerank(env, opts = {}) {
       const r = await call(user);
       if (BILLED.has(r.outcome)) {
         remaining -= 1;
-        await countCall(env.DB, today, provider, r.usage);
+        await countCall(env.DB, today, provider, provider === "anthropic" ? ANTHROPIC_MODEL : WORKERS_AI_MODEL, r.usage);
       }
       if (r.outcome === "credit" || r.outcome === "rate_limited") {
         // The API is out for today: Workers AI takes the rest of the run, if it is bound.

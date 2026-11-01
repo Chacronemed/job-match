@@ -11,6 +11,7 @@ from job_match.config.schema import (
     Candidate,
     ConfigError,
     DigestConfig,
+    DocumentsConfig,
     EligibilityConfig,
     ExperienceConfig,
     Filters,
@@ -178,6 +179,7 @@ def load_settings(path: Path) -> Settings:
         jobs=_parse_jobs(raw.get("jobs"), path),
         raw_payloads=_parse_raw_payloads(raw.get("raw_payloads"), path),
         ai=_parse_ai(raw.get("ai"), path),
+        documents=_parse_documents(raw.get("documents"), path),
     )
 
 
@@ -378,6 +380,29 @@ def _parse_ai(value: object, path: Path) -> AiConfig:
     if not isinstance(version, (str, int)) or isinstance(version, bool) or not str(version).strip():
         raise ConfigError(f"ai.prompt_version must be a non-empty string (in {path})")
     return AiConfig(prompt_version=str(version).strip(), **out)
+
+
+def _parse_documents(value: object, path: Path) -> DocumentsConfig:
+    raw = _mapping(value, "documents", path)
+    d = DocumentsConfig()
+    out = {}
+    for key in ("monthly_budget_usd", "batch_size", "max_bullets", "max_skills",
+                "max_bullet_chars", "max_profile_chars", "max_letter_chars"):
+        v = raw.get(key, getattr(d, key))
+        if isinstance(v, bool) or not isinstance(v, int) or v <= 0:
+            raise ConfigError(f"documents.{key} must be a positive integer (in {path})")
+        out[key] = v
+    for key in ("model", "prompt_version"):
+        v = raw.get(key, getattr(d, key))
+        if not isinstance(v, (str, int)) or isinstance(v, bool) or not str(v).strip():
+            raise ConfigError(f"documents.{key} must be a non-empty string (in {path})")
+        out[key] = str(v).strip()
+    phrases = raw.get("forbidden_phrases")
+    out["forbidden_phrases"] = (
+        list(d.forbidden_phrases) if phrases is None
+        else _str_list(phrases, "documents.forbidden_phrases", path)
+    )
+    return DocumentsConfig(**out)
 
 
 def _parse_raw_payloads(value: object, path: Path) -> RawPayloadsConfig:

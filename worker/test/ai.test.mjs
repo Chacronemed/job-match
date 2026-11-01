@@ -233,7 +233,7 @@ describe("runRerank", () => {
     assert.equal(row.score, 84);
     assert.deepEqual(JSON.parse(row.red_flags), ["Astreinte non annoncée dans le titre."]);
     const usage = { ...db.raw.prepare("SELECT * FROM ai_usage").get() };
-    assert.deepEqual(usage, { day: "2026-10-25", provider: "anthropic", calls: 1, tokens_in: 2100, tokens_out: 80 });
+    assert.deepEqual(usage, { day: "2026-10-25", provider: "anthropic", model: ANTHROPIC_MODEL, calls: 1, tokens_in: 2100, tokens_out: 80 });
   });
 
   test("cache by hash: a second run sends nothing, a changed hash or prompt version sends again", async () => {
@@ -257,7 +257,7 @@ describe("runRerank", () => {
   test("the daily cap counts calls already made today, billed retries included", async () => {
     const api = anthropic([]);
     idp.hosts["api.anthropic.com"] = api.handler;
-    db.raw.prepare("INSERT INTO ai_usage VALUES ('2026-10-25', 'anthropic', 2, 0, 0)").run();
+    db.raw.prepare("INSERT INTO ai_usage VALUES ('2026-10-25', 'anthropic', 'claude-haiku-5-5', 2, 0, 0)").run();
     const jobs = [job("ft:1", 90), job("ft:2", 80), job("ft:3", 70), job("ft:4", 60)];
     const c = await run(aiEnv({ "/data.json": data(jobs) }), { limit: 4 });
     assert.deepEqual([c.candidates, c.scored, c.skipped_cap], [2, 2, 2]);
@@ -483,7 +483,7 @@ describe("GET /api/applications", () => {
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.equal(body.ai_verdicts.length, 2);
-    assert.deepEqual(Object.keys(body).sort(), ["ai_runs", "ai_verdicts", "applications", "decisions", "skill_overrides"]);
+    assert.deepEqual(Object.keys(body).sort(), ["ai_runs", "ai_verdicts", "applications", "decisions", "documents", "skill_overrides"]);
     assert.deepEqual(body.ai_runs, []);
   });
 });

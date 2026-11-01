@@ -10,6 +10,25 @@ def skill_forms(name: str, aliases: dict[str, list[str]]) -> list[str]:
     return [canonical] + [a.lower() for a in aliases.get(canonical, [])]
 
 
+def canonical_skill(
+    name: str, aliases: dict[str, list[str]], allowed: set[str] | frozenset[str]
+) -> str | None:
+    """The canonical name behind `name` (itself or an alias), when it is one of `allowed`.
+
+    `allowed` is the vocabulary, the alias keys and the profile's skills, lowercased. None
+    when the name resolves to nothing known: the caller decides whether that is an error.
+    """
+    key = " ".join(name.lower().split())
+    if not key:
+        return None
+    if key in allowed:
+        return key
+    for canonical, forms in aliases.items():
+        if key in (f.lower() for f in forms) and canonical.lower() in allowed:
+            return canonical.lower()
+    return None
+
+
 def find_term(text: str, term: str) -> re.Match[str] | None:
     """Whole-term, case-insensitive match: `ci/cd` works, `java` never matches `javascript`."""
     return re.search(r"(?<!\w)" + re.escape(term) + r"(?!\w)", text, re.IGNORECASE)

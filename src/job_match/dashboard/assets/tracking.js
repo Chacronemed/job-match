@@ -27,6 +27,9 @@
   var NO_FOLLOW_UP = ["rejected", "ignored"];
   var NOTE_MAX = 2000;
   var URL_MAX = 500;
+  /* The documents' statuses (worker/migrations/0005_documents.sql) and their badge text. */
+  var DOC_STATUSES = ["pending", "running", "ready", "failed"];
+  var DOC_TEXT = { pending: "En attente", running: "En cours", ready: "Prêt", failed: "Échec" };
   var DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
 
   /* A job with no tracking row is still waiting for a first look. */
@@ -180,6 +183,30 @@
     };
   }
 
+  /* "Prêt (v2)", "Échec (invented_skill)", "Aucun" when the offer has no documents row. */
+  function docText(doc) {
+    if (!doc || DOC_STATUSES.indexOf(doc.status) < 0) return "Aucun";
+    var text = DOC_TEXT[doc.status];
+    if (doc.status === "failed" && doc.error_code) return text + " (" + doc.error_code + ")";
+    return doc.version ? text + " (v" + doc.version + ")" : text;
+  }
+
+  /* The badge of the latest version: {text, kind}; kind is the status or "none". */
+  function docBadge(doc) {
+    if (!doc || DOC_STATUSES.indexOf(doc.status) < 0) return { text: "Aucun document", kind: "none" };
+    return { text: docText(doc), kind: doc.status };
+  }
+
+  /* The download URLs of a version's four files (part 3), null until the files exist. */
+  var FILE_KINDS = ["cv_pdf", "cv_docx", "letter_pdf", "letter_docx"];
+  function documentLinks(key, doc) {
+    if (!doc || doc.status !== "ready" || !doc.files || !doc.version) return null;
+    var base = "/api/documents/" + encodeURIComponent(key) + "/v" + doc.version + "/";
+    var out = {};
+    FILE_KINDS.forEach(function (k) { out[k] = base + k.replace("_", "."); });
+    return out;
+  }
+
   /* fetch wrapper for /api/. Same origin only, JSON only; errors carry the API's message. */
   function client(fetchImpl) {
     function call(method, path, body) {
@@ -210,7 +237,10 @@
       /* "je maîtrise" (on) or its undo (off). The name is a vocabulary term. */
       overrideSkill: function (skill, on) {
         return call(on ? "PUT" : "DELETE", "skill-overrides/" + encodeURIComponent(skill));
-      }
+      },
+      /* The generated CV + letter versions of an offer, and a new version on demand (ADR 0017). */
+      documents: function (key) { return call("GET", "documents/" + encodeURIComponent(key)); },
+      regenerate: function (key) { return call("POST", "documents/" + encodeURIComponent(key) + "/regenerate"); }
     };
   }
 
@@ -220,6 +250,11 @@
     LABELS: LABELS,
     LABEL_TEXT: LABEL_TEXT,
     NOTE_MAX: NOTE_MAX,
+    DOC_STATUSES: DOC_STATUSES,
+    DOC_TEXT: DOC_TEXT,
+    docText: docText,
+    docBadge: docBadge,
+    documentLinks: documentLinks,
     statusOf: statusOf,
     isActive: isActive,
     isDay: isDay,

@@ -20,8 +20,8 @@ def verdict(id_=1, **fields):
 
 
 def usage(**fields):
-    row = {"day": "2026-10-25", "provider": "anthropic", "calls": 3, "tokens_in": 6000,
-           "tokens_out": 240}
+    row = {"day": "2026-10-25", "provider": "anthropic", "model": "claude-haiku-5-5",
+           "calls": 3, "tokens_in": 6000, "tokens_out": 240}
     row.update(fields)
     return row
 
@@ -49,7 +49,7 @@ def _rows(conn, table):
 def test_valid_exports_replace_the_three_tables(export):
     with Database(path=":memory:") as db:
         db.conn.execute(
-            "INSERT INTO ai_usage VALUES ('2026-01-01', 'workers_ai', 9, 9, 9)"
+            "INSERT INTO ai_usage VALUES ('2026-01-01', 'workers_ai', 'llama', 9, 9, 9)"
         )
         result = import_ai(db.conn, export([verdict(), verdict(2, hash="1" * 64, score=40,
                                                                level="tenter")]),
@@ -114,6 +114,7 @@ def test_invalid_verdicts_are_skipped_and_counted(export, change):
     {"day": "2026-13-01"},
     {"day": None},
     {"provider": "gemini"},
+    {"model": ""},
     {"calls": -1},
     {"tokens_in": "12"},
 ])

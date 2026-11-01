@@ -735,6 +735,26 @@ body.is-dragging-card { user-select: none; -webkit-user-select: none; }
 .kb-status { width: auto; min-height: 30px; max-width: 100%; font-size: 12px; }
 .kb-empty { margin: 0; font-size: 12px; color: var(--ink-tertiary); }
 
+/* Documents (ADR 0017): the badge of the latest CV + letter version, and the download links. */
+.doc-badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 500; background: var(--surface-3); color: var(--ink-muted); }
+.doc-badge.kind-pending, .doc-badge.kind-running { background: var(--stretch-soft); color: var(--stretch-ink); }
+.doc-badge.kind-ready { background: var(--primary-soft); color: var(--primary); }
+.doc-badge.kind-failed { background: var(--danger-soft, #3a1d1d); color: var(--danger, #f08080); }
+.doc-links { display: inline-flex; gap: 6px; align-items: baseline; }
+.doc-links a { white-space: nowrap; }
+.doc-links .alt { font-size: 11px; color: var(--ink-muted); }
+.doc-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 6px 0 0; }
+.view-head .view-toggle { margin-left: auto; display: inline-flex; gap: 6px; }
+
+/* The table view (part 4): the same statuses, one row per application. */
+.kb-table[hidden], .kb-board[hidden] { display: none; }
+.kb-table { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+table.data.apps th, table.data.apps td { vertical-align: middle; }
+table.data.apps td.apps-title { max-width: 320px; }
+table.data.apps td.apps-title .link-btn { text-align: left; overflow-wrap: anywhere; }
+table.data.apps .kb-status { min-height: 30px; }
+table.data.apps td.is-due { color: var(--stretch-ink); font-weight: 500; }
+
 @media (max-width: 1100px) {
   .kb-board { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

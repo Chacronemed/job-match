@@ -24,6 +24,10 @@ jobs:
         with:
           node-version: 22
 
+      # The Worker's PDF and DOCX renderer (ADR 0017) has npm dependencies; its tests need them.
+      - name: Install Worker dependencies
+        run: npm ci --prefix worker
+
       - name: Install
         run: pip install ".[dev]"
 

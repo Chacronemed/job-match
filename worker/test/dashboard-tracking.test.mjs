@@ -209,6 +209,43 @@ describe("API client", () => {
     assert.equal(f.calls[1].url, "/api/skill-overrides/c%23");
     assert.equal(f.calls[1].init.method, "DELETE");
   });
+
+  test("documents: list and regenerate, key encoded, no body", async () => {
+    const g = fakeFetch(200, { documents: [] });
+    await T.client(g).documents("france_travail:1A");
+    assert.equal(g.calls[0].url, "/api/documents/france_travail%3A1A");
+    assert.equal(g.calls[0].init.method, "GET");
+    const f = fakeFetch(201, { document: { version: 2 } });
+    const res = await T.client(f).regenerate("france_travail:1A");
+    assert.equal(f.calls[0].url, "/api/documents/france_travail%3A1A/regenerate");
+    assert.equal(f.calls[0].init.method, "POST");
+    assert.equal(f.calls[0].init.body, undefined);
+    assert.deepEqual(res, { document: { version: 2 } });
+  });
+});
+
+describe("documents badge", () => {
+  test("reads the latest version's status, the error code on failure, 'Aucun' otherwise", () => {
+    assert.equal(T.docText(null), "Aucun");
+    assert.equal(T.docText({ status: "pending", version: 1 }), "En attente (v1)");
+    assert.equal(T.docText({ status: "ready", version: 3 }), "Prêt (v3)");
+    assert.equal(T.docText({ status: "failed", version: 2, error_code: "invented_skill" }), "Échec (invented_skill)");
+    assert.equal(T.docText({ status: "weird" }), "Aucun");
+    assert.deepEqual(T.docBadge(null), { text: "Aucun document", kind: "none" });
+    assert.deepEqual(T.docBadge({ status: "running", version: 2 }), { text: "En cours (v2)", kind: "running" });
+  });
+
+  test("download links exist only once the files are rendered, and carry the version", () => {
+    assert.equal(T.documentLinks("france_travail:1A", null), null);
+    assert.equal(T.documentLinks("france_travail:1A", { status: "ready", version: 2, files: false }), null);
+    assert.equal(T.documentLinks("france_travail:1A", { status: "pending", version: 3, files: true }), null);
+    assert.deepEqual(T.documentLinks("france_travail:1A", { status: "ready", version: 2, files: true }), {
+      cv_pdf: "/api/documents/france_travail%3A1A/v2/cv.pdf",
+      cv_docx: "/api/documents/france_travail%3A1A/v2/cv.docx",
+      letter_pdf: "/api/documents/france_travail%3A1A/v2/letter.pdf",
+      letter_docx: "/api/documents/france_travail%3A1A/v2/letter.docx",
+    });
+  });
 });
 
 describe("Offres search", () => {

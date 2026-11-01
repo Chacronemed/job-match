@@ -207,6 +207,7 @@
       if (state.department) parts.push("dept=" + encodeURIComponent(state.department));
       if (state.status) parts.push("st=" + state.status);
       if (state.ai) parts.push("ia=" + state.ai);
+      if (currentTab === "candidatures" && appsView === "table") parts.push("view=table");
       if (state.minScore) parts.push("min=" + state.minScore);
       if (state.from) parts.push("from=" + state.from);
       if (state.to) parts.push("to=" + state.to);
@@ -383,7 +384,25 @@
 
   /* status: "off" (file:// or no fetch), "loading", "ready", "error". `apps` is what the page
      shows (optimistic), `confirmed` what the API last stored; a failed save goes back to it. */
-  var track = { status: "off", apps: {}, confirmed: {}, decisions: {}, overrides: {}, ai: {}, aiRuns: [], seq: {}, pending: 0 };
+  var track = { status: "off", apps: {}, confirmed: {}, decisions: {}, overrides: {}, ai: {}, aiRuns: [], documents: {}, seq: {}, pending: 0 };
+
+  /* Candidatures as a Kanban or as a table (ADR 0017 part 4): remembered per browser, and in
+     the hash (#candidatures?view=table) so a link opens the same view. */
+  var appsView = "kanban";
+  try { if (localStorage.getItem("jm.appsView") === "table") appsView = "table"; } catch (e) { /* private mode */ }
+  function setAppsView(v, silent) {
+    appsView = v === "table" ? "table" : "kanban";
+    try { localStorage.setItem("jm.appsView", appsView); } catch (e) { /* private mode */ }
+    ["kanban", "table"].forEach(function (x) {
+      var b = byId("apps-view-" + x);
+      if (b) b.setAttribute("aria-pressed", String(x === appsView));
+    });
+    if (!silent && currentTab === "candidatures") { renderApps(); syncHash(); }
+  }
+  ["kanban", "table"].forEach(function (v) {
+    var b = byId("apps-view-" + v);
+    if (b) b.addEventListener("click", function () { setAppsView(v); });
+  });
   /* skill -> functions redrawing every "je maîtrise" control for it on screen */
   var overrideViews = {};
 
@@ -454,6 +473,10 @@
       (res.ai_verdicts || []).forEach(function (v) { if (v && typeof v.job_key === "string") ai[v.job_key] = v; });
       track.ai = ai;
       track.aiRuns = Array.isArray(res.ai_runs) ? res.ai_runs.filter(function (r) { return r && typeof r === "object"; }) : [];
+      /* The latest documents version per offer (ADR 0017): status and error code only. */
+      var documents = {};
+      (res.documents || []).forEach(function (d) { if (d && typeof d.job_key === "string") documents[d.job_key] = d; });
+      track.documents = documents;
       renderAiRuns();
       track.overrides = overrides;
       track.apps = apps;
@@ -1691,7 +1714,36 @@
     box.appendChild(el("section", { class: "record-sec" }, [why]));
     if (j.postings) box.appendChild(el("section", { class: "record-sec" }, [postingsBlock(j)]));
     box.appendChild(el("section", { class: "record-sec" }, [el("h3", { text: "Suivi" }), form]));
+    if (j.key && track.status === "ready") box.appendChild(el("section", { class: "record-sec" }, [documentsBlock(j)]));
     return box;
+  }
+
+  /* The generated CV + letter (ADR 0017): the latest version's status, and a new version on
+     demand. Downloads come with part 3. */
+  function documentsBlock(j) {
+    var doc = track.documents[j.key] || null;
+    var state = el("span", { class: "doc-state", role: "status", text: T.docText(doc) });
+    var button = el("button", { type: "button", class: "btn", text: doc ? "Regénérer" : "Générer le CV et la lettre" });
+    var busy = doc && (doc.status === "pending" || doc.status === "running");
+    if (busy) button.disabled = true;
+    button.addEventListener("click", function () {
+      button.disabled = true;
+      api.regenerate(j.key).then(function (res) {
+        track.documents[j.key] = res.document;
+        state.textContent = T.docText(res.document);
+        showToast("Documents demandés : prêts dans une dizaine de minutes.");
+      }).catch(function (err) {
+        button.disabled = false;
+        showToast(err && err.status === 409 ? "Une génération est déjà en cours." : "Demande refusée.");
+      });
+    });
+    var row = el("div", { class: "doc-row" }, [state, button]);
+    var links = T.documentLinks(j.key, doc);
+    if (links) {
+      row.appendChild(el("span", { class: "doc-links" }, [el("span", { text: "CV :" }), fileCell(links, "cv", doc, "CV")]));
+      row.appendChild(el("span", { class: "doc-links" }, [el("span", { text: "Lettre :" }), fileCell(links, "letter", doc, "Lettre")]));
+    }
+    return el("div", { class: "documents" }, [el("h3", { text: "Documents" }), row]);
   }
 
   function openRecord(j, opener) {
@@ -1870,15 +1922,10 @@
       dates.push("Relance le " + shortDay(app.follow_up_at) + (late > 0 ? " (" + late + " j de retard)" : T.isDue(app, today) ? " (aujourd’hui)" : ""));
     }
     if (dates.length) card.appendChild(el("p", { class: "kb-dates" + (T.isDue(app, today) ? " is-due" : ""), text: dates.join(" · ") }));
+    card.appendChild(el("p", { class: "kb-docs" }, docBadgeEl(track.documents[key] || null)));
 
     var actions = el("div", { class: "kb-actions" });
-    var sel = el("select", { class: "kb-status", name: "status", "aria-label": "Statut de " + (j ? j.title : key) });
-    T.STATUSES.forEach(function (s) { sel.appendChild(el("option", { value: s, text: BOARD_TEXT[s] || T.STATUS_TEXT[s] })); });
-    sel.value = status;
-    sel.addEventListener("change", function () {
-      setRecord(key, { status: sel.value }, "Déplacée vers « " + (BOARD_TEXT[sel.value] || T.STATUS_TEXT[sel.value]) + " »");
-    });
-    actions.appendChild(sel);
+    actions.appendChild(statusSelect(key, j, status));
     if (status === "to_apply") {
       var applied = el("button", { type: "button", class: "btn btn-primary btn-small", text: "J’ai postulé" });
       applied.addEventListener("click", function () {
@@ -1891,6 +1938,32 @@
     card.appendChild(actions);
     if (window.matchMedia("(pointer: fine)").matches) attachDrag(card, key);
     return card;
+  }
+
+  /* The status menu of a card or a table row: every status, the board's short labels. */
+  function statusSelect(key, j, status) {
+    var sel = el("select", { class: "kb-status", name: "status", "aria-label": "Statut de " + (j ? j.title : key) });
+    T.STATUSES.forEach(function (s) { sel.appendChild(el("option", { value: s, text: BOARD_TEXT[s] || T.STATUS_TEXT[s] })); });
+    sel.value = status;
+    sel.addEventListener("change", function () {
+      setRecord(key, { status: sel.value }, "Déplacée vers « " + (BOARD_TEXT[sel.value] || T.STATUS_TEXT[sel.value]) + " »");
+    });
+    return sel;
+  }
+
+  /* The documents badge (ADR 0017): the latest version's status. */
+  function docBadgeEl(doc) {
+    var b = T.docBadge(doc);
+    return el("span", { class: "doc-badge kind-" + b.kind, text: b.text });
+  }
+
+  /* A CV or letter cell: the PDF and DOCX links once rendered, the badge until then. */
+  function fileCell(links, kind, doc, label) {
+    if (!links) return docBadgeEl(doc);
+    return el("span", { class: "doc-links" }, [
+      el("a", { href: links[kind + "_pdf"], download: true, "aria-label": label + " en PDF", text: "PDF ⬇" }),
+      el("a", { href: links[kind + "_docx"], download: true, class: "alt", "aria-label": label + " en DOCX", text: "DOCX" })
+    ]);
   }
 
   /* Desktop drag between columns, Pointer Events (no HTML5 drag and drop). The status menu
@@ -1941,6 +2014,8 @@
     var due = byId("kb-due");
     clear(board);
     clear(due);
+    board.hidden = appsView === "table";
+    byId("kb-table").hidden = appsView !== "table";
     byId("kb-off").hidden = canTriage() || track.status === "loading";
     var keys = boardKeys();
     var dueKeys = Object.keys(track.apps).filter(function (k) { return T.isDue(track.apps[k], today); })
@@ -1962,6 +2037,11 @@
       });
       due.appendChild(list);
     }
+    if (appsView === "table") {
+      renderAppsTable(today, keys);
+      updateCounts();
+      return;
+    }
     BOARD.forEach(function (status) {
       var inCol = keys.filter(function (k) { return T.statusOf(track.apps[k]) === status; })
         .sort(function (a, b) {
@@ -1978,6 +2058,54 @@
       board.appendChild(col);
     });
     updateCounts();
+  }
+
+  /* The table view: one row per application on the board, due ones first, then the most
+     recently touched. Same statuses, same menu, plus the downloads. */
+  var APP_COLUMNS = ["Offre", "Entreprise", "Score IA", "Statut", "CV", "Lettre", "Lien", "Relance"];
+  function renderAppsTable(today, keys) {
+    var wrap = byId("kb-table");
+    clear(wrap);
+    var rows = keys.slice().sort(function (a, b) {
+      var da = T.isDue(track.apps[a], today) ? 0 : 1, db = T.isDue(track.apps[b], today) ? 0 : 1;
+      if (da !== db) return da - db;
+      var ra = T.STATUS_RANK[T.statusOf(track.apps[a])], rb = T.STATUS_RANK[T.statusOf(track.apps[b])];
+      if (ra !== rb) return ra - rb;
+      return String(track.apps[b].updated_at || "").localeCompare(String(track.apps[a].updated_at || ""));
+    });
+    if (!rows.length) {
+      wrap.appendChild(el("p", { class: "kb-empty", text: "Garde des offres dans Tri pour les voir ici." }));
+      return;
+    }
+    var head = el("tr");
+    APP_COLUMNS.forEach(function (h) { head.appendChild(el("th", { scope: "col", class: h === "Score IA" ? "num" : null, text: h })); });
+    var body = el("tbody");
+    rows.forEach(function (k) {
+      var app = track.apps[k];
+      var j = postingByKey[k];
+      var doc = track.documents[k] || null;
+      var links = T.documentLinks(k, doc);
+      var tr = el("tr", { "data-key": k });
+      var title = el("button", { type: "button", class: "link-btn", text: j ? (j.title || k) : k });
+      if (j) title.addEventListener("click", function () { openRecord(j, title); });
+      tr.appendChild(el("td", { class: "apps-title" }, title));
+      tr.appendChild(el("td", { text: j ? (j.company || "—") : "offre plus affichée" }));
+      var ai = j ? aiOf(j) : null;
+      tr.appendChild(el("td", { class: "num", text: ai ? String(ai.score) : "—" }));
+      tr.appendChild(el("td", null, statusSelect(k, j, T.statusOf(app))));
+      tr.appendChild(el("td", null, fileCell(links, "cv", doc, "CV")));
+      tr.appendChild(el("td", null, fileCell(links, "letter", doc, "Lettre")));
+      tr.appendChild(el("td", { class: "link-col" }, j && j.url && HTTP.test(j.url)
+        ? el("a", { href: j.url, target: "_blank", rel: "noopener noreferrer", "aria-label": "Voir l’offre : " + (j.title || k), text: "Offre ↗" })
+        : "—"));
+      var due = T.isDue(app, today);
+      var late = due ? T.daysBetween(app.follow_up_at, today) : 0;
+      tr.appendChild(el("td", { class: due ? "is-due" : null, text: app.follow_up_at
+        ? shortDay(app.follow_up_at) + (late > 0 ? " (" + late + " j de retard)" : due ? " (aujourd’hui)" : "")
+        : "—" }));
+      body.appendChild(tr);
+    });
+    wrap.appendChild(el("table", { class: "data apps", "aria-label": "Candidatures" }, [el("thead", null, head), body]));
   }
 
   function renderCurrent() {
@@ -2089,6 +2217,7 @@
     statusSelect.value = state.status;
     state.ai = AI_LEVELS.indexOf(p.ia) >= 0 ? p.ia : "";
     aiSelect.value = state.ai;
+    if (p.view === "table" || p.view === "kanban") setAppsView(p.view, true);
     var min = parseInt(p.min, 10);
     state.minScore = min >= 0 && min <= 100 ? min : 0;
     minScoreInput.value = String(state.minScore);

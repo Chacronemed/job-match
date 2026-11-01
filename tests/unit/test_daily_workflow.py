@@ -191,6 +191,12 @@ def test_tracking_steps_order_restore_node_migrate_export_then_pipeline():
     migrate = _index("Apply D1 migrations")
     export = _index("Export tracking")
     assert _index("Restore DB") < node < migrate < export < _index("Run pipeline")
+    # The Worker's PDF/DOCX libraries (ADR 0017) are installed before anything runs wrangler,
+    # quietly, and never block the run.
+    deps = _steps()[_index("Install Worker dependencies")]
+    assert node < _index("Install Worker dependencies") < migrate
+    assert deps["run"].strip() == "npm ci --prefix worker > /dev/null"
+    assert deps.get("continue-on-error") is True
     for later in ("Reprocess jobs", "Reprocess funding articles", "WAL checkpoint and VACUUM",
                   "Send digest", "Push DB to data repo", "Deploy dashboard"):
         assert export < _index(later), later
@@ -248,7 +254,7 @@ def test_export_selects_exactly_the_mirrored_columns():
     # The AI rerank mirror (ADR 0016): the Worker's three tables, whole.
     assert ("SELECT id, job_key, hash, provider, model, prompt_version, score, level, reasons, "
             "red_flags, created_at FROM ai_verdicts") in export
-    assert "SELECT day, provider, calls, tokens_in, tokens_out FROM ai_usage" in export
+    assert "SELECT day, provider, model, calls, tokens_in, tokens_out FROM ai_usage" in export
     assert ("SELECT id, job_key, hash, python_score, python_section, ai_score, ai_level, kind, "
             "created_at FROM disagreements") in export
     assert ("SELECT id, started_at, finished_at, outcome, http_status, provider, counters "

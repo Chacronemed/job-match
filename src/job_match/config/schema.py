@@ -218,6 +218,27 @@ class AiConfig:
 
 
 @dataclass
+class DocumentsConfig:
+    """Application documents (ADR 0017, M26). The generation runs in the Worker
+    (worker/src/documents.js), whose constants these repeat: a test keeps them equal.
+    `monthly_budget_usd` caps the month's estimated spend on the documents model;
+    `forbidden_phrases` never appear in the master nor in a generated document."""
+
+    model: str = "claude-sonnet-5-5"
+    prompt_version: str = "4"
+    monthly_budget_usd: int = 60
+    batch_size: int = 5
+    max_bullets: int = 18
+    max_skills: int = 15
+    max_bullet_chars: int = 220
+    max_profile_chars: int = 450
+    max_letter_chars: int = 2200
+    forbidden_phrases: list[str] = field(default_factory=lambda: [
+        "sans régression", "zéro régression", "0 régression", "63 dimensions",
+    ])
+
+
+@dataclass
 class FundingConfig:
     requests_per_second: float = 1.0
     extract_max_chars: int = 600
@@ -258,3 +279,4 @@ class Settings:
     jobs: JobsConfig = field(default_factory=JobsConfig)
     raw_payloads: RawPayloadsConfig = field(default_factory=RawPayloadsConfig)
     ai: AiConfig = field(default_factory=AiConfig)
+    documents: DocumentsConfig = field(default_factory=DocumentsConfig)

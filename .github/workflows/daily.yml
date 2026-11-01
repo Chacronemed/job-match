@@ -71,6 +71,11 @@ jobs:
         with:
           node-version: 22
 
+      # The Worker bundles its PDF/DOCX libraries (worker/package.json, ADR 0017) at deploy.
+      - name: Install Worker dependencies
+        continue-on-error: true
+        run: npm ci --prefix worker > /dev/null
+
       # Application tracking lives in D1 (ADR 0012). Apply its migrations (idempotent), then
       # mirror applications, decisions and skill overrides into the jobs DB, before the jobs
       # pipeline: the run merges the overrides into the profile (ADR 0013), and the digest
@@ -105,7 +110,7 @@ jobs:
           d1 "SELECT id, job_key, label, score_at_decision, created_at FROM decisions" > "$dir/decisions.json"
           d1 "SELECT skill, created_at FROM skill_overrides" > "$dir/skill_overrides.json"
           d1 "SELECT id, job_key, hash, provider, model, prompt_version, score, level, reasons, red_flags, created_at FROM ai_verdicts" > "$dir/ai_verdicts.json"
-          d1 "SELECT day, provider, calls, tokens_in, tokens_out FROM ai_usage" > "$dir/ai_usage.json"
+          d1 "SELECT day, provider, model, calls, tokens_in, tokens_out FROM ai_usage" > "$dir/ai_usage.json"
           d1 "SELECT id, job_key, hash, python_score, python_section, ai_score, ai_level, kind, created_at FROM disagreements" > "$dir/disagreements.json"
           d1 "SELECT id, started_at, finished_at, outcome, http_status, provider, counters FROM ai_runs" > "$dir/ai_runs.json"
           job-match tracking import --applications "$dir/applications.json" --decisions "$dir/decisions.json" --skill-overrides "$dir/skill_overrides.json" --ai-verdicts "$dir/ai_verdicts.json" --ai-usage "$dir/ai_usage.json" --disagreements "$dir/disagreements.json" --ai-runs "$dir/ai_runs.json"

@@ -238,3 +238,16 @@ def test_ai_profile_is_a_separate_file_the_page_never_embeds(tmp_path, dashboard
     # Without a profile the stale file goes: the Worker's cron must not read last week's.
     write_site(data, site)
     assert not (site / AI_PROFILE).exists()
+
+
+def test_candidatures_has_the_kanban_table_toggle_and_the_table_container():
+    from pathlib import Path
+
+    from job_match.dashboard import render as render_module
+
+    html = (Path(render_module.__file__).parent / "assets" / "index.template.html").read_text(
+        encoding="utf-8"
+    )
+    assert 'id="kb-board"' in html and 'id="kb-table"' in html
+    assert 'id="apps-view-kanban"' in html and 'id="apps-view-table"' in html
+    assert 'aria-label="Affichage des candidatures"' in html

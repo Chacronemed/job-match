@@ -1395,8 +1395,8 @@ class AiRepository:
                 verdicts,
             )
             self._conn.executemany(
-                "INSERT INTO ai_usage(day, provider, calls, tokens_in, tokens_out)"
-                " VALUES (:day, :provider, :calls, :tokens_in, :tokens_out)",
+                "INSERT INTO ai_usage(day, provider, model, calls, tokens_in, tokens_out)"
+                " VALUES (:day, :provider, :model, :calls, :tokens_in, :tokens_out)",
                 usage,
             )
             self._conn.executemany(
@@ -1462,11 +1462,17 @@ class AiRepository:
         return out
 
     def usage_since(self, since: date) -> dict[str, dict[str, int]]:
-        """Per provider: calls and tokens on or after `since` (for the report's cost line)."""
+        """Per provider and model (`"anthropic/claude-haiku-5-5"`): calls and tokens on or
+        after `since`, for the report's cost line."""
         rows = self._conn.execute(
-            "SELECT provider, SUM(calls) AS calls, SUM(tokens_in) AS tokens_in,"
-            " SUM(tokens_out) AS tokens_out FROM ai_usage WHERE day >= ? GROUP BY provider",
+            "SELECT provider, model, SUM(calls) AS calls, SUM(tokens_in) AS tokens_in,"
+            " SUM(tokens_out) AS tokens_out FROM ai_usage WHERE day >= ?"
+            " GROUP BY provider, model ORDER BY provider, model",
             (since.isoformat(),),
         ).fetchall()
-        return {r["provider"]: {"calls": r["calls"], "tokens_in": r["tokens_in"],
-                                "tokens_out": r["tokens_out"]} for r in rows}
+        return {
+            f"{r['provider']}/{r['model']}": {
+                "calls": r["calls"], "tokens_in": r["tokens_in"], "tokens_out": r["tokens_out"],
+            }
+            for r in rows
+        }

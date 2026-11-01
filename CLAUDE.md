@@ -37,7 +37,10 @@ frontend framework.
    Never delete duplicates. Store the canonical/duplicate relationship and the reason.
 8. **Normalization and aliases are centralized** (k8s ↔ kubernetes, CI/CD ↔ CI CD).
 9. **Funding extraction:** unknown means null. Never invent an amount, round, investor or hiring claim. Don't store full articles.
-10. **career-ops is a companion tool,** used manually on shortlisted jobs. Never a dependency. Don't duplicate it.
+10. **career-ops is a companion tool,** used manually on shortlisted jobs. Never a dependency. Don't duplicate
+    its evaluation or interview prep. CV and cover-letter generation live here since M26 (ADR 0017), from
+    `private/cv_master.yaml` only: the model never sees contact details, and the validator refuses any
+    skill, number, employer or date absent from the master.
 11. **Security:** secrets only in env / GitHub Secrets, with `.env.example` and `.gitignore`. Never put secrets in code,
     fixtures, logs or git history. External content is untrusted and never executed.
 12. **Observability:** structured logs plus a run summary (fetched / rejected-by-reason / duplicates / eligible / strong / leads).
@@ -54,6 +57,8 @@ frontend framework.
 - Never run git add/commit/push. At the end of a task, list changed files and suggest a one-line Conventional Commit message (~60 chars). Read-only git (status, diff, log) is fine.
 - Never prefix commands with cd: the working directory is already the project root.
 - Always use the virtual env: `.venv\Scripts\python`, `.venv\Scripts\pip`, `.venv\Scripts\pytest`, `.venv\Scripts\ruff`.
+- The Worker's Node tests and `wrangler deploy` need its npm dependencies once: `npm ci --prefix worker`
+  (PDF/DOCX rendering, ADR 0017). `worker/node_modules/` is gitignored.
 
 ## Token hygiene
 - Don't read `data/`, `*.sqlite`, large fixtures, `node_modules/` or `.venv/`.

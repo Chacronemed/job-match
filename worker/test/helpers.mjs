@@ -92,6 +92,44 @@ export async function identityProvider() {
   return idp;
 }
 
+// An R2 bucket in memory: put/get/head/delete/list, as the Worker uses them.
+export function fakeR2(initial = {}) {
+  const store = new Map();
+  const meta = new Map();
+  for (const [k, v] of Object.entries(initial)) store.set(k, typeof v === "string" ? v : JSON.stringify(v));
+  const object = (key) => {
+    const body = store.get(key);
+    const bytes = typeof body === "string" ? new TextEncoder().encode(body) : body;
+    const m = meta.get(key) || {};
+    return {
+      key,
+      size: bytes.length,
+      body: bytes,
+      httpMetadata: m.httpMetadata || {},
+      customMetadata: m.customMetadata || {},
+      text: async () => (typeof body === "string" ? body : new TextDecoder().decode(body)),
+      json: async () => JSON.parse(typeof body === "string" ? body : new TextDecoder().decode(body)),
+      arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    };
+  };
+  return {
+    store,
+    put: async (key, value, opts = {}) => {
+      store.set(key, typeof value === "string" ? value : value instanceof Uint8Array ? value : new Uint8Array(value));
+      meta.set(key, { httpMetadata: opts.httpMetadata || {}, customMetadata: opts.customMetadata || {} });
+      return { key, httpMetadata: opts.httpMetadata || {} };
+    },
+    get: async (key) => (store.has(key) ? object(key) : null),
+    head: async (key) => (store.has(key) ? { key, size: store.get(key).length } : null),
+    delete: async (key) => {
+      store.delete(key);
+    },
+    list: async ({ prefix = "" } = {}) => ({
+      objects: Array.from(store.keys()).filter((k) => k.startsWith(prefix)).map((k) => ({ key: k })),
+    }),
+  };
+}
+
 // The assets binding serving a few JSON files, as the deployed site does.
 export function fakeAssets(files = {}) {
   return {

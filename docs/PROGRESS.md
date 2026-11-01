@@ -3,7 +3,22 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**M25: AI rerank** (branch `feat/m25-ai-rerank`, ADR 0016 accepted). **Done locally
+**M26: application documents** (branch `feat/m26-application-docs`, ADR 0017 accepted).
+**All four parts done locally (2026-11-01), prompt v3 waiting for its real run:** parts 3
+(ATS PDF/DOCX rendering in the Worker, downloads behind Access) and 4 (Candidatures as a
+table) were built after the v2 review; the v3 generation of the two review offers, and the
+rendered files, are to be checked by you with `docs-smoke` (Next step), then merged and
+deployed. Parts 1 and 2 as reviewed: a private master CV
+(`private/cv_master.yaml` + `contact.yaml`, gitignored, validated by `job-match cv validate`,
+pushed to the private R2 bucket by `job-match cv push`), and a Worker cron every ten minutes
+that turns each kept offer into a strict-JSON CV + cover letter through `claude-sonnet-5-5`,
+validated against the master (no invented number, skill, employer, name or phrase), stored as
+`content.json` in R2, with a monthly budget tracked per model in `ai_usage`. **Stop here:**
+the two real generated documents are to be reviewed before part 3 (ATS PDF/DOCX rendering
+and downloads) and part 4 (the applications table). The smoke run is yours to launch (Next
+step): the AI binding needs the Access service token this shell does not have.
+
+Before it: **M25: AI rerank** (branch `feat/m25-ai-rerank`, ADR 0016 accepted). **Done locally
 (2026-10-25), not deployed:** a Worker cron (07:30 UTC) sends each new offer above the digest
 threshold to the Claude API (Haiku 5.5), falls back to Workers AI, stores strict JSON verdicts
 in D1, the dashboard orders the Tri by them, and `job-match ai-report` turns the week's
@@ -27,6 +42,30 @@ production rows. Still pending: the M21 Cloudflare setup, the data-repo cleanup 
 two Cloudflare secrets, M9 manual GitHub setup, `PROFILE_YAML` re-encoding, `SMTP_PORT` variable.
 
 ## Done
+- **M26 parts 1–2: application documents** (2026-11-01, ADR 0017; amends ADR 0016 §12,
+  ARCHITECTURE §10 and CLAUDE.md rule 10):
+  - **Part 1, Python.** `src/job_match/documents/`: `master.py` (dataclasses, YAML → sorted JSON),
+    `validate.py` (canonical skills through `normalization.skills.canonical_skill`, forbidden
+    phrases from `settings.yaml documents.forbidden_phrases`, no email/phone/URL/name in the
+    master, ISO dates, unique IDs), `push.py` (`npx wrangler r2 object put`, temp files deleted,
+    sizes only). CLI `job-match cv validate | push [--local]`; `$JOB_MATCH_PRIVATE_DIR`.
+    `DocumentsConfig` in `config/schema.py`. The real master validates: 4 experiences, 5 projects,
+    18 bullets, 22 skills, 0 errors; « sans régression » and « 63 dimensions » are out.
+  - **Part 2, Worker.** `worker/src/documents.js`: strict `DOCUMENT_SCHEMA`, cached system block
+    (instructions + master JSON, no contact field), offer in `<offre>` with the detected language,
+    `validateDocument` (bullet IDs, numbers per bullet / per master, unknown capitalised names,
+    skills from the master, phrases, lengths, counts, language), one retry with the errors, then
+    `failed` with a readable code; `runDocuments` (five pending rows, decision and offer re-checked,
+    budget from `ai_usage` per model, 402/429 → six-hour pause, other 4xx → stopped). Migration
+    0005 (`documents`, `document_runs`, `applications.sent_documents_version`, `ai_usage` rebuilt
+    with `model`). Routes `GET /api/documents/:key`, `POST /api/documents/:key/regenerate`;
+    `PUT /api/applications` with `to_apply` creates the first pending row, `applied` records the
+    sent version; `GET /api/applications` carries `documents`. Dashboard: « Documents » block in
+    the record panel with the status and « Regénérer ». wrangler: cron `*/10 * * * *`, binding
+    `DOCS` (bucket `job-match-docs`), var `AI_DOCUMENTS_MONTHLY_USD`. Mirror: `ai_usage.model`
+    exported, SQLite migration 0011, `ai-report` prices Haiku and Sonnet separately.
+    `scripts/docs-smoke.mjs`. Tests: 23 Node (documents), 17 Python (documents), pinned tests
+    updated (crons, vars, mirror, workflow export). 191 Node + 1501 Python.
 - **M25: AI rerank** (2026-10-25, ADR 0016 accepted, revised from the M24 draft: the Claude API
   first, Workers AI as the fallback, run from the Worker's cron rather than the daily run).
   - **Worker (`worker/src/ai.js`, no dependency):** `scheduled` at `30 7 * * *` and `30 9 * * *`
@@ -934,6 +973,31 @@ two Cloudflare secrets, M9 manual GitHub setup, `PROFILE_YAML` re-encoding, `SMT
   - 26 tests green, `ruff check .` clean
 
 ## Next step
+- **M26 review, round 4 (you):** costs at list price, two attempts each time: v1 $0.069 /
+  $0.076, v2 $0.074 / $0.084, v3 $0.078 / $0.081 (first-attempt codes: `unsourced_tool` ×2;
+  `unknown_name` ×2 + `unsourced_tool` ×2). Prompt v4 (availability as a full sentence, once
+  in the conclusion; true chronology in the Profil; conclusion without facts; proven skills
+  first; targeted retry of the refused items only) is done; the v3 PDF and DOCX were rendered
+  locally and sit in `private/out/` (`*_v3_cv.pdf`, `*_v3_letter.pdf`, DOCX likewise). From
+  your own terminal, with the Access service token in the env as for `ai-smoke`, after
+  `npm ci --prefix worker` once: `node scripts/docs-smoke.mjs`. It queues v4 for the two
+  same offers (`--keys` to choose), runs the cron once, prints per document the first-attempt
+  codes, the attempts, the dollars and the CV's pages / fill / size, and copies the JSON, the
+  PDFs and the DOCX into `private/out/`. `--render-only` re-copies (and renders when missing,
+  or always with `--force`) the latest ready version of each offer without any generation;
+  `--reset` empties the local rows. The v3 CVs were re-rendered here with the dense layout
+  (`*_v3_cv.pdf`) but their content predates prompt v4: no skill groups nor headline techs of
+  their own, so the renderer falls back to the master's 8 full groups, which is more than one
+  page holds (the smoke prints `CUT at the bottom`: the Langues line is cut). With v4 the model
+  picks at most 7 groups and the items for the offer; the test with a CV of the original's
+  volume lands on one page at 90 % or more. If a v4 CV is still cut, the levers are the group
+  count in the prompt or `SIZES` in render.js.
+- **M26 in production (after the review):** the bucket `job-match-docs` exists and holds the
+  master and the contact sheet (`cv push` done 2026-11-01). The next daily run after the merge
+  applies migrations 0005–0006, installs the Worker's npm dependencies and deploys the Worker
+  with the third cron, the `DOCS` binding, the font and the var. The mirror export already
+  selects `ai_usage.model`. Then "Garder" an offer and check the files appear within ten
+  minutes in the Candidatures table.
 - **M25 smoke test (before merging), to run yourself:** put `ANTHROPIC_API_KEY=…` in
   `.dev.vars`, then `npx wrangler@4 d1 migrations apply job-match --local`,
   `job-match dashboard --out site` (with config/profile.yaml), then
@@ -1327,3 +1391,24 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
   hiring → early round → recency, keyword `production` replaced by `ingénieur de production informatique`
   (`exploitation` kept), `daily.yml` workflow_dispatch input `reprocess_since` (runs before the digest,
   input passed via env). 549 tests passing.
+- 2026-11-01: M26 parts 1–2 (ADR 0017). Private master CV + contact sheet, `job-match cv
+  validate | push` (wrangler R2), Worker cron every 10 min generating strict-JSON CV + letter
+  with `claude-sonnet-5-5`, anti-invention validator with one retry, monthly budget per model
+  in `ai_usage` (D1 migration 0005, mirror 0011), routes and « Regénérer » button,
+  `scripts/docs-smoke.mjs`. Also: `job_match.clock` (test-only `JOB_MATCH_FAKE_NOW`), the +90-day
+  re-run of the suite, the rerank cap counting billed calls only, `ai-smoke.mjs` on Windows.
+  191 Node + 1501 Python tests.
+- 2026-11-01 (later): M26 v3 + parts 3–4. Prompt v3 with `wrong_tense`, `availability_missing`,
+  `profile_address`, skill catalog ids, `first_errors`; master updated (`available_from`,
+  catalog, 7 countries) and pushed to the new bucket; `render.js` (pdf-lib + Inter, OOXML +
+  fflate), `renderReady`, download routes, Kanban/Tableau toggle and table; npm ci in CI.
+  210 Node + 1503 Python tests.
+- 2026-11-01 (later still): prompt v4 (`availability_misplaced`, `profile_chronology`,
+  `conclusion_facts`, `skills_order`, targeted retry with `RETRY_SCHEMA` + `mergeRetry`),
+  `docs-smoke --render-only` and the PDF/DOCX copies; v3 files rendered locally. 215 Node +
+  1503 Python tests.
+- 2026-11-01 (evening): dense one-page CV. All relevant bullets (MAX_BULLETS 18,
+  `too_few_bullets`), skill groups from the master (`skill_groups`, 7 max, `skills_order`),
+  `headline_techs` title line, bold by the template (`emphasize`: offer terms + key numbers),
+  Certifications unrendered, Engagement section, fill-to-one-page layout with measured fill
+  (`renderCvPdfInfo`), `docs-smoke --force`. 218 Node + 1505 Python tests.

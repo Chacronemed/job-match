@@ -34,7 +34,7 @@ AI_VERDICT_FIELDS = (
     "id", "job_key", "hash", "provider", "model", "prompt_version", "score", "level",
     "reasons", "red_flags", "created_at",
 )
-AI_USAGE_FIELDS = ("day", "provider", "calls", "tokens_in", "tokens_out")
+AI_USAGE_FIELDS = ("day", "provider", "model", "calls", "tokens_in", "tokens_out")
 DISAGREEMENT_FIELDS = (
     "id", "job_key", "hash", "python_score", "python_section", "ai_score", "ai_level", "kind",
     "created_at",
@@ -187,6 +187,7 @@ def valid_ai_usage(row: dict) -> bool:
         set(row) == set(AI_USAGE_FIELDS)
         and row["day"] is not None and _is_date(row["day"])
         and row["provider"] in AI_PROVIDERS
+        and isinstance(row["model"], str) and 0 < len(row["model"]) <= 80
         and all(_is_int(row[k]) for k in ("calls", "tokens_in", "tokens_out"))
     )
 

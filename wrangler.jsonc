@@ -5,23 +5,45 @@
 	// dashboard. Cloudflare Access protects both. CF_ACCESS_AUD and CF_ACCESS_TEAM_DOMAIN are
 	// Worker secrets (`wrangler secret put`), never vars: vars missing here are wiped on deploy.
 	"main": "worker/src/index.js",
+	// The PDF font (ADR 0017 part 3) is bundled as bytes; worker/package.json lists the PDF and
+	// zip libraries, installed by `npm ci --prefix worker` before deploy.
+	"rules": [
+		{
+			"type": "Data",
+			"globs": ["**/*.ttf"],
+			"fallthrough": true
+		}
+	],
 	// The AI rerank (ADR 0016): 30 minutes after the daily run (07:00 UTC), and once more at
 	// 09:30 to catch a late run (the content cache makes the second pass free when nothing is
 	// new). ANTHROPIC_API_KEY is a Worker secret. AI_DAILY_LIMIT is the cap on calls per day
 	// (billed answers only, 4xx/5xx are free); config/settings.yaml ai.daily_limit repeats it, a test keeps them equal.
+	// The third cron (ADR 0017) generates the application documents pending in D1, five per pass.
 	"triggers": {
 		"crons": [
 			"30 7 * * *",
-			"30 9 * * *"
+			"30 9 * * *",
+			"*/10 * * * *"
 		]
 	},
+	// AI_DOCUMENTS_MONTHLY_USD caps the month's estimated spend on the documents model
+	// (config/settings.yaml documents.monthly_budget_usd repeats it, a test keeps them equal).
 	"vars": {
-		"AI_DAILY_LIMIT": "100"
+		"AI_DAILY_LIMIT": "100",
+		"AI_DOCUMENTS_MONTHLY_USD": "60"
 	},
 	// Workers AI, the fallback once the Claude API says the credit is spent.
 	"ai": {
 		"binding": "AI"
 	},
+	// The private bucket for the master CV, the contact sheet and the generated documents
+	// (ADR 0017). No "remote" key: `wrangler dev` uses a local R2, never the production one.
+	"r2_buckets": [
+		{
+			"binding": "DOCS",
+			"bucket_name": "job-match-docs"
+		}
+	],
 	"assets": {
 		"directory": "./site",
 		"binding": "ASSETS",

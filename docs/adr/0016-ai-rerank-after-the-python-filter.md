@@ -61,7 +61,7 @@ Constraints (CLAUDE.md):
    - a verdict whose hash no longer matches the offer is ignored (`triage.js aiOf`).
 10. **Mirror.** The daily run's « Export tracking » step also exports the three tables, and `job-match tracking import --ai-verdicts --ai-usage --disagreements` replaces the SQLite mirror (`migrations/0010_ai_mirror.sql`), validated row by row like the tracking tables. The mirror is a day behind (the export runs before the pipeline); only the report reads it.
 11. **Improvement loop (weekly, read-only).** `job-match ai-report [--since] [--out]` (`src/job_match/ai/report.py`) ranks seven days of disagreements (a `hors_sujet` on a strong offer first, then the largest gap), joins my latest Tri verdict on each, groups by title family and by the profile skills counted, prints the usage and an upper bound of the Claude cost, and writes a **correction prompt for Claude Code**: the 10 largest disagreements (title, both scores, the model's reasons, whom my verdict sides with) and the question "which `title_relevance` lists or weights explain them? Propose a diff to config/settings.yaml with a test; do not apply it." It writes `data/ai-report-<date>.md`, local and uncommitted. Nothing is applied automatically.
-12. **Out of scope:** emails written by the AI, application or cover-letter drafts, CV generation.
+12. **Out of scope:** emails written by the AI. ~~Application or cover-letter drafts, CV generation~~: in scope since ADR 0017 (M26), from a private master CV, never from the profile summary used here.
 
 ## Cost (production base: about 100 offers a day at or above the digest threshold)
 

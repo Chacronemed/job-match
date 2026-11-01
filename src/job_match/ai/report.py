@@ -16,10 +16,28 @@ from job_match.persistence.repositories import AiRun, Disagreement
 from job_match.scoring.title import title_family
 
 TOP = 10
-# Published Claude Haiku 5.5 prices (USD per million tokens, prompts up to 100K), checked
-# 2026-10-25. Cache reads are cheaper than this, so the line is an upper bound.
-HAIKU_IN_PER_M = 0.10
-HAIKU_OUT_PER_M = 0.50
+# Published Claude prices (USD per million tokens; Haiku: prompts up to 100K), checked
+# 2026-11-01 on platform.claude.com. Cache reads are cheaper than this, so the line is an
+# upper bound. An unknown Claude model is priced at the Sonnet rates, the highest listed here.
+PRICES_PER_M = {
+    "claude-haiku-5-5": (0.10, 0.50),
+    "claude-sonnet-5-5": (2.0, 10.0),
+}
+HAIKU_IN_PER_M, HAIKU_OUT_PER_M = PRICES_PER_M["claude-haiku-5-5"]
+_FALLBACK_PRICE = PRICES_PER_M["claude-sonnet-5-5"]
+
+
+def estimated_usd(usage: dict[str, dict[str, int]]) -> float:
+    """The Claude cost of `AiRepository.usage_since` rows (`provider/model` keys); Workers AI
+    is free and ignored."""
+    total = 0.0
+    for key, u in usage.items():
+        provider, _, model = key.partition("/")
+        if provider != "anthropic":
+            continue
+        price_in, price_out = PRICES_PER_M.get(model, _FALLBACK_PRICE)
+        total += (u.get("tokens_in", 0) * price_in + u.get("tokens_out", 0) * price_out) / 1e6
+    return total
 
 # What my verdict says, when I gave one, in the language of the disagreement.
 _AGREES_WITH_AI = {
@@ -89,9 +107,7 @@ def build_report(
     skills: Counter[str] = Counter()
     for r in rows:
         skills.update(set(r.positive))
-    anthropic = usage.get("anthropic", {})
-    usd = (anthropic.get("tokens_in", 0) * HAIKU_IN_PER_M
-           + anthropic.get("tokens_out", 0) * HAIKU_OUT_PER_M) / 1_000_000
+    usd = estimated_usd(usage)
     sides = Counter(x.sides_with or "none" for x in ranked)
     notes = []
     if not rows:
