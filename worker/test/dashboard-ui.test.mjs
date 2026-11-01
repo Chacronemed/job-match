@@ -166,3 +166,18 @@ describe("M24 explanation lines", () => {
     assert.deepEqual(S.breakdown({ score: 50, explanations: ["Title relevance: near (+0)"] }).lines, []);
   });
 });
+
+describe("dashboard.js scope", () => {
+  test("no name is declared twice at the top level of the IIFE (a var would replace a function)", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const src = await readFile(new URL("../../src/job_match/dashboard/assets/dashboard.js", import.meta.url), "utf8");
+    const seen = new Map();
+    const dupes = [];
+    for (const m of src.matchAll(/^  (?:var ([A-Za-z_$][\w$]*)|function ([A-Za-z_$][\w$]*)\s*\()/gm)) {
+      const name = m[1] || m[2];
+      if (seen.has(name)) dupes.push(name); else seen.set(name, true);
+    }
+    assert.deepEqual(dupes, [], "declared twice in one scope");
+    assert.ok(seen.size > 100, "the scan really saw the file");
+  });
+});

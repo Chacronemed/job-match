@@ -251,3 +251,27 @@ def test_candidatures_has_the_kanban_table_toggle_and_the_table_container():
     assert 'id="kb-board"' in html and 'id="kb-table"' in html
     assert 'id="apps-view-kanban"' in html and 'id="apps-view-table"' in html
     assert 'aria-label="Affichage des candidatures"' in html
+
+
+def test_executions_has_the_run_now_buttons():
+    """« Lancer maintenant » for the AI rerank and the documents pass: in the page and wired."""
+    html = render_index(_EMPTY)
+    for needle in ('id="ai-run-now"', 'id="docs-run-now"', "Lancer maintenant", 'id="h-docs-runs"',
+                   "api.runAi()", "api.runDocuments()", "Rerank IA lancé",
+                   "function runNowButtons()",
+                   'runAi: function () { return call("POST", "ai/run"); }',
+                   'runDocuments: function () { return call("POST", "documents/run"); }'):
+        assert needle in html, needle
+    assert html.count(">Lancer maintenant</button>") == 2
+
+
+def test_candidatures_render_is_isolated_per_card():
+    """One broken card or row is logged with its key and replaced, the others still show."""
+    html = render_index(_EMPTY)
+    for needle in ("function safeNode(key, build, fallback)",
+                   'console.error("candidatures: carte illisible", key, err)',
+                   "function brokenCard(key)", "function brokenRow(key)", "kb-card-broken",
+                   "function statusMenu(key, j, status)", "Affichage interrompu"):
+        assert needle in html, needle
+    # The Offres status filter and the board's status menu must not share a name (prod bug, M26).
+    assert "function statusSelect(" not in html

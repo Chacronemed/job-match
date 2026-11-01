@@ -9,6 +9,8 @@
 //   GET  /api/documents/:key             -> {documents: [versions]}   (ADR 0017)
 //   POST /api/documents/:key/regenerate  -> {document}  (201, or 409 while one is pending)
 //   GET  /api/documents/:key/v<n>/(cv|letter).(pdf|docx) -> the file, as an attachment
+//   POST /api/ai/run         -> 202 {started, kind}  (the rerank pass, now, in the background)
+//   POST /api/documents/run  -> 202 {started, kind}  (the documents pass, now, in the background)
 // Every API call needs a valid Access JWT and a same-origin request. JSON only, no CORS.
 // Request bodies, notes and URLs are never logged. The crons (`scheduled`) run the AI rerank
 // (ai.js, ADR 0016, twice a day) and the documents generation (documents.js, ADR 0017, every
@@ -191,8 +193,17 @@ function decodeKey(segment) {
   }
 }
 
-async function route(request, env, url) {
+async function route(request, env, url, ctx) {
   const path = url.pathname;
+  // « Lancer maintenant »: the same passes as the crons, started here, finished after the
+  // response (ctx.waitUntil). Their row in ai_runs / document_runs is the report.
+  if (path === "/api/ai/run" || path === "/api/documents/run") {
+    if (request.method !== "POST") return fail(405, "method not allowed");
+    const kind = path === "/api/ai/run" ? "ai" : "documents";
+    const pass = kind === "ai" ? runScheduled(env) : runDocumentsScheduled(env);
+    if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(pass); else pass.catch(() => {});
+    return json(202, { started: true, kind });
+  }
   if (path === "/api/applications") {
     return request.method === "GET" ? listApplications(env) : fail(405, "method not allowed");
   }
@@ -234,7 +245,7 @@ async function route(request, env, url) {
   return fail(404, "not found");
 }
 
-export async function handleApi(request, env) {
+export async function handleApi(request, env, ctx) {
   const url = new URL(request.url);
   if (!env.CF_ACCESS_AUD || !env.CF_ACCESS_TEAM_DOMAIN || !env.DB) {
     return fail(500, "server misconfigured");
@@ -254,17 +265,17 @@ export async function handleApi(request, env) {
   if (!identity) return fail(401, "unauthenticated");
   if (!sameOrigin(request, url)) return fail(403, "cross-origin request refused");
   try {
-    return await route(request, env, url);
+    return await route(request, env, url, ctx);
   } catch {
     return fail(500, "internal error"); // no detail: it could carry request data
   }
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {
-      return handleApi(request, env);
+      return handleApi(request, env, ctx);
     }
     return env.ASSETS.fetch(request);
   },

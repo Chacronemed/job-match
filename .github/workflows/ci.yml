@@ -31,6 +31,11 @@ jobs:
       - name: Install
         run: pip install ".[dev]"
 
+      # The dashboard browser tests (tests/unit/browser) drive the rendered page in Chromium with
+      # the API mocked; with CI set, a missing browser fails instead of skipping.
+      - name: Install Chromium for Playwright
+        run: python -m playwright install --with-deps chromium
+
       - name: Lint
         run: ruff check .
 
