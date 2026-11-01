@@ -134,6 +134,15 @@ def main() -> None:
     frep_p.add_argument("--dry-run", action="store_true",
                         help="Fetch and extract but write nothing to the database")
 
+    cv_p = sub.add_parser("cv", help="Master CV for the application documents (private/)")
+    cv_sub = cv_p.add_subparsers(dest="cv_command", metavar="SUBCOMMAND")
+    cv_sub.add_parser("validate", help="Check private/cv_master.yaml and contact.yaml")
+    cvpush_p = cv_sub.add_parser(
+        "push", help="Validate, then upload both as private JSON objects to R2 (wrangler)",
+    )
+    cvpush_p.add_argument("--local", action="store_true",
+                          help="Target the local R2 of `wrangler dev` (smoke test)")
+
     args = parser.parse_args()
 
     if args.command == "run":
@@ -162,9 +171,83 @@ def main() -> None:
         else:
             funding_p.print_help()
             sys.exit(1)
+    elif args.command == "cv":
+        if args.cv_command == "validate":
+            _cmd_cv_validate(args)
+        elif args.cv_command == "push":
+            _cmd_cv_push(args)
+        else:
+            cv_p.print_help()
+            sys.exit(1)
     else:
         parser.print_help()
         sys.exit(1)
+
+
+def _load_master_or_exit():
+    """The validated master and contact, or exit 1. Prints counts and error lines only:
+    never a bullet, never a contact value."""
+    from job_match.config.loader import (
+        ConfigError,
+        load_aliases,
+        load_profile,
+        load_settings,
+        load_skill_vocabulary,
+    )
+    from job_match.documents.master import load_contact, load_master
+    from job_match.documents.push import private_dir
+    from job_match.documents.validate import validate_master
+
+    cfg = _config_dir()
+    priv = private_dir()
+    try:
+        settings = load_settings(cfg / "settings.yaml")
+        master = load_master(priv / "cv_master.yaml")
+        contact = load_contact(priv / "contact.yaml")
+    except ConfigError as exc:
+        print(f"cv: {exc}", file=sys.stderr)
+        sys.exit(1)
+    try:
+        profile_skills = tuple(s.name for s in load_profile(cfg / "profile.yaml").skills.preferred)
+    except ConfigError:
+        profile_skills = ()
+    errors = validate_master(
+        master, contact, settings.documents,
+        load_skill_vocabulary(cfg / "skill_vocabulary.yaml"), load_aliases(cfg / "aliases.yaml"),
+        profile_skills,
+    )
+    n_bullets = len(master.bullets())
+    print(
+        f"cv: {len(master.experiences)} experiences, {len(master.projects)} projects, "
+        f"{n_bullets} bullets, {len(master.skills)} skills, {len(errors)} errors"
+    )
+    for err in errors:
+        print(f"  - {err}", file=sys.stderr)
+    if errors:
+        sys.exit(1)
+    return master, contact
+
+
+def _cmd_cv_validate(args: argparse.Namespace) -> None:
+    _load_master_or_exit()
+
+
+def _cmd_cv_push(args: argparse.Namespace) -> None:
+    """Local only, by hand: the master and the contact leave this machine for R2 and nowhere
+    else. Never wired into a workflow."""
+    _quiet_http_logs()
+    from job_match.documents.master import to_json
+    from job_match.documents.push import CONTACT_KEY, MASTER_KEY, PushError, push_objects
+
+    master, contact = _load_master_or_exit()
+    try:
+        sizes = push_objects({MASTER_KEY: to_json(master), CONTACT_KEY: to_json(contact)},
+                             local=args.local)
+    except PushError as exc:
+        print(f"cv push failed: {exc}", file=sys.stderr)
+        sys.exit(1)
+    for key, n in sizes.items():
+        print(f"  {key}: {n} bytes -> R2 {'local' if args.local else 'remote'}")
 
 
 def _cmd_reprocess(args: argparse.Namespace) -> None:

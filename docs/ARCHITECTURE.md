@@ -422,11 +422,12 @@ Tri by them. The core runs without it; the scores are never averaged.
 - **Division of labour.** This system does discovery, FR sources, the experience gate, dedup, triage scoring,
   funding signals and the daily digest. career-ops does deep A–G evaluation, CV tailoring, the application tracker
   and interview prep.
-  - We do **not** build CV generation. Since M21 (ADR 0012) job-match records application
-    *statuses* (D1, edited from the dashboard) so the digest can skip handled jobs; career-ops keeps the
-    deep evaluation and CV work. Since M25 (ADR 0016) a Worker cron asks a model for a second opinion on
-    the offers the Python filter kept (a score, a level, reasons); it never replaces the Python score and
-    never writes the config.
+  - Since M21 (ADR 0012) job-match records application *statuses* (D1, edited from the dashboard) so
+    the digest can skip handled jobs. Since M25 (ADR 0016) a Worker cron asks a model for a second
+    opinion on the offers the Python filter kept (a score, a level, reasons); it never replaces the
+    Python score and never writes the config. Since M26 (ADR 0017) the Worker also generates a CV and
+    a cover letter per kept offer, from a private master CV validated against invention; career-ops
+    keeps the deep A–G evaluation and the interview prep, and is never called.
   - We do **not** write into career-ops' tracker or `scan-history.tsv`.
 - **Optional integration point** (late, only if useful): `job-match export-career-ops --job-ids …` (in
   `export/career_ops.py`) writes two things into a user-given career-ops checkout path:

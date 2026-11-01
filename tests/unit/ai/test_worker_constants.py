@@ -38,7 +38,7 @@ def test_the_worker_uses_the_documented_model_and_api_version():
 def test_the_crons_run_after_the_daily_run_and_workers_ai_is_bound():
     daily = (ROOT / ".github" / "workflows" / "daily.yml").read_text(encoding="utf-8")
     assert 'cron: "0 7 * * *"' in daily
-    assert WRANGLER_CFG["triggers"]["crons"] == ["30 7 * * *", "30 9 * * *"]
+    assert WRANGLER_CFG["triggers"]["crons"][:2] == ["30 7 * * *", "30 9 * * *"]
     assert '"binding": "AI"' in WRANGLER
     assert "ANTHROPIC" not in json.dumps(WRANGLER_CFG)  # the key stays a secret, not a var
     assert "sk-ant" not in WRANGLER

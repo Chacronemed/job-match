@@ -30,7 +30,8 @@ def test_worker_and_dashboard_tracking_node_tests_pass():
         [node, "--experimental-sqlite", "--no-warnings", "--test", *map(str, TESTS)],
         cwd=ROOT, capture_output=True, text=True, timeout=300,
     )
-    assert result.returncode == 0, result.stdout[-4000:] + result.stderr[-2000:]
+    hint = "\n(the Worker's npm dependencies are needed once: npm ci --prefix worker)"
+    assert result.returncode == 0, result.stdout[-4000:] + result.stderr[-2000:] + hint
     assert "# fail 0" in result.stdout
     passed = int(result.stdout.split("# pass ", 1)[1].split()[0])
     assert passed >= 90  # the suites really ran

@@ -2,6 +2,8 @@
 .env
 config/profile.yaml
 config/resume.md
+# Master CV, contact details and generated documents (M26): never in the repo
+/private/
 
 # Data (stored in private repo)
 data/
@@ -49,3 +51,6 @@ htmlcov/
 
 # Worker local secrets (wrangler dev)
 .dev.vars
+
+# Node dependencies of the Worker (worker/package.json, installed by npm ci)
+node_modules/

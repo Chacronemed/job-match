@@ -1,5 +1,13 @@
 {
   "private": true,
   "type": "module",
-  "description": "job-match Worker: static dashboard + /api/ tracking routes. No dependencies."
+  "description": "job-match Worker: static dashboard, /api/ tracking routes, the AI rerank and the application documents (PDF/DOCX rendering needs the dependencies below).",
+  "dependencies": {
+    "@pdf-lib/fontkit": "1.1.1",
+    "fflate": "0.8.2",
+    "pdf-lib": "1.17.1"
+  },
+  "devDependencies": {
+    "pdfjs-dist": "5.4.296"
+  }
 }

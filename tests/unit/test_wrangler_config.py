@@ -53,9 +53,17 @@ def test_access_identifiers_are_secrets_not_config():
 
 def test_the_ai_rerank_has_two_crons_a_cap_and_the_workers_ai_binding():
     cfg = _config()
-    assert cfg["triggers"]["crons"] == ["30 7 * * *", "30 9 * * *"]
+    assert cfg["triggers"]["crons"] == ["30 7 * * *", "30 9 * * *", "*/10 * * * *"]
     assert cfg["vars"]["AI_DAILY_LIMIT"].isdigit()
     assert cfg["ai"] == {"binding": "AI"}
+
+
+def test_the_documents_bucket_is_private_and_never_the_production_one_in_dev():
+    cfg = _config()
+    (bucket,) = cfg["r2_buckets"]
+    assert bucket == {"binding": "DOCS", "bucket_name": "job-match-docs"}  # no "remote" key
+    assert cfg["vars"]["AI_DOCUMENTS_MONTHLY_USD"].isdigit()
+    assert "/private/" in (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
 
 
 def test_site_and_deploy_tooling_are_gitignored():

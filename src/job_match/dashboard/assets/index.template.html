@@ -74,10 +74,15 @@ __CSS__
 </section>
 
 <section class="panel legacy" id="panel-candidatures" aria-labelledby="h-candidatures" hidden>
-  <header class="view-head"><h1 id="h-candidatures">Candidatures <span class="view-n num" data-count="candidatures"></span></h1></header>
+  <header class="view-head"><h1 id="h-candidatures">Candidatures <span class="view-n num" data-count="candidatures"></span></h1>
+    <div class="view-toggle" role="group" aria-label="Affichage des candidatures">
+      <button type="button" class="chip" id="apps-view-kanban" data-view="kanban" aria-pressed="true">Kanban</button>
+      <button type="button" class="chip" id="apps-view-table" data-view="table" aria-pressed="false">Tableau</button>
+    </div></header>
   <p class="tri-off" id="kb-off" hidden>Les candidatures viennent du suivi : il demande le tableau de bord hébergé.</p>
   <div class="kb-due" id="kb-due" hidden></div>
   <div class="kb-board" id="kb-board"></div>
+  <div class="kb-table" id="kb-table" hidden></div>
 </section>
 
 <section class="panel legacy" id="panel-offres" aria-labelledby="h-offres" hidden>

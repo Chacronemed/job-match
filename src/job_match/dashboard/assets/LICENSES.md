@@ -5,6 +5,7 @@ The dashboard is built with three third-party works. Each one is listed below wi
 | Asset | Where | Licence |
 |---|---|---|
 | Inter Variable (latin subset, via @fontsource-variable/inter 5.3.0) | `fonts/InterVariable-latin.woff2` | SIL Open Font License 1.1 |
+| Inter 4.1 static Regular and Bold (rsms/inter release), embedded in the PDF documents by the Worker | `worker/fonts/Inter-Regular.ttf`, `worker/fonts/Inter-Bold.ttf` (repo) | SIL Open Font License 1.1 (`worker/fonts/LICENSE-Inter.txt`) |
 | Lucide icons (lucide-static 1.61.0, subset as icon nodes) | inlined in `index.html` (`lucide.js`) | ISC |
 | Radix Colors 3.0.0 (slate, violet, green, amber, red and blue dark scales; values copied) | inlined in `index.html` (`tokens.css`) | MIT |
 

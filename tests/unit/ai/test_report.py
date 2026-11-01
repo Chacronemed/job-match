@@ -45,7 +45,8 @@ def test_report_counts_and_the_prompt_names_the_offers_but_applies_nothing():
         _row("ft:1", "gap", 60, 90, "fort", "good_fit", positive=["kubernetes", "terraform"]),
         _row("ft:2", "off_topic_strong", 85, 20, "hors_sujet", positive=["kubernetes"]),
     ]
-    usage = {"anthropic": {"calls": 40, "tokens_in": 100_000, "tokens_out": 6_000}}
+    usage = {"anthropic/claude-haiku-5-5": {"calls": 40, "tokens_in": 100_000,
+                                           "tokens_out": 6_000}}
     report = build_report(rows, usage, _settings(), SINCE, TODAY)
     assert (report.total, report.with_decision) == (2, 1)
     assert report.by_kind == {"gap": 1, "off_topic_strong": 1}
@@ -90,8 +91,8 @@ def test_the_repository_joins_offers_reasons_and_my_latest_verdict(seed_dashboar
               "prompt_version": "1", "score": 20, "level": "hors_sujet",
               "reasons": json.dumps(["Support N2."]), "red_flags": "[]",
               "created_at": "2026-10-24T07:30:00Z"}],
-            [{"day": "2026-10-24", "provider": "anthropic", "calls": 3, "tokens_in": 300,
-              "tokens_out": 30}],
+            [{"day": "2026-10-24", "provider": "anthropic", "model": "claude-haiku-5-5",
+              "calls": 3, "tokens_in": 300, "tokens_out": 30}],
             [{"id": 1, "job_key": key, "hash": HASH, "python_score": 85,
               "python_section": "strong", "ai_score": 20, "ai_level": "hors_sujet",
               "kind": "off_topic_strong", "created_at": "2026-10-24T07:30:00Z"},
@@ -111,7 +112,7 @@ def test_the_repository_joins_offers_reasons_and_my_latest_verdict(seed_dashboar
         assert row.positive == ("kubernetes", "terraform")
         assert row.reasons == ("Support N2.",) and row.decision == "off_topic"
         assert repo.usage_since(SINCE) == {
-            "anthropic": {"calls": 3, "tokens_in": 300, "tokens_out": 30}
+            "anthropic/claude-haiku-5-5": {"calls": 3, "tokens_in": 300, "tokens_out": 30}
         }
         assert repo.count() == (1, 1, 2, 0)
         repo.replace_all([], [], [], [
