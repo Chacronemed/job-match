@@ -58,6 +58,36 @@
     return BAND[job && job.section] || { key: "low", label: "Faible" };
   }
 
+  /* The AI verdict's level (ADR 0016), in words; null for anything that is not a level. */
+  var AI_BAND = {
+    fort: { key: "fort", label: "Fort" },
+    tenter: { key: "tenter", label: "À tenter" },
+    hors_sujet: { key: "hors_sujet", label: "Hors sujet" }
+  };
+  function aiBand(level) {
+    return AI_BAND[level] || null;
+  }
+
+  /* One cron pass of the AI rerank (D1 `ai_runs`), in words: {key, label, bad, stats}. A
+     stopped pass names its HTTP status and nothing else: the Worker never stores a message. */
+  var RUN_OUTCOME = {
+    ok: { label: "OK", bad: false },
+    stopped: { label: "Arrêté", bad: true },
+    failed: { label: "Échec", bad: true },
+    no_profile: { label: "Sans profil", bad: false }
+  };
+  var RUN_STATS = [["scored", "jugées"], ["cached", "en cache"], ["fallback", "repli"],
+    ["invalid", "invalides"], ["skipped_cap", "plafond"], ["errors", "erreurs"]];
+  function aiRunLine(run) {
+    var o = RUN_OUTCOME[run && run.outcome] || { label: "Inconnu", bad: true };
+    var label = o.label;
+    if (run && typeof run.http_status === "number") label += " · HTTP " + run.http_status;
+    var c = (run && run.counters) || {};
+    var stats = RUN_STATS.filter(function (s) { return typeof c[s[0]] === "number" && (c[s[0]] || s[0] === "scored"); })
+      .map(function (s) { return { label: s[1], value: c[s[0]] }; });
+    return { key: run && RUN_OUTCOME[run.outcome] ? run.outcome : "unknown", label: label, bad: o.bad, stats: stats };
+  }
+
   function points(n) { return n + (n > 1 ? " points" : " point"); }
   var YEARS = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 1 });
 
@@ -83,7 +113,7 @@
 
   function signed(v) { return (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v); }
 
-  var api = { breakdown: breakdown, band: band, gapSentence: gapSentence, signed: signed };
+  var api = { breakdown: breakdown, band: band, aiBand: aiBand, aiRunLine: aiRunLine, gapSentence: gapSentence, signed: signed };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.JMScore = api;
 })(this);

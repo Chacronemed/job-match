@@ -173,7 +173,7 @@ Every hint is a `kbd` chip, `aria-hidden`, and the control carries `aria-keyshor
 **View head (48 px).** It holds the `h1` title, its count in ink-3, then the view's controls on the right. It is sticky.
 
 **Tri card.** It sits on `--raised` with a 12 px radius. It is as tall as its content, up to the space above the bar, and its content scrolls inside it (`.tcard-scroll`, 20 px padding, 16 px on phones). The bar never moves. The card behind takes the same box and peeks out 10 px below, its text hidden. From top to bottom:
-1. the badges (Nouveau, À tenter, N départements);
+1. the badges (« IA 84 » when the Worker holds a verdict for this content, tinted by its level; Nouveau; À tenter; N départements);
 2. the **facts** (`dl`), label above value, two columns: Poste (the title across both, a button that opens the record), Entreprise, Expérience demandée, Lieu, Contrat, Salaire, Publiée (« Hier », « Il y a 3 j », the full date in the tooltip). Salaire appears only when the description has an explicit `Salaire :` / `Rémunération :` line, shown word for word; the data has no salary field;
 3. the « Relevé du score », collapsible;
 4. the **description**, whole (`description.js`):
@@ -207,6 +207,8 @@ On the Tri card it is **collapsible, closed by default**:
 
 The record panel shows it open, with no toggle.
 
+**« Selon l’IA » (`ui.js aiBlock`, ADR 0016).** Under the ledger, when the Worker holds a verdict for the offer's current content: the model's score and level (Fort, À tenter, Hors sujet, with the band dot), its reasons as a short list, its red flags as warning pills. It is the model's opinion and says so; it never changes a Python line. The Tri is ordered by this score when it exists (`triage.js rankScore`), and an offer the model calls Hors sujet leaves the Tri: it stays in Offres, behind the « Avis de l’IA » filter (`ia=` in the hash).
+
 **Record panel (Attio).** In the Tri it opens only on demand (a click on the title, or `↵`), never by itself: a decision closes it, and its key is not kept in the hash there. Opened from the Tri it leaves out the description, which the card already shows.
 
 **Record panel, contents.** A bar holds the view name, "Voir l’offre" (icon) and Fermer (`Échap`). Below it come the title (20 px, focused on open), company and place, then a property list: icon + label in ink-3, value in ink-2, 32 px rows. The sections follow, in order: « Description de l’offre » (the same layout as the Tri card), ledger, « Pourquoi cette offre ? » (open), postings for a group, tracking (status, dates, CV, note, verdicts).
@@ -217,7 +219,7 @@ The record panel shows it open, with no toggle.
 - `.icon-btn`: 28 px (44 px on phones), always labelled;
 - `.link-btn`: accent ink, no underline at rest.
 
-**Pills and badges.** A `.pill` is a 24 px outlined tag (warning variant in amber). A `.badge` is a 22 px filled tag (accent soft, amber soft).
+**Pills and badges.** A `.pill` is a 24 px outlined tag (warning variant in amber). A `.badge` is a 22 px filled tag (accent soft, amber soft). `.badge-ai` reads « IA 84 » in tabular figures: green soft for Fort, amber soft for À tenter, red soft for Hors sujet.
 
 **kbd.** A 20 px chip on slate-4 with a line-2 border, 11 px medium.
 

@@ -206,6 +206,7 @@
       if (off.length) parts.push("hide=" + off.join(","));
       if (state.department) parts.push("dept=" + encodeURIComponent(state.department));
       if (state.status) parts.push("st=" + state.status);
+      if (state.ai) parts.push("ia=" + state.ai);
       if (state.minScore) parts.push("min=" + state.minScore);
       if (state.from) parts.push("from=" + state.from);
       if (state.to) parts.push("to=" + state.to);
@@ -247,6 +248,7 @@
     sections: { strong: true, eligible: true, stretch: true },
     department: "",
     status: "",
+    ai: "",
     minScore: 0,
     from: "",
     to: "",
@@ -258,6 +260,9 @@
   var searchInput = byId("f-search");
   var deptSelect = byId("f-department");
   var statusSelect = byId("f-status");
+  var aiSelect = byId("f-ai");
+  /* The IA filter's values (hash `ia=`): the Worker's levels, as score.js names them. */
+  var AI_LEVELS = ["fort", "tenter", "hors_sujet"];
   var minScoreInput = byId("f-min-score");
   var minScoreOut = byId("f-min-score-out");
   var fromInput = byId("f-from");
@@ -284,7 +289,13 @@
     T.STATUSES.forEach(function (s) {
       statusSelect.appendChild(el("option", { value: s, text: T.STATUS_TEXT[s] }));
     });
+    AI_LEVELS.forEach(function (l) {
+      aiSelect.appendChild(el("option", { value: l, text: S.aiBand(l).label }));
+    });
   }
+
+  /* The AI verdict shown for a row: the Worker's, for the row's current content only. */
+  function aiOf(j) { return X.aiOf(j, track.ai); }
 
   /* How many Offres filters differ from their default: shown on the phone's "Filtres" bar. */
   function activeFilters() {
@@ -293,6 +304,7 @@
     if (SECTIONS.some(function (s) { return !state.sections[s]; })) n += 1;
     if (state.department) n += 1;
     if (state.status) n += 1;
+    if (state.ai) n += 1;
     if (state.minScore) n += 1;
     if (state.from) n += 1;
     if (state.to) n += 1;
@@ -302,6 +314,10 @@
   function matches(j) {
     if (!state.sections[j.section]) return false;
     if (state.status && statusOfJob(j) !== state.status) return false;
+    if (state.ai) {
+      var verdict = aiOf(j);
+      if (!verdict || verdict.level !== state.ai) return false;
+    }
     if (state.minScore > 0 && (j.score === null || j.score < state.minScore)) return false;
     if (state.department) {
       var depts = T.postingsOf(j).map(function (p) { return p.department || ""; });
@@ -355,6 +371,11 @@
     bar.appendChild(fill);
     wrap.appendChild(bar);
     wrap.appendChild(el("span", { text: j.score === null ? "—" : String(j.score) }));
+    var v = aiOf(j);
+    if (v) {
+      var band = S.aiBand(v.level);
+      wrap.appendChild(el("span", { class: "score-ai" + (band ? " ai-" + band.key : ""), title: band ? "Selon l’IA : " + band.label : "Selon l’IA", text: "IA " + v.score }));
+    }
     return wrap;
   }
 
@@ -362,7 +383,7 @@
 
   /* status: "off" (file:// or no fetch), "loading", "ready", "error". `apps` is what the page
      shows (optimistic), `confirmed` what the API last stored; a failed save goes back to it. */
-  var track = { status: "off", apps: {}, confirmed: {}, decisions: {}, overrides: {}, seq: {}, pending: 0 };
+  var track = { status: "off", apps: {}, confirmed: {}, decisions: {}, overrides: {}, ai: {}, aiRuns: [], seq: {}, pending: 0 };
   /* skill -> functions redrawing every "je maîtrise" control for it on screen */
   var overrideViews = {};
 
@@ -428,6 +449,12 @@
       (res.decisions || []).forEach(function (d) { if (d && d.job_key) decisions[d.job_key] = d.label; });
       var overrides = {};
       (res.skill_overrides || []).forEach(function (o) { if (o && o.skill) overrides[o.skill] = true; });
+      /* The AI verdicts (ADR 0016), one per key; triage.aiOf drops the ones whose hash is stale. */
+      var ai = {};
+      (res.ai_verdicts || []).forEach(function (v) { if (v && typeof v.job_key === "string") ai[v.job_key] = v; });
+      track.ai = ai;
+      track.aiRuns = Array.isArray(res.ai_runs) ? res.ai_runs.filter(function (r) { return r && typeof r === "object"; }) : [];
+      renderAiRuns();
       track.overrides = overrides;
       track.apps = apps;
       track.confirmed = Object.assign({}, apps);
@@ -1197,7 +1224,7 @@
 
   /* One definition per counter, shared with the tests (triage.js sidebarCounts). */
   function updateCounts() {
-    var n = X.sidebarCounts(rows, track.apps, runAt, thresholds.min_score, leads, runs);
+    var n = X.sidebarCounts(rows, track.apps, runAt, thresholds.min_score, leads, runs, track.ai);
     Object.keys(n).forEach(function (view) { setCount(view, n[view]); });
   }
 
@@ -1287,7 +1314,7 @@
   }
 
   function buildTri() {
-    tri.items = X.triageQueue(rows, track.apps, runAt, thresholds.min_score);
+    tri.items = X.triageQueue(rows, track.apps, runAt, thresholds.min_score, track.ai);
     tri.pos = 0;
     tri.built = true;
     tri.pausedAt = -1;
@@ -1334,6 +1361,11 @@
     card.appendChild(body);
 
     var badges = [];
+    var verdict = aiOf(j);
+    if (verdict) {
+      var aiBand = S.aiBand(verdict.level);
+      badges.push(el("span", { class: "badge badge-ai" + (aiBand ? " ai-" + aiBand.key : ""), title: aiBand ? "Selon l’IA : " + aiBand.label : "Selon l’IA", text: "IA " + verdict.score }));
+    }
     if (item.isNew) badges.push(el("span", { class: "badge badge-new", text: "Nouveau" }));
     if (j.section === "stretch") badges.push(el("span", { class: "badge badge-stretch", text: "À tenter" }));
     if (j.postings) badges.push(el("span", { class: "badge", text: j.departments.length + " départements" }));
@@ -1360,7 +1392,7 @@
     body.appendChild(el("dl", { class: "tcard-facts" }, facts));
 
     body.appendChild(U.ledger(j, thresholds, {
-      collapsible: true, animate: !isNext && triArrive,
+      collapsible: true, animate: !isNext && triArrive, ai: verdict,
       missing: j.missing || [], unlisted: (w.unlisted || []).map(function (u) { return u.name; })
     }));
 
@@ -1652,7 +1684,7 @@
     if (j.description_excerpt && currentTab !== "tri") {
       box.appendChild(el("section", { class: "record-sec record-desc" }, [el("h3", { text: "Description de l’offre" })].concat(D.render(D.parse(j.description_excerpt), el))));
     }
-    box.appendChild(el("section", { class: "record-sec" }, [U.ledger(j, thresholds, { compact: true })]));
+    box.appendChild(el("section", { class: "record-sec" }, [U.ledger(j, thresholds, { compact: true, ai: aiOf(j) })]));
     var form = trackForm(j, "rec");
     var why = whyPanel(j, form.verdictBlock || null);
     why.open = true;
@@ -1985,6 +2017,11 @@
     renderJobs();
     syncHash();
   });
+  aiSelect.addEventListener("change", function () {
+    state.ai = AI_LEVELS.indexOf(aiSelect.value) >= 0 ? aiSelect.value : "";
+    renderJobs();
+    syncHash();
+  });
 
   minScoreInput.addEventListener("input", function () {
     state.minScore = Number(minScoreInput.value) || 0;
@@ -2002,6 +2039,7 @@
     chips.forEach(function (c) { c.setAttribute("aria-pressed", "true"); });
     state.department = ""; deptSelect.value = "";
     state.status = ""; statusSelect.value = "";
+    state.ai = ""; aiSelect.value = "";
     state.minScore = 0; minScoreInput.value = "0"; minScoreOut.textContent = "0";
     state.from = ""; fromInput.value = "";
     state.to = ""; toInput.value = "";
@@ -2049,6 +2087,8 @@
     deptSelect.value = state.department;
     state.status = T.STATUSES.indexOf(p.st) >= 0 ? p.st : "";
     statusSelect.value = state.status;
+    state.ai = AI_LEVELS.indexOf(p.ia) >= 0 ? p.ia : "";
+    aiSelect.value = state.ai;
     var min = parseInt(p.min, 10);
     state.minScore = min >= 0 && min <= 100 ? min : 0;
     minScoreInput.value = String(state.minScore);
@@ -2163,6 +2203,25 @@
 
   function stat(label, value) {
     return el("span", null, [label + " ", el("b", { text: String(value) })]);
+  }
+
+  /* « Rerank IA » (ADR 0016): the cron passes the Worker recorded, newest first, from
+     /api/applications. A stopped pass shows its HTTP status in red; nothing else is known. */
+  function renderAiRuns() {
+    var list = byId("ai-runs-list");
+    clear(list);
+    var runs = track.aiRuns || [];
+    byId("ai-runs-empty").hidden = runs.length > 0;
+    runs.forEach(function (r) {
+      var line = S.aiRunLine(r);
+      var head = el("div", { class: "run-head" }, [
+        el("span", { class: "run-date", text: r.started_at ? fmtDateTime(r.started_at) : "—" }),
+        el("span", { class: "badge" + (line.bad ? " badge-bad" : " badge-ok"), text: line.label }),
+        r.provider ? el("span", { class: "run-fetched", text: r.provider === "workers_ai" ? "Workers AI" : "Claude" }) : null
+      ]);
+      var stats = el("p", { class: "run-stats" }, line.stats.map(function (s) { return stat(s.label, s.value); }));
+      list.appendChild(el("article", { class: "run run-ai" }, [head, stats]));
+    });
   }
 
   function renderRuns() {

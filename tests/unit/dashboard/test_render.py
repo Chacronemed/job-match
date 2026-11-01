@@ -130,7 +130,8 @@ def test_tri_is_the_default_view_and_the_nav_is_in_french():
 
 def test_every_offres_filter_is_present_and_wired():
     html = render_index(_EMPTY)
-    for control in ('id="f-search"', 'id="f-department"', 'id="f-status"', 'id="f-min-score"',
+    for control in ('id="f-search"', 'id="f-department"', 'id="f-status"', 'id="f-ai"',
+                    'id="f-min-score"',
                     'id="f-from"', 'id="f-to"', 'id="f-reset"', 'data-section="strong"',
                     'data-section="eligible"', 'data-section="stretch"', 'id="filters-count"'):
         assert control in html, control
@@ -138,11 +139,12 @@ def test_every_offres_filter_is_present_and_wired():
                 "status", "posted_at", "age_days"):
         assert f'data-key="{key}"' in html, key
     script = html.split("function applyHash()")[1].split("/* ---------- leads")[0]
-    for param in ("p.q", "p.hide", "p.dept", "p.st", "p.min", "p.from", "p.to", "p.sort"):
+    for param in ("p.q", "p.hide", "p.dept", "p.st", "p.ia", "p.min", "p.from", "p.to", "p.sort"):
         assert param in script, param
     for listener in ('searchInput.addEventListener("input"',
                      'deptSelect.addEventListener("change"',
                      'statusSelect.addEventListener("change"',
+                     'aiSelect.addEventListener("change"',
                      'minScoreInput.addEventListener("input"',
                      'fromInput.addEventListener("change"',
                      'toInput.addEventListener("change"',
@@ -213,3 +215,26 @@ def test_write_site_adds_an_installable_manifest_and_no_service_worker(tmp_path)
     assert '<link rel="manifest" href="manifest.webmanifest" crossorigin="use-credentials">' in html
     assert "manifest-src 'self'" in html
     assert "serviceWorker" not in html  # data.json and the page are never cached
+
+
+def test_executions_has_the_ai_runs_block():
+    html = render_index(_EMPTY)
+    for needle in ('id="ai-runs-list"', 'id="ai-runs-empty"', "Rerank IA", "Aucun passage de l’IA",
+                   "function renderAiRuns()", "res.ai_runs"):
+        assert needle in html, needle
+
+
+def test_ai_profile_is_a_separate_file_the_page_never_embeds(tmp_path, dashboard_data):
+    from job_match.dashboard.render import AI_PROFILE
+
+    data, _ = dashboard_data
+    site = tmp_path / "site"
+    profile = {"preferred": [{"name": "kubernetes-marker", "band": "fort"}], "mobility": "france"}
+    write_site(data, site, profile)
+    on_disk = json.loads((site / AI_PROFILE).read_text(encoding="utf-8"))
+    assert on_disk == profile
+    assert "kubernetes-marker" not in (site / "index.html").read_text(encoding="utf-8")
+    assert "kubernetes-marker" not in (site / "data.json").read_text(encoding="utf-8")
+    # Without a profile the stale file goes: the Worker's cron must not read last week's.
+    write_site(data, site)
+    assert not (site / AI_PROFILE).exists()

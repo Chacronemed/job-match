@@ -123,15 +123,21 @@ a:hover { text-decoration: underline; }
   min-height: 44px;
   align-items: center;
 }
+/* A wrapping row (M25: nine fields; a fixed column list clipped the section chips under the
+   next select). Each field keeps a floor width and wraps to a second row when needed. */
 .controls-grid {
-  display: grid;
-  grid-template-columns: minmax(180px, 1.6fr) auto minmax(120px, 1fr) minmax(110px, 0.8fr) minmax(170px, 1.3fr) auto auto auto;
+  display: flex;
+  flex-wrap: wrap;
   gap: 10px 14px;
-  align-items: end;
+  align-items: flex-end;
   padding: 10px 14px 12px;
 }
 
-.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1 1 140px; }
+.field-search { flex: 2 1 220px; }
+.field-sections { flex: 0 0 auto; }
+.field-score { flex: 1.4 1 220px; }
+.field-reset { flex: 0 0 auto; }
 .field-label { font-size: 12px; color: var(--ink-subtle); }
 .field-hint { color: var(--ink-tertiary); }
 
@@ -363,6 +369,10 @@ tr.details td {
 }
 .badge-high { background: var(--success-soft); color: var(--success-ink); }
 .badge-reprocess { background: var(--primary-soft); color: var(--primary-hover); }
+.ai-runs { margin-bottom: 16px; }
+.section-title { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--ink-subtle); text-transform: none; }
+.run-ai .run-stats { margin-top: 4px; }
+.empty-sm { padding: 12px 16px; text-align: left; }
 
 /* ---------- tracking ---------- */
 
@@ -611,9 +621,6 @@ select.posting-status { width: 180px; min-height: 32px; }
 
 /* ---------- responsive ---------- */
 
-@media (max-width: 1100px) {
-  .controls-grid { grid-template-columns: minmax(160px, 1.5fr) auto minmax(110px, 1fr) minmax(150px, 1.2fr); }
-}
 
 @media (max-width: 768px) {
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -621,7 +628,7 @@ select.posting-status { width: 180px; min-height: 32px; }
   .kpi-value { font-size: 20px; }
 
   .controls-summary { display: flex; }
-  .controls-grid { grid-template-columns: 1fr 1fr; padding-top: 0; }
+  .controls-grid { display: grid; grid-template-columns: 1fr 1fr; padding-top: 0; }
   .field-search, .field-sections { grid-column: 1 / -1; }
   .field-score { grid-column: 1 / -1; }
   .field-reset { grid-column: 1 / -1; justify-self: start; }

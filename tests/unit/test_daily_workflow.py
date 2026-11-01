@@ -228,13 +228,15 @@ def test_tracking_steps_use_the_cloudflare_secrets_and_print_nothing_from_d1():
     assert "umask 077" in export
     assert "trap 'rm -rf \"$dir\"' EXIT" in export
     # each query's JSON goes to a file, never to the log
-    assert export.count('> "$dir/') == 3
+    assert export.count('> "$dir/') == 7
     assert "--json" in export and "--remote" in export
     for leak in ("cat ", "echo", "tee", "head", "jq", "upload"):
         assert leak not in export, leak
     assert ('job-match tracking import --applications "$dir/applications.json" '
             '--decisions "$dir/decisions.json" '
-            '--skill-overrides "$dir/skill_overrides.json"') in export
+            '--skill-overrides "$dir/skill_overrides.json" '
+            '--ai-verdicts "$dir/ai_verdicts.json" --ai-usage "$dir/ai_usage.json" '
+            '--disagreements "$dir/disagreements.json" --ai-runs "$dir/ai_runs.json"') in export
 
 
 def test_export_selects_exactly_the_mirrored_columns():
@@ -243,3 +245,11 @@ def test_export_selects_exactly_the_mirrored_columns():
             "FROM applications") in export
     assert "SELECT id, job_key, label, score_at_decision, created_at FROM decisions" in export
     assert "SELECT skill, created_at FROM skill_overrides" in export
+    # The AI rerank mirror (ADR 0016): the Worker's three tables, whole.
+    assert ("SELECT id, job_key, hash, provider, model, prompt_version, score, level, reasons, "
+            "red_flags, created_at FROM ai_verdicts") in export
+    assert "SELECT day, provider, calls, tokens_in, tokens_out FROM ai_usage" in export
+    assert ("SELECT id, job_key, hash, python_score, python_section, ai_score, ai_level, kind, "
+            "created_at FROM disagreements") in export
+    assert ("SELECT id, started_at, finished_at, outcome, http_status, provider, counters "
+            "FROM ai_runs") in export

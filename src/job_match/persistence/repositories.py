@@ -1,6 +1,6 @@
 import json
 import sqlite3
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 
 from job_match.domain.models import (
@@ -1323,3 +1323,150 @@ class ApplicationRepository:
             )
             for r in rows
         ]
+
+
+@dataclass(frozen=True, slots=True)
+class Disagreement:
+    """One row of the mirrored `disagreements`, joined to what the report needs: the offer
+    (when still stored), the model's reasons and my latest Tri verdict on it."""
+
+    job_key: str
+    kind: str
+    python_score: int
+    python_section: str
+    ai_score: int
+    ai_level: str
+    created_at: str
+    title: str | None
+    company: str | None
+    positive: tuple[str, ...]
+    reasons: tuple[str, ...]
+    red_flags: tuple[str, ...]
+    decision: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class AiRun:
+    """One cron pass of the AI rerank, as mirrored from D1 `ai_runs`."""
+
+    id: int
+    started_at: str
+    outcome: str
+    http_status: int | None
+    provider: str | None
+    counters: dict
+
+
+def _json_strings(text: str | None) -> tuple[str, ...]:
+    try:
+        value = json.loads(text or "[]")
+    except json.JSONDecodeError:
+        return ()
+    return tuple(v for v in value if isinstance(v, str)) if isinstance(value, list) else ()
+
+
+class AiRepository:
+    """The read-only mirror of the D1 AI rerank tables (ADR 0016). D1 is the source of
+    truth; `job-match tracking import` replaces these rows, `job-match ai-report` reads them."""
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def replace_all(
+        self, verdicts: list[dict], usage: list[dict], disagreements: list[dict],
+        runs: list[dict] = (),
+    ) -> None:
+        """Swap the four tables for the given rows in one transaction (caller validates)."""
+        with self._conn:
+            self._conn.execute("DELETE FROM ai_verdicts")
+            self._conn.execute("DELETE FROM ai_usage")
+            self._conn.execute("DELETE FROM disagreements")
+            self._conn.execute("DELETE FROM ai_runs")
+            self._conn.executemany(
+                "INSERT INTO ai_runs(id, started_at, finished_at, outcome, http_status,"
+                " provider, counters) VALUES (:id, :started_at, :finished_at, :outcome,"
+                " :http_status, :provider, :counters)",
+                list(runs),
+            )
+            self._conn.executemany(
+                "INSERT INTO ai_verdicts(id, job_key, hash, provider, model, prompt_version, score,"
+                " level, reasons, red_flags, created_at) VALUES (:id, :job_key, :hash, :provider,"
+                " :model, :prompt_version, :score, :level, :reasons, :red_flags, :created_at)",
+                verdicts,
+            )
+            self._conn.executemany(
+                "INSERT INTO ai_usage(day, provider, calls, tokens_in, tokens_out)"
+                " VALUES (:day, :provider, :calls, :tokens_in, :tokens_out)",
+                usage,
+            )
+            self._conn.executemany(
+                "INSERT INTO disagreements(id, job_key, hash, python_score, python_section,"
+                " ai_score, ai_level, kind, created_at) VALUES (:id, :job_key, :hash,"
+                " :python_score, :python_section, :ai_score, :ai_level, :kind, :created_at)",
+                disagreements,
+            )
+
+    def count(self) -> tuple[int, int, int, int]:
+        n = lambda t: self._conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]  # noqa: E731
+        return n("ai_verdicts"), n("ai_usage"), n("disagreements"), n("ai_runs")
+
+    def list_runs(self, since: date) -> list[AiRun]:
+        """The cron passes on or after `since`, newest first."""
+        rows = self._conn.execute(
+            "SELECT id, started_at, outcome, http_status, provider, counters FROM ai_runs"
+            " WHERE started_at >= ? ORDER BY id DESC",
+            (since.isoformat(),),
+        ).fetchall()
+        out = []
+        for r in rows:
+            try:
+                counters = json.loads(r["counters"])
+            except json.JSONDecodeError:
+                counters = {}
+            out.append(AiRun(
+                id=r["id"], started_at=r["started_at"], outcome=r["outcome"],
+                http_status=r["http_status"], provider=r["provider"],
+                counters=counters if isinstance(counters, dict) else {},
+            ))
+        return out
+
+    def list_disagreements(self, since: date) -> list[Disagreement]:
+        """Disagreements recorded on or after `since`, newest first."""
+        rows = self._conn.execute(
+            """
+            SELECT g.job_key, g.kind, g.python_score, g.python_section, g.ai_score, g.ai_level,
+                   g.created_at, j.title, j.company, j.scoring_breakdown,
+                   v.reasons, v.red_flags,
+                   (SELECT d.label FROM decisions d WHERE d.job_key = g.job_key
+                    ORDER BY d.id DESC LIMIT 1) AS decision
+            FROM disagreements g
+            LEFT JOIN jobs j ON j.source_id || ':' || j.source_job_id = g.job_key
+            LEFT JOIN ai_verdicts v ON v.job_key = g.job_key AND v.hash = g.hash
+            WHERE g.created_at >= ?
+            ORDER BY g.id DESC
+            """,
+            (since.isoformat(),),
+        ).fetchall()
+        out = []
+        for r in rows:
+            bd = _breakdown_from_json(r["scoring_breakdown"]) if r["scoring_breakdown"] else None
+            out.append(Disagreement(
+                job_key=r["job_key"], kind=r["kind"], python_score=r["python_score"],
+                python_section=r["python_section"], ai_score=r["ai_score"],
+                ai_level=r["ai_level"], created_at=r["created_at"],
+                title=r["title"], company=r["company"],
+                positive=tuple(bd.positive_matches) if bd else (),
+                reasons=_json_strings(r["reasons"]), red_flags=_json_strings(r["red_flags"]),
+                decision=r["decision"],
+            ))
+        return out
+
+    def usage_since(self, since: date) -> dict[str, dict[str, int]]:
+        """Per provider: calls and tokens on or after `since` (for the report's cost line)."""
+        rows = self._conn.execute(
+            "SELECT provider, SUM(calls) AS calls, SUM(tokens_in) AS tokens_in,"
+            " SUM(tokens_out) AS tokens_out FROM ai_usage WHERE day >= ? GROUP BY provider",
+            (since.isoformat(),),
+        ).fetchall()
+        return {r["provider"]: {"calls": r["calls"], "tokens_in": r["tokens_in"],
+                                "tokens_out": r["tokens_out"]} for r in rows}

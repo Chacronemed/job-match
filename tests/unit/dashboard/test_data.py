@@ -19,7 +19,7 @@ JOB_KEYS = {
     "source",
     "score", "required_years", "experience_status", "collected_at", "published_at",
     "posted_at", "age_days", "url", "explanations", "positive", "negative", "missing", "why",
-    "description_excerpt",
+    "description_excerpt", "ai_hash",
 }
 RUN_KEYS = {
     "id", "pipeline", "started_at", "finished_at", "fetched", "normalized",
@@ -217,3 +217,12 @@ def test_raw_payloads_never_reach_the_dashboard(seed_dashboard):
         )
         data = build_dashboard_data(db, Settings(), seed.now)
     assert marker not in json.dumps(data)
+
+
+def test_ai_hash_follows_the_title_and_the_description_only():
+    from job_match.dashboard.data import ai_hash
+
+    same = ai_hash("Ingénieur DevOps", "Kubernetes.")
+    assert len(same) == 64 and same == ai_hash("ingenieur devops", "Kubernetes.")
+    assert same != ai_hash("Ingénieur DevOps", "Kubernetes !")
+    assert same != ai_hash("SRE", "Kubernetes.")

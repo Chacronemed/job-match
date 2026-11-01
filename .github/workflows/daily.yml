@@ -104,7 +104,11 @@ jobs:
           d1 "SELECT job_key, status, applied_at, follow_up_at, note, cv_url, updated_at FROM applications" > "$dir/applications.json"
           d1 "SELECT id, job_key, label, score_at_decision, created_at FROM decisions" > "$dir/decisions.json"
           d1 "SELECT skill, created_at FROM skill_overrides" > "$dir/skill_overrides.json"
-          job-match tracking import --applications "$dir/applications.json" --decisions "$dir/decisions.json" --skill-overrides "$dir/skill_overrides.json"
+          d1 "SELECT id, job_key, hash, provider, model, prompt_version, score, level, reasons, red_flags, created_at FROM ai_verdicts" > "$dir/ai_verdicts.json"
+          d1 "SELECT day, provider, calls, tokens_in, tokens_out FROM ai_usage" > "$dir/ai_usage.json"
+          d1 "SELECT id, job_key, hash, python_score, python_section, ai_score, ai_level, kind, created_at FROM disagreements" > "$dir/disagreements.json"
+          d1 "SELECT id, started_at, finished_at, outcome, http_status, provider, counters FROM ai_runs" > "$dir/ai_runs.json"
+          job-match tracking import --applications "$dir/applications.json" --decisions "$dir/decisions.json" --skill-overrides "$dir/skill_overrides.json" --ai-verdicts "$dir/ai_verdicts.json" --ai-usage "$dir/ai_usage.json" --disagreements "$dir/disagreements.json" --ai-runs "$dir/ai_runs.json"
 
       # A skill marked "je maîtrise" since the last mirror: re-score the stored jobs still
       # inside the posting-age cut-off, so the change shows today and not only on offers

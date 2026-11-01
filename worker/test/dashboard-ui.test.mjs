@@ -52,6 +52,21 @@ describe("band and gap sentence", () => {
     assert.equal(S.band({ section: "eligible" }).label, "Éligible");
     assert.equal(S.band({ section: "stretch" }).label, "À tenter");
     assert.equal(S.band({}).key, "low");
+    assert.deepEqual(S.aiBand("fort"), { key: "fort", label: "Fort" });
+    assert.equal(S.aiBand("hors_sujet").label, "Hors sujet");
+    assert.equal(S.aiBand("maybe"), null);
+  });
+
+  test("aiRunLine: a stopped pass names its HTTP status only, counters become stats", () => {
+    const stopped = S.aiRunLine({ outcome: "stopped", http_status: 404, counters: { scored: 0, cached: 5, fallback: 0 } });
+    assert.deepEqual([stopped.key, stopped.label, stopped.bad], ["stopped", "Arrêté · HTTP 404", true]);
+    assert.deepEqual(stopped.stats, [{ label: "jugées", value: 0 }, { label: "en cache", value: 5 }]);
+    const ok = S.aiRunLine({ outcome: "ok", http_status: null, counters: { scored: 12, invalid: 1 } });
+    assert.deepEqual([ok.label, ok.bad], ["OK", false]);
+    assert.deepEqual(ok.stats.map((s) => s.label), ["jugées", "invalides"]);
+    assert.equal(S.aiRunLine({ outcome: "failed" }).label, "Échec");
+    assert.equal(S.aiRunLine({ outcome: "weird" }).bad, true);
+    assert.equal(S.aiRunLine(null).key, "unknown");
   });
 
   test("says how many points are missing for « forte », singular and plural", () => {

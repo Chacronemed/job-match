@@ -7,6 +7,7 @@ from pathlib import Path
 import yaml
 
 from job_match.config.schema import (
+    AiConfig,
     Candidate,
     ConfigError,
     DigestConfig,
@@ -176,6 +177,7 @@ def load_settings(path: Path) -> Settings:
         digest=_parse_digest(raw.get("digest"), path),
         jobs=_parse_jobs(raw.get("jobs"), path),
         raw_payloads=_parse_raw_payloads(raw.get("raw_payloads"), path),
+        ai=_parse_ai(raw.get("ai"), path),
     )
 
 
@@ -361,6 +363,21 @@ def _parse_jobs(value: object, path: Path) -> JobsConfig:
     if isinstance(days, bool) or not isinstance(days, int) or days <= 0:
         raise ConfigError(f"jobs.max_age_days must be a positive integer (in {path})")
     return JobsConfig(max_age_days=days)
+
+
+def _parse_ai(value: object, path: Path) -> AiConfig:
+    raw = _mapping(value, "ai", path)
+    d = AiConfig()
+    out = {}
+    for key in ("daily_limit", "disagreement_gap"):
+        v = raw.get(key, getattr(d, key))
+        if isinstance(v, bool) or not isinstance(v, int) or v <= 0:
+            raise ConfigError(f"ai.{key} must be a positive integer (in {path})")
+        out[key] = v
+    version = raw.get("prompt_version", d.prompt_version)
+    if not isinstance(version, (str, int)) or isinstance(version, bool) or not str(version).strip():
+        raise ConfigError(f"ai.prompt_version must be a non-empty string (in {path})")
+    return AiConfig(prompt_version=str(version).strip(), **out)
 
 
 def _parse_raw_payloads(value: object, path: Path) -> RawPayloadsConfig:

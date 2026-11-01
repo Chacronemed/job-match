@@ -78,10 +78,25 @@ def render_index(data: dict) -> str:
     return html.replace("__DATA__", embed_json(data))
 
 
-def write_site(data: dict, out_dir: Path) -> tuple[Path, Path]:
+AI_PROFILE = "ai-profile.json"
+
+
+def write_site(data: dict, out_dir: Path, ai_profile: dict | None = None) -> tuple[Path, Path]:
     """Write `index.html`, `data.json`, the web app manifest and its icons, the self-hosted font
-    (CSP `font-src 'self'`) and `LICENSES.md` into `out_dir`; returns the first two paths."""
+    (CSP `font-src 'self'`) and `LICENSES.md` into `out_dir`; returns the first two paths.
+
+    `ai_profile` (the anonymous skills summary, `ai/summary.py`) goes to `ai-profile.json`,
+    a file only the Worker's cron reads (ADR 0016): it is never embedded in the page nor in
+    `data.json`. Without it the file is removed, and the cron sends nothing.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
+    profile_file = out_dir / AI_PROFILE
+    if ai_profile is not None:
+        profile_file.write_text(
+            json.dumps(ai_profile, ensure_ascii=False, sort_keys=True, indent=1), encoding="utf-8"
+        )
+    elif profile_file.exists():
+        profile_file.unlink()
     (out_dir / "manifest.webmanifest").write_text(
         json.dumps(MANIFEST, ensure_ascii=False, indent=1), encoding="utf-8"
     )

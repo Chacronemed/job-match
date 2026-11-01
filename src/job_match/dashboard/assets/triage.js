@@ -32,23 +32,41 @@
     return best;
   }
 
-  /* Every row still waiting for a first look (to_review), newest run first, then most
-     recently collected, then best score. A row is untriaged by definition: no marker.
-     `minScore` (the digest threshold, M24): a scored row below it stays in Offres and out of
-     the queue; an unscored row is kept, its score is unknown, not low. */
-  function triageQueue(rows, apps, runAt, minScore) {
+  /* The AI verdict for a row (ADR 0016): `ai` maps a job key to the verdict the Worker holds
+     for the row's current `ai_hash`; anything else is stale and ignored. */
+  function aiOf(row, ai) {
+    var v = ai && row ? ai[row.key] : null;
+    return v && v.hash === row.ai_hash && typeof v.score === "number" ? v : null;
+  }
+
+  /* What orders the Tri: the AI score when it exists, the Python score otherwise, -1 unknown. */
+  function rankScore(row, ai) {
+    var v = aiOf(row, ai);
+    if (v) return v.score;
+    return typeof row.score === "number" ? row.score : -1;
+  }
+
+  /* Every row still waiting for a first look (to_review), newest run first, then by
+     `rankScore` (M25: the AI score when there is one), then most recently collected. A row is
+     untriaged by definition: no marker. `minScore` (the digest threshold, M24): a scored row
+     below it stays in Offres and out of the queue; an unscored row is kept, its score is
+     unknown, not low. An offer the AI calls « hors_sujet » leaves the queue too: it stays in
+     Offres, behind the IA filter. */
+  function triageQueue(rows, apps, runAt, minScore, ai) {
     var floor = typeof minScore === "number" ? minScore : null;
     var queue = rows.filter(function (r) {
       if (floor !== null && typeof r.score === "number" && r.score < floor) return false;
+      var v = aiOf(r, ai);
+      if (v && v.level === "hors_sujet") return false;
       return T.rowStatus(r, apps) === "to_review";
     })
       .map(function (r) {
-        return { row: r, isNew: runAt > 0 && time(r.collected_at) >= runAt, at: time(r.collected_at) };
+        return { row: r, isNew: runAt > 0 && time(r.collected_at) >= runAt, at: time(r.collected_at), rank: rankScore(r, ai) };
       });
     queue.sort(function (a, b) {
       if (a.isNew !== b.isNew) return a.isNew ? -1 : 1;
-      if (a.at !== b.at) return b.at - a.at;
-      return (b.row.score === null ? -1 : b.row.score) - (a.row.score === null ? -1 : a.row.score);
+      if (a.rank !== b.rank) return b.rank - a.rank;
+      return b.at - a.at;
     });
     return queue;
   }
@@ -220,9 +238,9 @@
      candidatures = tracked offers whose status is on the board, listed or not;
      offres = listed rows (a group of postings counts once);
      leads, executions = what the snapshot carries. */
-  function sidebarCounts(rows, apps, runAt, minScore, leads, runs) {
+  function sidebarCounts(rows, apps, runAt, minScore, leads, runs, ai) {
     return {
-      tri: triageQueue(rows, apps, runAt, minScore).length,
+      tri: triageQueue(rows, apps, runAt, minScore, ai).length,
       candidatures: Object.keys(apps || {}).filter(function (k) { return BOARD.indexOf(T.statusOf(apps[k])) >= 0; }).length,
       offres: rows.length,
       leads: (leads || []).length,
@@ -239,6 +257,8 @@
     REASONS: REASONS,
     SWIPE: SWIPE,
     latestRunAt: latestRunAt,
+    aiOf: aiOf,
+    rankScore: rankScore,
     triageQueue: triageQueue,
     batchOf: batchOf,
     topReasons: topReasons,

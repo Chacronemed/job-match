@@ -203,6 +203,23 @@
   }
   function chevron() { return el("span", { class: "chev", "aria-hidden": "true" }, I.icon("chevron-right")); }
 
+  /* « Selon l’IA » (ADR 0016): the model's score and level, its reasons, its red flags. Shown
+     as the model said it, labelled as its opinion; it never changes the Python ledger above. */
+  function aiBlock(v) {
+    var band = S.aiBand(v.level);
+    var head = el("div", { class: "ledger-ai-head" }, [
+      el("h4", { class: "ledger-ai-title", text: "Selon l’IA" }),
+      el("span", { class: "ledger-ai-score num", text: String(v.score) }),
+      band ? el("span", { class: "band band-ai-" + band.key }, [el("span", { class: "dot", "aria-hidden": "true" }), band.label]) : null
+    ]);
+    var box = el("section", { class: "ledger-ai", "aria-label": "Avis de l’IA" }, [head]);
+    var reasons = (v.reasons || []).filter(function (r) { return typeof r === "string"; });
+    if (reasons.length) box.appendChild(el("ul", { class: "ledger-ai-reasons" }, reasons.map(function (r) { return el("li", { text: r }); })));
+    var flags = (v.red_flags || []).filter(function (r) { return typeof r === "string"; });
+    if (flags.length) box.appendChild(el("p", { class: "ledger-ai-flags" }, flags.map(function (f) { return el("span", { class: "pill pill-warn", text: f }); })));
+    return box;
+  }
+
   function countUp(node, from, to, dur) {
     var t0 = 0;
     node.textContent = String(from);
@@ -268,6 +285,7 @@
     if (!b) {
       push(el("p", { class: "ledger-gap", text: "Score inconnu pour cette offre." }));
       ledgerExtras(opts).forEach(push);
+      if (opts.ai) push(aiBlock(opts.ai));
       return nodes;
     }
     var list = el("dl", { class: "ledger-lines" });
@@ -300,6 +318,7 @@
     /* Collapsible: the summary line already says the gap. */
     if (!opts.collapsible) push(el("p", { class: "ledger-gap", text: S.gapSentence(job, t) }));
     ledgerExtras(opts).forEach(push);
+    if (opts.ai) push(aiBlock(opts.ai));
     return nodes;
   }
 
