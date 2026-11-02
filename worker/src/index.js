@@ -8,8 +8,10 @@
 //   PUT    /api/skill-overrides/:skill -> {skill_override}  ("je maîtrise", no body)
 //   DELETE /api/skill-overrides/:skill -> {deleted}         (undo)
 //   GET  /api/documents/:key             -> {documents: [versions]}   (ADR 0017)
-//   POST /api/documents/:key/regenerate  -> {document}  (201, or 409 while one is pending)
-//   GET  /api/documents/:key/v<n>/(cv|letter).(pdf|docx) -> the file, as an attachment
+//   POST /api/documents/:key/regenerate  -> {document}  (201, or 409 while one is pending);
+//                                           the pass for that offer runs now (ctx.waitUntil)
+//   GET  /api/documents/:key/v<n>/(cv|letter).(pdf|docx) -> the file, as an attachment,
+//                                           rendered on first download when the cron has not
 //   POST /api/ai/run         -> 202 {started, kind}  (the rerank pass, now, in the background)
 //   POST /api/documents/run  -> 202 {started, kind}  (the documents pass, now, in the background)
 //   POST /api/documents/missing -> {requested, skipped_budget, remaining_usd, documents}
@@ -23,14 +25,16 @@ import { listRuns, listVerdicts, recordRun, runRerank } from "./ai.js";
 import {
   budgetStatus,
   DOCUMENTS_CRON,
+  FILE_COLUMNS,
   FILE_NAMES,
-  fileKey,
+  fileRow,
   latestReadyVersion,
   listDocuments,
   listVersions,
   recordDocumentRun,
   requestDocuments,
   renderReady,
+  renderRow,
   requestFirstDocuments,
   requestMissingDocuments,
   runDocuments,
@@ -150,9 +154,18 @@ async function putApplication(request, env, key) {
 }
 
 // The file itself, from R2, as an attachment named after the contact and the company. The
-// name was fixed at render time (R2 custom metadata), so nothing personal is read here.
+// name was fixed at render time (R2 custom metadata), so nothing personal is read here. A
+// ready version the cron has not rendered yet (generated before part 3, or a stuck batch) is
+// rendered now, once, and stored: ready means downloadable.
 async function downloadDocument(env, key, version, name) {
-  const r2key = await fileKey(env.DB, key, version, name);
+  const column = FILE_COLUMNS[name];
+  let row = await fileRow(env.DB, key, version);
+  if (row && !row[column] && row.content_key) {
+    const done = await renderRow(env, row, await loadFonts(env), new Date());
+    if (!done) return fail(503, "document: render failed");
+    row = await fileRow(env.DB, key, version);
+  }
+  const r2key = row ? row[column] : null;
   const obj = r2key ? await env.DOCS.get(r2key) : null;
   if (!obj) return fail(404, "document: not found");
   const filename = (obj.customMetadata && obj.customMetadata.filename) || name;
@@ -171,9 +184,14 @@ async function getDocuments(env, key) {
   return json(200, { documents: await listVersions(env.DB, key) });
 }
 
-async function regenerateDocuments(env, key) {
+// « Générer » / « Regénérer »: the new pending row, and the pass for that offer right away
+// (same budget and credit rules as the cron, its own document_runs row). Without a ctx (the
+// Node tests) the row waits for the cron.
+async function regenerateDocuments(env, key, ctx) {
   const row = await requestDocuments(env.DB, key, new Date());
-  return row ? json(201, { document: row }) : fail(409, "documents: already pending");
+  if (!row) return fail(409, "documents: already pending");
+  if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(runDocumentsScheduled(env, { keys: [key] }));
+  return json(201, { document: row });
 }
 
 async function postDecision(request, env) {
@@ -242,7 +260,7 @@ async function route(request, env, url, ctx) {
     const regenerate = rest.endsWith("/regenerate");
     const key = decodeKey(regenerate ? rest.slice(0, -"/regenerate".length) : rest);
     if (!isJobKey(key)) return fail(400, "job_key: invalid");
-    if (regenerate) return request.method === "POST" ? regenerateDocuments(env, key) : fail(405, "method not allowed");
+    if (regenerate) return request.method === "POST" ? regenerateDocuments(env, key, ctx) : fail(405, "method not allowed");
     return request.method === "GET" ? getDocuments(env, key) : fail(405, "method not allowed");
   }
   if (path.startsWith("/api/skill-overrides/")) {
@@ -296,11 +314,15 @@ export default {
   },
 };
 
-// Every ten minutes: the pending documents, five at most. A pass with nothing to do leaves
-// no trace; the others log one line of counters and write one document_runs row.
+// Every ten minutes: the « À candidater » offers without documents are queued, then the
+// pending documents run, five at most. A pass with nothing to do leaves no trace; the others
+// log one line of counters and write one document_runs row. `opts.keys` limits a pass to
+// those offers (« Générer »).
 // The PDF font, bundled by wrangler as bytes (worker/src/fonts.js). Node cannot import it:
 // the tests pass `opts.fonts` themselves, and without it nothing is rendered.
-async function loadFonts() {
+// The Node tests pass the bytes as `env.fonts` (the download route has no `opts`).
+async function loadFonts(env) {
+  if (env && env.fonts) return env.fonts;
   try {
     return (await import("./fonts.js")).FONTS;
   } catch {
@@ -319,7 +341,7 @@ export async function runDocumentsScheduled(env, opts = {}) {
   }
   // Part 3: the files of every ready version that has none yet, this pass's and earlier ones'.
   try {
-    const fonts = opts.fonts === undefined ? await loadFonts() : opts.fonts;
+    const fonts = opts.fonts === undefined ? await loadFonts(env) : opts.fonts;
     const rendered = await renderReady(env, { ...opts, fonts });
     if (rendered.rendered || rendered.render_errors) {
       run = { ...run, outcome: run.outcome === "idle" ? "ok" : run.outcome, counters: { ...run.counters, ...rendered } };

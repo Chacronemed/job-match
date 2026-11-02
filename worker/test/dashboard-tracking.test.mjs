@@ -241,7 +241,9 @@ describe("documents badge", () => {
     assert.equal(T.docText({ status: "failed", version: 2, error_code: "invented_skill" }), "Échec (invented_skill)");
     assert.equal(T.docText({ status: "weird" }), "Aucun");
     assert.deepEqual(T.docBadge(null), { text: "—", kind: "none", title: "Aucun document" });
-    assert.deepEqual(T.docBadge({ status: "running", version: 2 }), { text: "En cours (v2)", kind: "running", title: "" });
+    assert.deepEqual(T.docBadge({ status: "running", version: 2 }), { text: "En cours…", kind: "running", title: "En cours (v2)" });
+    assert.deepEqual(T.docBadge({ status: "pending", version: 1 }), { text: "En cours…", kind: "pending", title: "En attente (v1)" });
+    assert.deepEqual(T.inProgress({ a: { status: "pending" }, b: { status: "ready" }, c: { status: "running" } }, ["a", "b", "c", "d"]), ["a", "c"]);
     assert.deepEqual(T.docBadge({ status: "failed", version: 1, error_code: "invented_number" }), { text: "Échec", kind: "failed", title: "invented_number" });
   });
 
@@ -266,9 +268,10 @@ describe("documents badge", () => {
   });
 
 
-  test("download links exist only once the files are rendered, and carry the version", () => {
+  test("download links exist for every ready version, files rendered or not, and carry the version", () => {
     assert.equal(T.documentLinks("france_travail:1A", null), null);
-    assert.equal(T.documentLinks("france_travail:1A", { status: "ready", version: 2, files: false }), null);
+    assert.ok(T.documentLinks("france_travail:1A", { status: "ready", version: 2, files: false })); // rendered on download
+    assert.equal(T.documentLinks("france_travail:1A", { status: "failed", version: 2, files: false }), null);
     assert.equal(T.documentLinks("france_travail:1A", { status: "pending", version: 3, files: true }), null);
     assert.deepEqual(T.documentLinks("france_travail:1A", { status: "ready", version: 2, files: true }), {
       cv_pdf: "/api/documents/france_travail%3A1A/v2/cv.pdf",

@@ -3,9 +3,16 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**Tableau Candidatures: génération à la demande, largeurs, téléchargement direct** (branch
-`fix/m26-candidatures`, 2026-11-02, after the fix below was deployed: prod OK with rerank and
-documents). **Done locally, to deploy** (Next step): « Générer » per row and « Générer les
+**Tableau Candidatures: rendu à la demande, cron auto, génération immédiate** (branch
+`fix/m26-downloads`, 2026-11-02, after the table pass below reached prod). **Done locally, to
+deploy** (Next step): a « Prêt (v1) » row with no files in R2 is rendered on the first download
+(ready = links, no lone badge), the cron queues every « À candidater » offer without documents
+itself (5 a pass, within the budget), « Générer » / « Regénérer » run the pass for that offer at
+once and the cell goes « En cours… » then shows the links without a reload (10 s polling, 2 min
+at most), the Kanban chip no longer stays pressed over the table. See Done.
+
+Before it: **Tableau Candidatures: génération à la demande, largeurs, téléchargement direct**
+(branch `fix/m26-candidatures`, 2026-11-02). Deployed: « Générer » per row and « Générer les
 manquants (N) » with count and cost before confirming (`POST /api/documents/missing`,
 `documents_budget` in `GET /api/applications`), fixed column widths with no clipping at 1440
 and 390, « Non communiquée » for a missing company, « ⬇ PDF » / « ⬇ DOCX » downloading in
@@ -58,6 +65,41 @@ production rows. Still pending: the M21 Cloudflare setup, the data-repo cleanup 
 two Cloudflare secrets, M9 manual GitHub setup, `PROFILE_YAML` re-encoding, `SMTP_PORT` variable.
 
 ## Done
+- **Tableau Candidatures: render on demand, cron auto-queue, immediate « Générer »**
+  (2026-11-02, branch `fix/m26-downloads`, ADR 0017 §8 amended):
+  - **Prod bug:** rows « Prêt (v1) » with no links and an empty Lettre cell. Generation marks a
+    row `ready` once `content.json` is in R2; rendering is a later batch (`renderReady`, 5 rows
+    `ORDER BY id`) and the client only linked on `files: true`. A row whose render failed once
+    (or never ran) stayed « Prêt » and held one of the five slots.
+  - **Worker:** `renderRow(env, row, fonts, now, sheets)` extracted from `renderReady` (one
+    row: content → `renderAll` → four `DOCS.put` → keys in the row, or `render_error`);
+    `renderReady` orders `(error_code = 'render_error') ASC, id`; `fileRow(db, key, version)`
+    replaces `fileKey`; `downloadDocument` renders the row on the first request when the wanted
+    key is null (`loadFonts(env)`; `env.fonts` lets the Node tests pass the bytes), 503
+    `document: render failed` when it cannot. `runDocuments(env, {keys})`: pending rows of
+    those offers only, no auto-queue; without `keys` the pass first calls
+    `requestMissingDocuments(..., {statuses: ["to_apply"], limit: BATCH_SIZE})`
+    (`counters.queued`), only when `DOCS` and the key are set. `regenerateDocuments(env, key,
+    ctx)` → 201 then `ctx.waitUntil(runDocumentsScheduled(env, {keys: [key]}))`.
+    `requestMissingDocuments` gained `opts.statuses` / `opts.limit`.
+  - **Dashboard:** `documentLinks` links every `ready` version (no `files` check); `docBadge`
+    reads « En cours… » for pending/running (long form in the tooltip); `setAppsView(appsView,
+    true)` at boot so the chips follow the remembered view (the Kanban chip stayed
+    `aria-pressed="true"` from the markup); `watchDocuments(keys)`: `setTimeout` loop every
+    10 s (`window.__jmWatchMs` overrides it for the browser tests), 12 ticks at most, refetches
+    `/api/applications`, rebuilds `track.documents` + `track.budget` only, `renderApps()` on
+    Candidatures, stops when no watched key is pending/running; called after « Générer »,
+    « Regénérer » and « Générer les manquants ». Toast: « Génération lancée : les liens
+    apparaissent ici dans une à deux minutes. »
+  - **Tests:** Node +6 (render on first download once and stored, 503 + `render_error` kept,
+    fresh rows before stuck ones, cron queues 5 `to_apply` a pass and not `applied`, nothing
+    over budget and a `keys` pass queues nothing, regenerate through a fake `ctx` → ready +
+    one `document_runs` row); client +2 (`documentLinks` with `files: false`, `inProgress`);
+    browser +2 and 2 changed (ready v1 `files: False` → 4 links and no « Prêt » badge, download
+    at `/v1/cv.pdf`; remembered table view → the right chip pressed; « Générer » → 201 →
+    « En cours… » → second poll `ready` → 8 links without a reload, the watch stops: exactly
+    three applications calls). `open_dashboard(api=callable)` answers per call and records
+    every applications call in `page.api_calls`. 236 Node, 1517 Python, ruff clean.
 - **Tableau Candidatures: generate on demand, widths, direct downloads** (2026-11-02, ADR 0017
   §8 amended):
   - **Worker:** `estimatePerDocument(db)` = the mean `cost_micro_usd` of the last 20 billed
@@ -1063,12 +1105,12 @@ two Cloudflare secrets, M9 manual GitHub setup, `PROFILE_YAML` re-encoding, `SMT
   - 26 tests green, `ruff check .` clean
 
 ## Next step
-- **Deploy the table changes:** `npx wrangler deploy` (no migration; the Worker gains
-  `documents_budget` and `POST /api/documents/missing`), then on prod Candidatures → Tableau at
-  1440 and on the phone: « Générer » on a row without documents, « Générer les manquants (N) »
-  shows the count and the cost, Confirmer then Exécutions → « Lancer maintenant »; a ready
-  row's « ⬇ PDF » saves `CV_Mohamed_Chacrone_<Entreprise>.pdf` in place (no new tab). Check
-  `private/contact.yaml` names first (see Done). Then the M26 round 4 below.
+- **Deploy `fix/m26-downloads`:** `npx wrangler deploy` (no migration), then on prod
+  Candidatures → Tableau: a « Prêt (v1) » row now shows « ⬇ PDF » / « ⬇ DOCX » and the first
+  click renders and saves `CV_Mohamed_Chacrone_<Entreprise>.pdf` (a 503 means the master or
+  contact sheet is missing in R2: `job-match cv push`); « Générer » on a row → « En cours… » →
+  links within two minutes without a reload; the next `*/10` pass queues the « À candidater »
+  offers without documents (a `document_runs` row with `queued`). Then the M26 round 4 below.
 - **M26 review, round 4 (you):** costs at list price, two attempts each time: v1 $0.069 /
   $0.076, v2 $0.074 / $0.084, v3 $0.078 / $0.081 (first-attempt codes: `unsourced_tool` ×2;
   `unknown_name` ×2 + `unsourced_tool` ×2). Prompt v4 (availability as a full sentence, once

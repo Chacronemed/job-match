@@ -403,6 +403,7 @@
     var b = byId("apps-view-" + v);
     if (b) b.addEventListener("click", function () { setAppsView(v); });
   });
+  setAppsView(appsView, true);  /* the chips follow the remembered view, not the markup */
   /* skill -> functions redrawing every "je maîtrise" control for it on screen */
   var overrideViews = {};
 
@@ -1750,11 +1751,42 @@
     api.regenerate(key).then(function (res) {
       track.documents[key] = res.document;
       if (onDone) onDone(res.document);
-      showToast("Documents demandés : prêts dans une dizaine de minutes.");
+      showToast("Génération lancée : les liens apparaissent ici dans une à deux minutes.");
+      watchDocuments([key]);
     }).catch(function (err) {
       button.disabled = false;
       showToast(err && err.status === 409 ? "Une génération est déjà en cours." : "Demande refusée.");
     });
+  }
+
+  /* After « Générer » the Worker runs the pass at once: the table refreshes its documents
+     every WATCH_MS while one of the watched offers is pending or running, WATCH_MAX times at
+     most (two minutes), quietly (no loading state, nothing else of the tracking is touched).
+     `window.__jmWatchMs` shortens the interval for the browser tests only. */
+  var WATCH_MS = 10000, WATCH_MAX = 12;
+  var watch = { keys: {}, timer: null, ticks: 0 };
+  function watchDocuments(keys) {
+    (keys || []).forEach(function (k) { watch.keys[k] = true; });
+    if (watch.timer || !Object.keys(watch.keys).length) return;
+    watch.ticks = 0;
+    var ms = typeof window.__jmWatchMs === "number" ? window.__jmWatchMs : WATCH_MS;
+    watch.timer = setTimeout(watchTick, ms);
+    function watchTick() {
+      watch.timer = null;
+      watch.ticks += 1;
+      api.list().then(function (res) {
+        var documents = {};
+        (res.documents || []).forEach(function (d) { if (d && typeof d.job_key === "string") documents[d.job_key] = d; });
+        track.documents = documents;
+        track.budget = res.documents_budget && typeof res.documents_budget === "object" ? res.documents_budget : null;
+        if (currentTab === "candidatures") renderApps();
+        var left = T.inProgress(track.documents, Object.keys(watch.keys));
+        watch.keys = {};
+        left.forEach(function (k) { watch.keys[k] = true; });
+        if (left.length && watch.ticks < WATCH_MAX) watch.timer = setTimeout(watchTick, ms);
+        else watch.keys = {};
+      }).catch(function () { watch.keys = {}; });  /* the toast's « Actualiser » remains */
+    }
   }
 
   /* The generated CV + letter (ADR 0017): the latest version's status, and a new version on
@@ -2057,6 +2089,7 @@
           if (res.skipped_budget > 0) text += " · " + res.skipped_budget + " au-delà du budget";
           showToast(text, [{ text: "Actualiser", run: function () { loadTracking(); } }]);
           renderApps();
+          watchDocuments((res.documents || []).map(function (d) { return d && d.job_key; }).filter(Boolean));
         }).catch(function (err) {
           button.disabled = false;
           showToast("Non demandé (" + failureText(err) + ")");
