@@ -3,9 +3,16 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**Fix M26 in production: Candidatures vide + « Lancer maintenant »** (branch
-`fix/m26-candidatures` from `main` at PR #8, 2026-11-01). **Done locally, to deploy** (Next
-step). Prod showed an empty Candidatures with `TypeError: statusSelect is not a function`:
+**Tableau Candidatures: génération à la demande, largeurs, téléchargement direct** (branch
+`fix/m26-candidatures`, 2026-11-02, after the fix below was deployed: prod OK with rerank and
+documents). **Done locally, to deploy** (Next step): « Générer » per row and « Générer les
+manquants (N) » with count and cost before confirming (`POST /api/documents/missing`,
+`documents_budget` in `GET /api/applications`), fixed column widths with no clipping at 1440
+and 390, « Non communiquée » for a missing company, « ⬇ PDF » / « ⬇ DOCX » downloading in
+place with the Worker's file name. See Done.
+
+Before it: **Fix M26 in production: Candidatures vide + « Lancer maintenant »** (branch
+`fix/m26-candidatures` from `main` at PR #8, 2026-11-01). **Deployed, prod OK.** Prod showed an empty Candidatures with `TypeError: statusSelect is not a function`:
 `dashboard.js` is one scope, and part 4 named the card / row status menu `statusSelect`, the
 same name as the Offres status filter `var statusSelect = byId("f-status")`; the `var`
 assignment at boot replaced the hoisted function. Neither the Node tests (pure modules only)
@@ -51,6 +58,48 @@ production rows. Still pending: the M21 Cloudflare setup, the data-repo cleanup 
 two Cloudflare secrets, M9 manual GitHub setup, `PROFILE_YAML` re-encoding, `SMTP_PORT` variable.
 
 ## Done
+- **Tableau Candidatures: generate on demand, widths, direct downloads** (2026-11-02, ADR 0017
+  §8 amended):
+  - **Worker:** `estimatePerDocument(db)` = the mean `cost_micro_usd` of the last 20 billed
+    `documents` rows (ready or failed, `cost_micro_usd > 0`; `ai_usage` only holds daily
+    sums), to the cent, or `DEFAULT_ESTIMATE_PER_DOCUMENT_USD = 0.08` with no history
+    (mirrored in `settings.yaml documents.default_estimate_per_document_usd`,
+    `DocumentsConfig`, pinned by `test_worker_constants`); `budgetStatus` → `documents_budget`
+    `{monthly_usd, spent_usd, remaining_usd, estimate_usd}` in `GET /api/applications`; `requestMissingDocuments` behind
+    `POST /api/documents/missing` (Access + same-origin, 405 otherwise): one pending v1 per
+    application in `KEEP_STATUSES` with no documents row, oldest first, capped by
+    `floor(remaining / estimate)`, answers `{requested, skipped_budget, remaining_usd,
+    documents}`; idempotent; a failed row is left to its own « Regénérer ». No pass launched.
+  - **Client (`tracking.js`):** `docBadge` short form (« Échec » + `title` = code, « — » with
+    no row), `missingDocuments(apps, documents)` (same rule as the Worker), `budgetSummary`
+    (« 7 documents · ≈ 0,42 $ (reste 58,10 $ ce mois) », « N au-delà du budget », « Budget
+    mensuel épuisé »), `client.requestMissing`.
+  - **Table (`dashboard.js`):** `requestDocuments(key, button, onDone)` shared by the record
+    panel and the rows; `docsCell` = one `colspan=2` cell with « Générer » (no row) or
+    « Regénérer » (failed) as `.btn-sm`, only for a kept status on a listed offer; ready rows
+    keep two cells with « ⬇ PDF » / « ⬇ DOCX » (`a.doc-dl`, **no `download` attribute**:
+    Chromium would name the file `cv.pdf` instead of the `Content-Disposition` name); a
+    `kb-table-bar` with « Sans CV ni lettre : N » and « Générer les manquants (N) » → held
+    toast « Générer N document(s) · ≈ X $ (reste Y $ ce mois) ? » Confirmer / Annuler
+    (Escape = Annuler) → request, the returned pending rows merged, toast with « Actualiser ».
+    Offre: ellipsis + full title in the tooltip; Entreprise: « Non communiquée » (`.apps-unknown`)
+    when empty; every cell has a `data-label` for the 390 block layout (« CV · Lettre »).
+  - **CSS:** `table.data.apps` is `fixed` with a colgroup (company 16 %, ai 72, status 196,
+    doc 126 ×2, link 76, due 150 px); Statut / docs / Relance cells `overflow: visible`;
+    44 px targets at ≤ 768 px.
+  - **Browser tests (`tests/unit/browser`, +4):** `open_dashboard(..., routes={(method, path):
+    (status, headers, body)})` records `page.api_calls`; `accept_downloads=True`. No clipped
+    element (`scrollWidth > clientWidth`) under Statut / CV / Lettre / the bar at 1440 and
+    390, no horizontal scroll, tooltip = title; « Non communiquée » (the inlined data's
+    company blanked through a `JSON.parse` init script); « Générer les manquants (1) » →
+    toast with « 1 document · ≈ 0,07 $ », Annuler sends nothing, Confirmer posts once and the
+    row turns « En attente (v1) », the button reads (0) and is disabled; « ⬇ PDF » →
+    `expect_download`, `suggested_filename == CV_Mohamed_Chacrone_Initech.pdf`, `%PDF-`
+    magic, one tab. Screenshots at 1440 and 390 checked by me (table, toast).
+  - **Tests:** 229 Node (+3 Worker, +3 client), 1515 Python (+4 browser), ruff clean.
+  - **To check on your side:** `private/contact.yaml` must hold `first_name: Mohamed` and
+    `last_name: Chacrone` and have been pushed (`job-match cv push`): the Worker names the file
+    from `master/contact.json` at render time; the dashboard never sees the name.
 - **Fix M26: Candidatures menu shadowed; run AI and documents on demand** (2026-11-01):
   - **Fix:** the menu is `statusMenu(key, j, status)`; the filter keeps `statusSelect`.
   - **Guard 1 (Node, `dashboard-ui.test.mjs`):** no name declared twice at the top level of
@@ -1014,9 +1063,12 @@ two Cloudflare secrets, M9 manual GitHub setup, `PROFILE_YAML` re-encoding, `SMT
   - 26 tests green, `ruff check .` clean
 
 ## Next step
-- **Deploy the fix:** merge `fix/m26-candidatures`, `npx wrangler deploy` (no migration), open
-  Candidatures (Kanban and Tableau) and Exécutions → « Lancer maintenant » (202 in the network
-  tab, a new « Rerank IA » line after « Actualiser »). Then the M26 round 4 below.
+- **Deploy the table changes:** `npx wrangler deploy` (no migration; the Worker gains
+  `documents_budget` and `POST /api/documents/missing`), then on prod Candidatures → Tableau at
+  1440 and on the phone: « Générer » on a row without documents, « Générer les manquants (N) »
+  shows the count and the cost, Confirmer then Exécutions → « Lancer maintenant »; a ready
+  row's « ⬇ PDF » saves `CV_Mohamed_Chacrone_<Entreprise>.pdf` in place (no new tab). Check
+  `private/contact.yaml` names first (see Done). Then the M26 round 4 below.
 - **M26 review, round 4 (you):** costs at list price, two attempts each time: v1 $0.069 /
   $0.076, v2 $0.074 / $0.084, v3 $0.078 / $0.081 (first-attempt codes: `unsourced_tool` ×2;
   `unknown_name` ×2 + `unsourced_tool` ×2). Prompt v4 (availability as a full sentence, once

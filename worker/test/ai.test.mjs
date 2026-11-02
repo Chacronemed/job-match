@@ -483,7 +483,7 @@ describe("GET /api/applications", () => {
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.equal(body.ai_verdicts.length, 2);
-    assert.deepEqual(Object.keys(body).sort(), ["ai_runs", "ai_verdicts", "applications", "decisions", "documents", "skill_overrides"]);
+    assert.deepEqual(Object.keys(body).sort(), ["ai_runs", "ai_verdicts", "applications", "decisions", "documents", "documents_budget", "skill_overrides"]);
     assert.deepEqual(body.ai_runs, []);
   });
 });

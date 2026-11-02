@@ -227,6 +227,7 @@ class DocumentsConfig:
     model: str = "claude-sonnet-5-5"
     prompt_version: str = "4"
     monthly_budget_usd: int = 60
+    default_estimate_per_document_usd: float = 0.08
     batch_size: int = 5
     max_bullets: int = 18
     max_skills: int = 15

@@ -1,6 +1,7 @@
 // job-match Worker. Everything outside /api/ is the static dashboard (served by the assets
 // binding, behind Cloudflare Access). /api/ is the application-tracking API over D1:
-//   GET  /api/applications       -> {applications, decisions, skill_overrides, ai_verdicts, ai_runs}
+//   GET  /api/applications       -> {applications, decisions, skill_overrides, ai_verdicts, ai_runs,
+//                                    documents, documents_budget}
 //   PUT  /api/applications/:key  -> {application}
 //   POST /api/decisions          -> {decision}
 //   DELETE /api/decisions/:id    -> {deleted}  (undo in the triage view)
@@ -11,6 +12,8 @@
 //   GET  /api/documents/:key/v<n>/(cv|letter).(pdf|docx) -> the file, as an attachment
 //   POST /api/ai/run         -> 202 {started, kind}  (the rerank pass, now, in the background)
 //   POST /api/documents/run  -> 202 {started, kind}  (the documents pass, now, in the background)
+//   POST /api/documents/missing -> {requested, skipped_budget, remaining_usd, documents}
+//                               (a pending row per kept offer without one, within the budget)
 // Every API call needs a valid Access JWT and a same-origin request. JSON only, no CORS.
 // Request bodies, notes and URLs are never logged. The crons (`scheduled`) run the AI rerank
 // (ai.js, ADR 0016, twice a day) and the documents generation (documents.js, ADR 0017, every
@@ -18,6 +21,7 @@
 
 import { listRuns, listVerdicts, recordRun, runRerank } from "./ai.js";
 import {
+  budgetStatus,
   DOCUMENTS_CRON,
   FILE_NAMES,
   fileKey,
@@ -28,6 +32,7 @@ import {
   requestDocuments,
   renderReady,
   requestFirstDocuments,
+  requestMissingDocuments,
   runDocuments,
 } from "./documents.js";
 import { MIME } from "./render.js";
@@ -90,6 +95,7 @@ async function listApplications(env) {
     ai_verdicts: await listVerdicts(env.DB),
     ai_runs: await listRuns(env.DB),
     documents: await listDocuments(env.DB),
+    documents_budget: await budgetStatus(env.DB, env, new Date()),
   });
 }
 
@@ -203,6 +209,10 @@ async function route(request, env, url, ctx) {
     const pass = kind === "ai" ? runScheduled(env) : runDocumentsScheduled(env);
     if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(pass); else pass.catch(() => {});
     return json(202, { started: true, kind });
+  }
+  if (path === "/api/documents/missing") {
+    if (request.method !== "POST") return fail(405, "method not allowed");
+    return json(200, await requestMissingDocuments(env.DB, env, new Date()));
   }
   if (path === "/api/applications") {
     return request.method === "GET" ? listApplications(env) : fail(405, "method not allowed");
