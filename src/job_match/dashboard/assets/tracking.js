@@ -196,7 +196,16 @@
   function docBadge(doc) {
     if (!doc || DOC_STATUSES.indexOf(doc.status) < 0) return { text: "—", kind: "none", title: "Aucun document" };
     if (doc.status === "failed") return { text: "Échec", kind: "failed", title: doc.error_code || "" };
+    if (doc.status === "pending" || doc.status === "running") return { text: "En cours…", kind: doc.status, title: docText(doc) };
     return { text: docText(doc), kind: doc.status, title: "" };
+  }
+
+  /* The keys whose latest version is still being made: what the table keeps watching. */
+  function inProgress(documents, keys) {
+    return (keys || []).filter(function (k) {
+      var d = documents && documents[k];
+      return d && (d.status === "pending" || d.status === "running");
+    });
   }
 
   /* The kept applications without any documents row: what « Générer les manquants » asks for.
@@ -221,10 +230,11 @@
     return { affordable: affordable, estimate_usd: estimate, text: text };
   }
 
-  /* The download URLs of a version's four files (part 3), null until the files exist. */
+  /* The download URLs of a version's four files (part 3): ready means downloadable, the
+     Worker renders a file the cron has not yet on the first request. */
   var FILE_KINDS = ["cv_pdf", "cv_docx", "letter_pdf", "letter_docx"];
   function documentLinks(key, doc) {
-    if (!doc || doc.status !== "ready" || !doc.files || !doc.version) return null;
+    if (!doc || doc.status !== "ready" || !doc.version) return null;
     var base = "/api/documents/" + encodeURIComponent(key) + "/v" + doc.version + "/";
     var out = {};
     FILE_KINDS.forEach(function (k) { out[k] = base + k.replace("_", "."); });
@@ -284,6 +294,7 @@
     docText: docText,
     docBadge: docBadge,
     missingDocuments: missingDocuments,
+    inProgress: inProgress,
     budgetSummary: budgetSummary,
     documentLinks: documentLinks,
     statusOf: statusOf,

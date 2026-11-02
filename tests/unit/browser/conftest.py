@@ -59,8 +59,10 @@ def open_dashboard(browser, dashboard_data):
     pages = []
 
     def _open(api, hash_="#candidatures", init_script=None, viewport=(1440, 900), routes=None):
-        """`routes`: {(method, path): (status, headers, body)} answered before the 404; the
-        calls made to them are appended to `page.api_calls` as (method, path)."""
+        """`api`: the `GET /api/applications` payload, or a callable returning it per call
+        (a polling test answers differently the second time). `routes`: {(method, path):
+        (status, headers, body)} answered before the 404; every call to one of them, and every
+        applications call, is appended to `page.api_calls` as (method, path)."""
         ctx = browser.new_context(viewport={"width": viewport[0], "height": viewport[1]},
                                   accept_downloads=True)
         page = ctx.new_page()
@@ -77,7 +79,9 @@ def open_dashboard(browser, dashboard_data):
             if path in ("", "/", "/index.html"):
                 route.fulfill(status=200, content_type="text/html; charset=utf-8", body=html)
             elif path == "/api/applications" and request.method == "GET":
-                route.fulfill(status=200, content_type="application/json", body=json.dumps(api))
+                page.api_calls.append(("GET", path))
+                payload = api() if callable(api) else api
+                route.fulfill(status=200, content_type="application/json", body=json.dumps(payload))
             elif extra is not None:
                 page.api_calls.append((request.method, path))
                 status, headers, body = extra

@@ -852,20 +852,30 @@ function offerIndex(data) {
 // The cron. {outcome, http_status, counters}: ok | idle (nothing pending: not recorded, not
 // logged) | stopped (a 4xx that is not a quota) | budget | credit | no_master | failed.
 // `opts.fetch`, `opts.now`, `opts.budget` exist for the tests.
+// `opts.keys`: only these offers' pending rows (« Générer » runs one offer at once), and no
+// auto-queue. Without it, the cron first queues every « À candidater » offer that has no
+// documents row yet (BATCH_SIZE a pass, within the budget), then takes the pending rows.
 export async function runDocuments(env, opts = {}) {
   const fetchFn = opts.fetch || globalThis.fetch;
   const now = opts.now || new Date();
   const today = day(now);
-  const counters = { pending: 0, taken: 0, ready: 0, failed: 0, retried: 0, skipped: 0, errors: 0 };
+  const counters = { pending: 0, queued: 0, taken: 0, ready: 0, failed: 0, retried: 0, skipped: 0, errors: 0 };
   const result = (outcome, status) => ({ outcome, http_status: status === undefined ? null : status, counters });
+  const keys = Array.isArray(opts.keys) && opts.keys.length ? opts.keys : null;
+  const configured = Boolean(env.DOCS && env.ANTHROPIC_API_KEY);
 
+  if (!keys && configured) {
+    const queued = await requestMissingDocuments(env.DB, env, now, { statuses: ["to_apply"], limit: BATCH_SIZE, budget: opts.budget });
+    counters.queued = queued.requested;
+  }
+  const where = "status = 'pending'" + (keys ? " AND job_key IN (" + keys.map(() => "?").join(", ") + ")" : "");
   const pending = await env.DB.prepare(
-    "SELECT id, job_key, version FROM documents WHERE status = 'pending' ORDER BY id LIMIT ?",
-  ).bind(BATCH_SIZE).all();
-  const total = await env.DB.prepare("SELECT COUNT(*) AS n FROM documents WHERE status = 'pending'").first();
+    "SELECT id, job_key, version FROM documents WHERE " + where + " ORDER BY id LIMIT ?",
+  ).bind(...(keys || []), BATCH_SIZE).all();
+  const total = await env.DB.prepare("SELECT COUNT(*) AS n FROM documents WHERE " + where).bind(...(keys || [])).first();
   counters.pending = total ? total.n | 0 : 0;
   if (!pending.results.length) return result("idle");
-  if (!env.DOCS || !env.ANTHROPIC_API_KEY) {
+  if (!configured) {
     counters.errors = 1;
     return result("failed");
   }
@@ -1001,51 +1011,72 @@ export async function renderReady(env, opts = {}) {
   const now = opts.now || new Date();
   const counters = { rendered: 0, render_errors: 0 };
   if (!opts.fonts || !env.DOCS) return counters;
+  // A row whose render failed once goes after the fresh ones: it never blocks the batch.
   const rows = await env.DB.prepare(
-    "SELECT id, job_key, version, content_key FROM documents WHERE status = 'ready' AND cv_pdf_key IS NULL ORDER BY id LIMIT ?",
+    "SELECT id, job_key, version, content_key FROM documents WHERE status = 'ready' AND cv_pdf_key IS NULL" +
+      " ORDER BY (error_code = 'render_error') ASC, id LIMIT ?",
   ).bind(BATCH_SIZE).all();
   if (!rows.results.length) return counters;
-  const [masterObj, contactObj] = await Promise.all([env.DOCS.get(MASTER_KEY), env.DOCS.get(CONTACT_KEY)]);
-  let master = null;
-  let contact = null;
-  try {
-    master = masterObj ? await masterObj.json() : null;
-    contact = contactObj ? await contactObj.json() : null;
-  } catch {
-    master = null;
-  }
+  const sheets = await loadSheets(env);
   for (const row of rows.results) {
-    try {
-      if (!master || !contact) throw new Error("no master or contact");
-      const obj = await env.DOCS.get(row.content_key);
-      if (!obj) throw new Error("no content");
-      const content = await obj.json();
-      const files = await renderAll(content, master, contact, opts.fonts, now);
-      const keys = {};
-      for (const f of files) {
-        const key = "docs/" + row.job_key + "/v" + row.version + "/" + f.name;
-        await env.DOCS.put(key, f.bytes, { httpMetadata: { contentType: f.contentType }, customMetadata: { filename: f.filename } });
-        keys[f.name] = key;
-      }
-      await env.DB.prepare(
-        "UPDATE documents SET cv_pdf_key = ?, cv_docx_key = ?, letter_pdf_key = ?, letter_docx_key = ?," +
-          " error_code = NULL, updated_at = ? WHERE id = ?",
-      ).bind(keys["cv.pdf"], keys["cv.docx"], keys["letter.pdf"], keys["letter.docx"], now.toISOString(), row.id).run();
-      counters.rendered += 1;
-    } catch {
-      await env.DB.prepare("UPDATE documents SET error_code = 'render_error', updated_at = ? WHERE id = ?").bind(now.toISOString(), row.id).run();
-      counters.render_errors += 1;
-    }
+    const done = await renderRow(env, row, opts.fonts, now, sheets);
+    counters[done ? "rendered" : "render_errors"] += 1;
   }
   return counters;
 }
 
-// The R2 key of one file of one version, when it exists: {key, filename} or null.
-export async function fileKey(db, jobKey, version, name) {
-  const column = { "cv.pdf": "cv_pdf_key", "cv.docx": "cv_docx_key", "letter.pdf": "letter_pdf_key", "letter.docx": "letter_docx_key" }[name];
-  if (!column) return null;
-  const row = await db.prepare("SELECT " + column + " AS k FROM documents WHERE job_key = ? AND version = ? AND status = 'ready'").bind(jobKey, version).first();
-  return row && row.k ? row.k : null;
+// The master and the contact sheet from R2, both or null.
+async function loadSheets(env) {
+  const [masterObj, contactObj] = await Promise.all([env.DOCS.get(MASTER_KEY), env.DOCS.get(CONTACT_KEY)]);
+  try {
+    const master = masterObj ? await masterObj.json() : null;
+    const contact = contactObj ? await contactObj.json() : null;
+    return master && contact ? { master, contact } : null;
+  } catch {
+    return null;
+  }
+}
+
+// The four files of one ready version, from its content.json, stored in R2 and their keys in
+// the row. True when done; false leaves `render_error` on the row and the content in R2. Used
+// by the cron batch and by the download route when the cron has not rendered the row yet.
+export async function renderRow(env, row, fonts, now, sheets) {
+  try {
+    if (!fonts) throw new Error("no fonts");
+    const s = sheets === undefined ? await loadSheets(env) : sheets;
+    if (!s) throw new Error("no master or contact");
+    const obj = row.content_key ? await env.DOCS.get(row.content_key) : null;
+    if (!obj) throw new Error("no content");
+    const content = await obj.json();
+    const files = await renderAll(content, s.master, s.contact, fonts, now);
+    const keys = {};
+    for (const f of files) {
+      const key = "docs/" + row.job_key + "/v" + row.version + "/" + f.name;
+      await env.DOCS.put(key, f.bytes, { httpMetadata: { contentType: f.contentType }, customMetadata: { filename: f.filename } });
+      keys[f.name] = key;
+    }
+    await env.DB.prepare(
+      "UPDATE documents SET cv_pdf_key = ?, cv_docx_key = ?, letter_pdf_key = ?, letter_docx_key = ?," +
+        " error_code = NULL, updated_at = ? WHERE id = ?",
+    ).bind(keys["cv.pdf"], keys["cv.docx"], keys["letter.pdf"], keys["letter.docx"], now.toISOString(), row.id).run();
+    return true;
+  } catch {
+    await env.DB.prepare("UPDATE documents SET error_code = 'render_error', updated_at = ? WHERE id = ?").bind(now.toISOString(), row.id).run();
+    return false;
+  }
+}
+
+export const FILE_COLUMNS = { "cv.pdf": "cv_pdf_key", "cv.docx": "cv_docx_key", "letter.pdf": "letter_pdf_key", "letter.docx": "letter_docx_key" };
+
+// One ready version with its content and file keys, or null when it is not ready.
+export async function fileRow(db, jobKey, version) {
+  return db
+    .prepare(
+      "SELECT id, job_key, version, content_key, cv_pdf_key, cv_docx_key, letter_pdf_key, letter_docx_key" +
+        " FROM documents WHERE job_key = ? AND version = ? AND status = 'ready'",
+    )
+    .bind(jobKey, version)
+    .first();
 }
 
 export async function recordDocumentRun(db, startedAt, finishedAt, run) {
@@ -1130,19 +1161,22 @@ export async function budgetStatus(db, env, now, opts = {}) {
 // « Générer les manquants »: one pending v1 row for every kept application that has no
 // documents row at all (a failed one has its own « Regénérer »), oldest first, as many as the
 // remaining budget allows at the estimate. Nothing is launched here: the cron or
-// « Lancer maintenant » takes the rows.
+// « Lancer maintenant » takes the rows. The cron itself calls it with
+// `statuses: ["to_apply"], limit: BATCH_SIZE` at the start of every pass.
 export async function requestMissingDocuments(db, env, now, opts = {}) {
   const budget = await budgetStatus(db, env, now, opts);
-  const marks = KEEP_STATUSES.map(() => "?").join(", ");
+  const statuses = Array.isArray(opts.statuses) && opts.statuses.length ? opts.statuses : KEEP_STATUSES;
+  const marks = statuses.map(() => "?").join(", ");
   const rows = await db
     .prepare(
       "SELECT a.job_key FROM applications a WHERE a.status IN (" + marks + ")" +
         " AND NOT EXISTS (SELECT 1 FROM documents d WHERE d.job_key = a.job_key) ORDER BY a.updated_at ASC",
     )
-    .bind(...KEEP_STATUSES)
+    .bind(...statuses)
     .all();
   const keys = rows.results.map((r) => r.job_key);
-  const cap = Math.floor(budget.remaining_usd / budget.estimate_usd);
+  let cap = Math.floor(budget.remaining_usd / budget.estimate_usd);
+  if (Number.isInteger(opts.limit) && opts.limit >= 0) cap = Math.min(cap, opts.limit);
   const requested = [];
   for (const key of keys.slice(0, Math.max(0, cap))) {
     const row = await requestFirstDocuments(db, key, now);

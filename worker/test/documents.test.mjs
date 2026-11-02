@@ -771,6 +771,57 @@ describe("API", () => {
     assert.equal(db.raw.prepare("SELECT COUNT(*) AS n FROM documents WHERE job_key = 'france_travail:E5'").get().n, 1);
   });
 
+  // An env whose data.json lists these offers too (the pass skips an offer it cannot read).
+  function envWith(keys) {
+    const jobs = [OFFER, ...keys.map((key) => ({ ...OFFER, key }))];
+    return docEnv({ ASSETS: fakeAssets({ "/data.json": { thresholds: { strong: 80, min_score: 55 }, jobs, tracked: [] } }) });
+  }
+
+  test("the cron queues the « À candidater » offers without documents itself, five a pass, within the budget", async () => {
+    const keys = [0, 1, 2, 3, 4, 5, 6].map((i) => `france_travail:Q${i}`);
+    keys.forEach((k) => keep(k, "to_apply"));
+    keep("france_travail:APPLIED", "applied"); // the buttons stay manual for the other statuses
+    const api = anthropic([good(), good(), good(), good(), good()]);
+    idp.hosts["api.anthropic.com"] = api.handler;
+    const r = await run(envWith(keys));
+    assert.deepEqual([r.outcome, r.counters.queued, r.counters.taken], ["ok", BATCH_SIZE, BATCH_SIZE]);
+    assert.equal(db.raw.prepare("SELECT COUNT(*) AS n FROM documents WHERE status = 'ready'").get().n, BATCH_SIZE);
+    assert.equal(db.raw.prepare("SELECT COUNT(*) AS n FROM documents WHERE job_key = 'france_travail:APPLIED'").get().n, 0);
+    const next = anthropic([good(), good()]);
+    idp.hosts["api.anthropic.com"] = next.handler;
+    const r2 = await run(envWith(keys));
+    assert.deepEqual([r2.counters.queued, r2.counters.ready], [2, 2]);
+    assert.equal((await run(envWith(keys))).outcome, "idle");
+  });
+
+  test("over budget the cron queues nothing; a keys pass queues nothing and takes its offer only", async () => {
+    keep("france_travail:A1", "to_apply");
+    db.raw.prepare("INSERT INTO ai_usage VALUES ('2026-11-01', 'anthropic', ?, 10, 30000000, 0)").run(DOCUMENTS_MODEL);
+    assert.equal((await run()).outcome, "idle");
+    assert.equal(db.raw.prepare("SELECT COUNT(*) AS n FROM documents").get().n, 0);
+    db.raw.prepare("DELETE FROM ai_usage").run();
+    keep("france_travail:B2", "to_apply");
+    pending("france_travail:B2");
+    const api = anthropic([good()]);
+    idp.hosts["api.anthropic.com"] = api.handler;
+    const r = await run(envWith(["france_travail:B2"]), { keys: ["france_travail:B2"] });
+    assert.deepEqual([r.counters.queued, r.counters.taken, r.counters.ready], [0, 1, 1]);
+    assert.equal(db.raw.prepare("SELECT COUNT(*) AS n FROM documents WHERE job_key = 'france_travail:A1'").get().n, 0);
+  });
+
+  test("regenerate runs the pass for that offer right away through ctx.waitUntil", async () => {
+    keep();
+    const api = anthropic([good()]);
+    idp.hosts["api.anthropic.com"] = api.handler;
+    const waits = [];
+    const res = await worker.fetch(request(`/api/documents/${KEY}/regenerate`, { method: "POST", token }), docEnv({ fonts: null }), { waitUntil: (p) => waits.push(p) });
+    assert.equal(res.status, 201);
+    assert.equal(waits.length, 1);
+    await Promise.all(waits);
+    assert.deepEqual([row().status, api.calls.length], ["ready", 1]);
+    assert.equal(db.raw.prepare("SELECT COUNT(*) AS n FROM document_runs").get().n, 1);
+  });
+
   test("over budget, /missing requests nothing", async () => {
     keep();
     db.raw.prepare("INSERT INTO ai_usage VALUES ('2026-11-01', 'anthropic', ?, 10, 30000000, 0)").run(DOCUMENTS_MODEL);
@@ -800,7 +851,7 @@ describe("files (part 3)", () => {
   beforeEach(async () => {
     token = await idp.sign();
   });
-  const call = (path, opts = {}) => worker.fetch(request(path, { token, ...opts }), docEnv());
+  const call = (path, opts = {}, envOverrides = {}) => worker.fetch(request(path, { token, ...opts }), docEnv(envOverrides));
 
   test("a ready version gets its four files once, and the route serves them as attachments", async () => {
     keep();
@@ -833,6 +884,56 @@ describe("files (part 3)", () => {
     assert.equal((await call(`/api/documents/${KEY}/v1/cv.pdf`, { token: null })).status, 401);
     const versions = (await (await call(`/api/documents/${KEY}`)).json()).documents;
     assert.deepEqual([versions[0].files, "cv_pdf_key" in versions[0]], [true, false]);
+  });
+
+  test("a ready version without files is rendered on first download, once, and stored", async () => {
+    keep();
+    pending();
+    const api = anthropic([good()]);
+    idp.hosts["api.anthropic.com"] = api.handler;
+    await runDocumentsScheduled(docEnv(), { fetch: globalThis.fetch, now: NOW, fonts: null }); // generated, not rendered
+    assert.equal(row().cv_pdf_key, null);
+    // the route loads the bundled fonts, which Node cannot import: hand them over as the module would
+    const res = await call(`/api/documents/${KEY}/v1/letter.pdf`, {}, { fonts: FONTS });
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("Content-Disposition"), 'attachment; filename="Lettre_Jean_Trapmarker_Initech.pdf"');
+    assert.equal(new TextDecoder().decode(new Uint8Array(await res.arrayBuffer()).slice(0, 5)), "%PDF-");
+    const d = row();
+    assert.deepEqual([d.cv_pdf_key, d.cv_docx_key, d.letter_pdf_key, d.letter_docx_key].map(Boolean), [true, true, true, true]);
+    assert.ok(docs.store.has(`docs/${KEY}/v1/cv.docx`));
+    const puts = docs.store.size;
+    assert.equal((await call(`/api/documents/${KEY}/v1/cv.pdf`, {}, { fonts: FONTS })).status, 200);
+    assert.equal(docs.store.size, puts); // the second download reads R2, renders nothing
+    const again = await runDocumentsScheduled(docEnv(), { fetch: globalThis.fetch, now: NOW, fonts: FONTS });
+    assert.equal(again.outcome, "idle");
+  });
+
+  test("a download whose render fails answers 503 and leaves render_error and the content", async () => {
+    keep();
+    pending();
+    const api = anthropic([good()]);
+    idp.hosts["api.anthropic.com"] = api.handler;
+    await runDocumentsScheduled(docEnv(), { fetch: globalThis.fetch, now: NOW, fonts: null });
+    docs.store.delete("master/contact.json");
+    const res = await call(`/api/documents/${KEY}/v1/cv.pdf`, {}, { fonts: FONTS });
+    assert.equal(res.status, 503);
+    assert.deepEqual([row().status, row().error_code, row().cv_pdf_key], ["ready", "render_error", null]);
+    assert.ok(docs.store.has(row().content_key));
+  });
+
+  test("the render batch takes the fresh rows before the ones that failed once", async () => {
+    const insert = db.raw.prepare(
+      "INSERT INTO documents (job_key, version, status, content_key, error_code, created_at, updated_at) VALUES (?, 1, 'ready', ?, 'render_error', ?, ?)",
+    );
+    for (let i = 0; i < BATCH_SIZE; i++) insert.run(`france_travail:STUCK${i}`, "docs/none/content.json", NOW.toISOString(), NOW.toISOString());
+    keep();
+    pending();
+    const api = anthropic([good()]);
+    idp.hosts["api.anthropic.com"] = api.handler;
+    await runDocumentsScheduled(docEnv(), { fetch: globalThis.fetch, now: NOW, fonts: null }); // the fresh row, highest id
+    const r = await runDocumentsScheduled(docEnv(), { fetch: globalThis.fetch, now: NOW, fonts: FONTS });
+    assert.deepEqual([r.counters.rendered, r.counters.render_errors], [1, BATCH_SIZE - 1]);
+    assert.ok(row().cv_pdf_key);
   });
 
   test("without font bytes nothing is rendered; a missing contact sheet is a render_error that keeps the content", async () => {

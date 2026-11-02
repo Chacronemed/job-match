@@ -39,8 +39,10 @@ def _api(keys, broken=False):
             app["follow_up_at"] = "2026-01-02"  # due long ago
         apps.append(app)
     documents = [
-        {"job_key": keys[0], "version": 2, "status": "ready", "language": "fr",
-         "error_code": None, "updated_at": "2026-10-20T09:00:00Z", "files": True},
+        # ready but not rendered yet (files False): the links show anyway, the Worker renders
+        # on the first download
+        {"job_key": keys[0], "version": 1, "status": "ready", "language": "fr",
+         "error_code": None, "updated_at": "2026-10-20T09:00:00Z", "files": False},
         {"job_key": keys[1], "version": 1, "status": "failed", "language": "fr",
          "error_code": "invented_number", "updated_at": "2026-10-20T09:00:00Z", "files": False},
     ]
@@ -89,6 +91,8 @@ def test_table_shows_every_row_without_console_errors(open_dashboard, job_keys):
     assert page.locator("#kb-table a.doc-dl").count() == 4
     labels = [a.inner_text() for a in page.locator("#kb-table a.doc-dl").all()]
     assert labels == ["⬇ PDF", "⬇ DOCX"] * 2
+    # ready = links, never a badge
+    assert page.locator("#kb-table .doc-badge", has_text="Prêt").count() == 0
     failed = page.locator("#kb-table .doc-badge", has_text="Échec")
     assert failed.count() == 1
     assert failed.first.get_attribute("title") == "invented_number"
@@ -204,13 +208,13 @@ def test_generate_missing_confirms_with_count_and_cost_then_posts(open_dashboard
     toast = page.locator("#toast")
     assert "1 document · ≈ 0,07\u00a0$ (reste 58,10\u00a0$ ce mois)" in toast.inner_text()
     page.get_by_role("button", name="Annuler").click()
-    assert page.api_calls == []  # nothing without the confirmation
+    assert page.api_calls[1:] == []  # nothing without the confirmation
     page.click("#apps-generate-missing")
     page.get_by_role("button", name="Confirmer").click()
     page.wait_for_function(
         "() => document.querySelectorAll("
         "'#kb-table td.apps-docs .doc-badge.kind-pending').length === 1")
-    assert page.api_calls == [("POST", "/api/documents/missing")]
+    assert page.api_calls[1:] == [("POST", "/api/documents/missing")]
     assert "1 génération demandée" in toast.inner_text()
     assert page.locator("#apps-generate-missing").inner_text() == "Générer les manquants (0)"
     assert page.locator("#apps-generate-missing").is_disabled()
@@ -218,7 +222,7 @@ def test_generate_missing_confirms_with_count_and_cost_then_posts(open_dashboard
 
 
 def test_pdf_link_downloads_in_place_with_the_server_name(open_dashboard, job_keys):
-    path = f"/api/documents/{quote(job_keys[0], safe='')}/v2/cv.pdf"
+    path = f"/api/documents/{quote(job_keys[0], safe='')}/v1/cv.pdf"
     headers = {"content-type": "application/pdf",
                "content-disposition": 'attachment; filename="CV_Mohamed_Chacrone_Initech.pdf"',
                "cache-control": "no-store"}
@@ -233,5 +237,56 @@ def test_pdf_link_downloads_in_place_with_the_server_name(open_dashboard, job_ke
     with open(download.path(), "rb") as fh:
         assert fh.read(5) == b"%PDF-"
     assert len(page.context.pages) == 1  # no new tab
-    assert page.api_calls == [("GET", path)]
+    assert page.api_calls[1:] == [("GET", path)]
+    assert errors == []
+
+
+def test_remembered_table_view_presses_the_right_chip(open_dashboard, job_keys):
+    seed = "try { localStorage.setItem('jm.appsView', 'table'); } catch (e) {}"
+    page, errors = open_dashboard(_api(job_keys), init_script=seed)
+    page.wait_for_selector("#kb-table table.data.apps")
+    assert page.locator("#kb-board").is_hidden()
+    assert page.locator("#apps-view-table").get_attribute("aria-pressed") == "true"
+    assert page.locator("#apps-view-kanban").get_attribute("aria-pressed") == "false"
+    assert errors == []
+
+
+def test_generer_runs_now_and_the_links_appear_without_a_reload(open_dashboard, job_keys):
+    key = job_keys[2]  # the row without documents
+    calls = {"n": 0}
+
+    def api():
+        calls["n"] += 1
+        payload = _api(job_keys)
+        if calls["n"] >= 3:  # the second poll: the Worker's immediate pass is done
+            payload["documents"].append({"job_key": key, "version": 1, "status": "ready",
+                                         "language": "fr", "error_code": None,
+                                         "updated_at": "2026-10-20T10:00:00Z", "files": True})
+        elif calls["n"] == 2:
+            payload["documents"].append({"job_key": key, "version": 1, "status": "running",
+                                         "language": "fr", "error_code": None,
+                                         "updated_at": "2026-10-20T10:00:00Z", "files": False})
+        return payload
+
+    regen = f"/api/documents/{quote(key, safe='')}/regenerate"
+    answer = json.dumps({"document": {"job_key": key, "version": 1, "status": "pending"}})
+    routes = {("POST", regen): (201, {"content-type": "application/json"}, answer)}
+    page, errors = _open_table(open_dashboard, api, routes=routes,
+                               init_script="window.__jmWatchMs = 200;")
+    generate = page.get_by_role("button", name="Générer", exact=True)  # not « Regénérer »
+    assert generate.count() == 1
+    generate.click()
+    page.wait_for_function(
+        "() => document.querySelectorAll("
+        "'#kb-table td.apps-docs .doc-badge.kind-pending').length === 1")
+    badge = page.locator("#kb-table td.apps-docs .doc-badge.kind-pending")
+    assert badge.inner_text() == "En cours…"
+    assert page.locator("#kb-table td.apps-docs button").count() == 1  # « Regénérer » only
+    page.wait_for_function(
+        "() => document.querySelectorAll('#kb-table a.doc-dl').length === 8")
+    assert page.locator("#kb-table td.apps-docs .doc-badge", has_text="En cours").count() == 0
+    page.wait_for_timeout(600)  # three more intervals: the watch has stopped
+    assert calls["n"] == 3, calls
+    assert page.api_calls == [("GET", "/api/applications"), ("POST", regen),
+                              ("GET", "/api/applications"), ("GET", "/api/applications")]
     assert errors == []
