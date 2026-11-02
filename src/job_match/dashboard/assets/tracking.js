@@ -30,6 +30,17 @@
   /* The documents' statuses (worker/migrations/0005_documents.sql) and their badge text. */
   var DOC_STATUSES = ["pending", "running", "ready", "failed"];
   var DOC_TEXT = { pending: "En attente", running: "En cours", ready: "Prêt", failed: "Échec" };
+  /* Recruiter replies (ADR 0018, worker/migrations/0007_inbox.sql): the kinds Haiku answers
+     with, and their text. A sure entretien/refus is applied by the Worker; the rest waits here. */
+  var INBOX_KINDS = ["entretien", "refus", "accuse_reception", "relance_recruteur", "autre"];
+  var INBOX_KIND_TEXT = {
+    entretien: "Entretien",
+    refus: "Refus",
+    accuse_reception: "Accusé de réception",
+    relance_recruteur: "Relance du recruteur",
+    autre: "Autre"
+  };
+  var INBOX_STATE_TEXT = { applied: "Appliquée", to_confirm: "À confirmer", corrected: "Corrigée", ignored: "Ignorée" };
   var DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
 
   /* A job with no tracking row is still waiting for a first look. */
@@ -168,6 +179,7 @@
     if (STATUSES.indexOf(rec.status) < 0) errors.status = "Choisis un statut.";
     if (rec.applied_at && !isDay(rec.applied_at)) errors.applied_at = "Indique une vraie date.";
     if (rec.follow_up_at && !isDay(rec.follow_up_at)) errors.follow_up_at = "Indique une vraie date.";
+    if (rec.interview_at && !isDay(rec.interview_at)) errors.interview_at = "Indique une vraie date.";
     if (rec.note && rec.note.length > NOTE_MAX) errors.note = NOTE_MAX + " caractères au maximum.";
     if (rec.cv_url && !isHttpsUrl(rec.cv_url)) errors.cv_url = "Doit être un lien https://.";
     return errors;
@@ -178,6 +190,7 @@
       status: statusOf(rec),
       applied_at: (rec && rec.applied_at) || "",
       follow_up_at: (rec && rec.follow_up_at) || "",
+      interview_at: (rec && rec.interview_at) || "",
       note: (rec && rec.note) || "",
       cv_url: (rec && rec.cv_url) || ""
     };
@@ -241,6 +254,47 @@
     return out;
   }
 
+  /* ---- recruiter replies (ADR 0018) ---- */
+
+  function inboxKindText(kind) {
+    return INBOX_KIND_TEXT[kind] || "Non classée";
+  }
+
+  /* "92 %" from the model's 0–1 confidence; "" when the model did not answer. */
+  function confidenceText(c) {
+    return typeof c === "number" && c >= 0 && c <= 1 ? Math.round(c * 100) + " %" : "";
+  }
+
+  /* What a parked reply points at: the proposed application's offer (title · company), or
+     "Candidature inconnue" when the model found none or the offer left the page. */
+  function inboxSummary(item, postings) {
+    var key = item && item.proposed_key;
+    var j = key && postings ? postings[key] : null;
+    if (!key) return { key: null, text: "Candidature inconnue" };
+    if (!j) return { key: key, text: key };
+    return { key: key, text: [j.title || key, j.company || null].filter(Boolean).join(" · ") };
+  }
+
+  /* The replies that touched one application (confirmed, corrected or proposed), newest first. */
+  function inboxHistoryFor(key, history) {
+    return (history || []).filter(function (it) {
+      return it && (it.applied_key === key || (it.state === "to_confirm" && it.proposed_key === key));
+    }).sort(function (a, b) { return String(b.received_at || "").localeCompare(String(a.received_at || "")); });
+  }
+
+  /* The applications a reply can be attached to: the sent ones first, then the rest. */
+  function inboxTargets(apps, postings) {
+    return Object.keys(apps || {}).filter(function (k) {
+      var st = statusOf(apps[k]);
+      return st !== "ignored" && st !== "to_review";
+    }).sort(function (a, b) {
+      var sa = statusOf(apps[a]) === "applied" ? 0 : 1, sb = statusOf(apps[b]) === "applied" ? 0 : 1;
+      if (sa !== sb) return sa - sb;
+      var ta = postings && postings[a] ? (postings[a].title || "") : a, tb = postings && postings[b] ? (postings[b].title || "") : b;
+      return ta.localeCompare(tb);
+    });
+  }
+
   /* fetch wrapper for /api/. Same origin only, JSON only; errors carry the API's message. */
   function client(fetchImpl) {
     function call(method, path, body) {
@@ -279,7 +333,9 @@
       requestMissing: function () { return call("POST", "documents/missing"); },
       /* « Lancer maintenant » in Exécutions: the Worker answers 202 and runs the pass after. */
       runAi: function () { return call("POST", "ai/run"); },
-      runDocuments: function () { return call("POST", "documents/run"); }
+      runDocuments: function () { return call("POST", "documents/run"); },
+      /* Valider / Corriger / Ignorer a recruiter reply (ADR 0018). */
+      inboxAct: function (id, body) { return call("PUT", "inbox/" + encodeURIComponent(id), body); }
     };
   }
 
@@ -291,6 +347,14 @@
     NOTE_MAX: NOTE_MAX,
     DOC_STATUSES: DOC_STATUSES,
     DOC_TEXT: DOC_TEXT,
+    INBOX_KINDS: INBOX_KINDS,
+    INBOX_KIND_TEXT: INBOX_KIND_TEXT,
+    INBOX_STATE_TEXT: INBOX_STATE_TEXT,
+    inboxKindText: inboxKindText,
+    confidenceText: confidenceText,
+    inboxSummary: inboxSummary,
+    inboxHistoryFor: inboxHistoryFor,
+    inboxTargets: inboxTargets,
     docText: docText,
     docBadge: docBadge,
     missingDocuments: missingDocuments,

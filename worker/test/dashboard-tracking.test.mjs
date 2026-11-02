@@ -128,7 +128,7 @@ describe("statuses", () => {
   });
 
   test("blank fills every field for the form", () => {
-    assert.deepEqual(T.blank(undefined), { status: "to_review", applied_at: "", follow_up_at: "", note: "", cv_url: "" });
+    assert.deepEqual(T.blank(undefined), { status: "to_review", applied_at: "", follow_up_at: "", interview_at: "", note: "", cv_url: "" });
     assert.equal(T.blank({ status: "applied", note: null }).note, "");
   });
 });
@@ -323,5 +323,39 @@ describe("run now", () => {
     await T.client(f).runDocuments();
     assert.deepEqual(f.calls.map((c) => [c.init.method, c.url, c.init.body]),
       [["POST", "/api/ai/run", undefined], ["POST", "/api/documents/run", undefined]]);
+  });
+});
+
+describe("recruiter replies (ADR 0018)", () => {
+  const postings = { "ft:1": { key: "ft:1", title: "Ingénieur DevOps", company: "Acme" }, "ft:2": { key: "ft:2", title: "SRE" } };
+  test("kind and confidence text", () => {
+    assert.equal(T.inboxKindText("entretien"), "Entretien");
+    assert.equal(T.inboxKindText(null), "Non classée");
+    assert.equal(T.confidenceText(0.924), "92 %");
+    assert.equal(T.confidenceText(null), "");
+    for (const k of T.INBOX_KINDS) assert.match(T.INBOX_KIND_TEXT[k], /^[A-ZÀ-Ý]/);
+  });
+  test("inboxSummary names the proposed offer, or says it is unknown", () => {
+    assert.deepEqual(T.inboxSummary({ proposed_key: "ft:1" }, postings), { key: "ft:1", text: "Ingénieur DevOps · Acme" });
+    assert.deepEqual(T.inboxSummary({ proposed_key: "ft:2" }, postings), { key: "ft:2", text: "SRE" });
+    assert.deepEqual(T.inboxSummary({ proposed_key: "ft:9" }, postings), { key: "ft:9", text: "ft:9" });
+    assert.deepEqual(T.inboxSummary({ proposed_key: null }, postings), { key: null, text: "Candidature inconnue" });
+  });
+  test("inboxHistoryFor keeps the replies of one offer, newest first", () => {
+    const items = [
+      { message_id: "a", applied_key: "ft:1", state: "applied", received_at: "2026-10-01T00:00:00Z" },
+      { message_id: "b", applied_key: null, proposed_key: "ft:1", state: "to_confirm", received_at: "2026-10-03T00:00:00Z" },
+      { message_id: "c", applied_key: null, proposed_key: "ft:1", state: "ignored", received_at: "2026-10-02T00:00:00Z" },
+      { message_id: "d", applied_key: "ft:2", state: "applied", received_at: "2026-10-04T00:00:00Z" },
+    ];
+    assert.deepEqual(T.inboxHistoryFor("ft:1", items).map((i) => i.message_id), ["b", "a"]);
+  });
+  test("inboxTargets lists sent applications first, never ignored or untouched ones", () => {
+    const apps = { "ft:1": { status: "interview" }, "ft:2": { status: "applied" }, "ft:3": { status: "ignored" }, "ft:4": { status: "to_review" } };
+    assert.deepEqual(T.inboxTargets(apps, postings), ["ft:2", "ft:1"]);
+  });
+  test("validateRecord checks the interview date", () => {
+    assert.equal(T.validateRecord({ status: "interview", interview_at: "2026-13-01" }).interview_at, "Indique une vraie date.");
+    assert.deepEqual(T.validateRecord({ status: "interview", interview_at: "2026-11-12" }), {});
   });
 });

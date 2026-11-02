@@ -110,7 +110,7 @@ describe("swipe", () => {
   test("the stored record keeps the other fields of the previous one", () => {
     const prev = { status: "to_review", note: "vu au salon", follow_up_at: "2026-10-30" };
     assert.deepEqual(X.swipeRecord(prev, "right"),
-      { status: "to_apply", applied_at: "", follow_up_at: "2026-10-30", note: "vu au salon", cv_url: "" });
+      { status: "to_apply", applied_at: "", follow_up_at: "2026-10-30", interview_at: "", note: "vu au salon", cv_url: "" });
     assert.equal(X.swipeRecord(undefined, "left").status, "ignored");
     assert.throws(() => X.swipeRecord(undefined, "up"));
   });

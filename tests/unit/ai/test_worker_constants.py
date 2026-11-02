@@ -8,16 +8,28 @@ from job_match.config.loader import load_settings
 
 ROOT = Path(__file__).resolve().parents[3]
 AI_JS = (ROOT / "worker" / "src" / "ai.js").read_text(encoding="utf-8")
+INBOX_JS = (ROOT / "worker" / "src" / "inbox.js").read_text(encoding="utf-8")
 WRANGLER = (ROOT / "wrangler.jsonc").read_text(encoding="utf-8")
 WRANGLER_CFG = json.loads(
     "\n".join(ln for ln in WRANGLER.splitlines() if not ln.strip().startswith("//"))
 )
 
 
-def _js_const(name):
-    m = re.search(rf"export const {name} = (.+?);", AI_JS)
+def _js_const(name, source=AI_JS):
+    m = re.search(rf"export const {name} = (.+?);", source)
     assert m, name
-    return m.group(1).strip().strip('"')
+    return m.group(1).strip().split(";")[0].split(" //")[0].strip().strip('"')
+
+
+def test_the_inbox_cap_and_threshold_agree_with_settings():
+    ai = load_settings(ROOT / "config" / "settings.yaml").ai
+    assert int(WRANGLER_CFG["vars"]["AI_INBOX_DAILY_LIMIT"]) == ai.inbox_daily_limit
+    assert int(_js_const("INBOX_DAILY_LIMIT", INBOX_JS)) == ai.inbox_daily_limit
+    assert float(_js_const("CONFIDENCE_THRESHOLD", INBOX_JS)) == ai.inbox_confidence
+    # The inbox bills under the rerank's Haiku model, and never logs (the Worker logs counters).
+    assert "INBOX_MODEL = ANTHROPIC_MODEL" in INBOX_JS
+    assert "console." not in INBOX_JS
+    assert "ACCESS_SERVICE_CN" not in json.dumps(WRANGLER_CFG)  # the token's Client ID: a secret
 
 
 def test_settings_and_worker_agree():

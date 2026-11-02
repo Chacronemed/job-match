@@ -98,3 +98,15 @@ export async function verifyAccessJwt(token, { aud, teamDomain }, now = Date.now
   if (typeof payload.nbf === "number" && payload.nbf - SKEW_S > nowS) return null;
   return payload;
 }
+
+// Who the verified token stands for (ADR 0018). A login carries `email`; an Access service
+// token carries `common_name` (its Client ID, "<hex>.access") and no email. Only the token whose
+// Client ID is the ACCESS_SERVICE_CN secret is a known machine; any other is "not authenticated".
+export function principalOf(payload, env) {
+  if (!payload || typeof payload !== "object") return null;
+  if (typeof payload.email === "string" && payload.email) return { kind: "user", email: payload.email };
+  const cn = payload.common_name;
+  const allowed = env && typeof env.ACCESS_SERVICE_CN === "string" ? env.ACCESS_SERVICE_CN : "";
+  if (typeof cn === "string" && cn && allowed && cn === allowed) return { kind: "service", cn };
+  return null;
+}

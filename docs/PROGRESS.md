@@ -3,7 +3,18 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**Tableau Candidatures: rendu à la demande, cron auto, génération immédiate** (branch
+**M27: boîte de réception recruteurs + relances dues, côté Worker (n8n client)** (branch
+`fix/m26-downloads`, 2026-11-02, ADR 0018 accepted). **Done locally, not deployed** (Next step:
+migration 0007, deploy, the Access service token and its Service Auth policy, then the n8n
+flows). An Access service token named `ACCESS_SERVICE_CN` may call `POST /api/inbox` and
+`GET /api/followups/due` only; each email is classified by Haiku (strict JSON) against my
+« Envoyée » applications, a sure interview or refusal (≥ 0,85) moves the application, the rest
+waits in « Réponses à confirmer » on top of Candidatures (Valider / Corriger / Ignorer); the
+email text is never stored nor logged. 2026-11-02 correction: the JWT's `common_name` is the
+token's **Client ID** (`<hex>.access`), so `ACCESS_SERVICE_CN` is a Worker **secret**, not a
+var. See Done.
+
+Before it: **Tableau Candidatures: rendu à la demande, cron auto, génération immédiate** (branch
 `fix/m26-downloads`, 2026-11-02, after the table pass below reached prod). **Done locally, to
 deploy** (Next step): a « Prêt (v1) » row with no files in R2 is rendered on the first download
 (ready = links, no lone badge), the cron queues every « À candidater » offer without documents
@@ -65,6 +76,50 @@ production rows. Still pending: the M21 Cloudflare setup, the data-repo cleanup 
 two Cloudflare secrets, M9 manual GitHub setup, `PROFILE_YAML` re-encoding, `SMTP_PORT` variable.
 
 ## Done
+- **M27: recruiter inbox + due follow-ups for n8n** (2026-11-02, ADR 0018):
+  - **Auth (`auth.js principalOf`):** a JWT with `email` is me (every route); one with
+    `common_name` equal to the Worker secret `ACCESS_SERVICE_CN` (the service token's Client
+    ID, `<hex>.access`; `wrangler secret put`, never a var: wrangler.jsonc is public) is the
+    machine, allowed on `POST /api/inbox` and `GET /api/followups/due` only (403 elsewhere),
+    no same-origin check for it (no `Origin` from n8n, no CSRF). Any other `common_name`
+    (the token's display name included), or the secret unset → 401.
+  - **`worker/src/inbox.js`:** `handleInbox` (idempotent by `message_id` → 200 `duplicate`;
+    text cut to 4 000 chars by `validateInboxMessage`, subject to 200, sender domain only;
+    candidates = `applied` rows joined with `data.json` `jobs` + `tracked`; Haiku with
+    `INBOX_SCHEMA` `{type, confidence, interview_at, application_key, reason}`, cached system
+    block with the candidates; `validateInboxVerdict` refuses a key outside the list or a bad
+    date; `confidence ≥ CONFIDENCE_THRESHOLD = 0.85` and `entretien`/`refus` with a key →
+    `applyVerdict` (interview + `interview_at`, or rejected; `follow_up_at` cleared), item
+    `applied`; otherwise `to_confirm`; AI failure / credit / cap / no candidates / no key →
+    `to_confirm` with `ai_outcome`), `listFollowupsDue` (`applied` with `follow_up_at ≤ today`,
+    oldest first, title/company/url or nulls), `listInbox` (`to_confirm` + 100 handled),
+    `actOnInbox` (confirm / correct / ignore; 404, 409 handled, 400). No `console` call; the
+    Worker logs `inbox <state> kind=<kind> ai=<outcome>`.
+  - **Budget:** billed answers (200) counted in `ai_usage` under `claude-haiku-5-5`; own cap
+    `AI_INBOX_DAILY_LIMIT` (50) counted on `inbox_items` rows with a billed outcome that day
+    (`settings.yaml ai.inbox_daily_limit`, `ai.inbox_confidence`, `AiConfig`, pinned by
+    `tests/unit/ai/test_worker_constants.py`).
+  - **D1 migration 0007:** `inbox_items`, `applications.interview_at`. `PUT /api/applications`
+    accepts `interview_at`; `GET /api/applications` returns it plus `inbox`. Not mirrored.
+  - **Dashboard:** `#kb-inbox` block « Réponses à confirmer (N) » (`renderInbox`, `inboxItem`:
+    kind badge `.inbox-kind.kind-*`, confidence « 62 % », date, subject, « domaine → offre ·
+    entreprise » or « Candidature inconnue »; Valider off when entretien/refus has no key;
+    Corriger reveals application select (sent first, `T.inboxTargets`), kind select, date,
+    Enregistrer; Ignorer); the Worker's answer removes the item and replaces the card's
+    application. Record panel: « Réponses reçues » (`T.inboxHistoryFor`), Suivi form
+    « Entretien le »; card reads « Entretien le dd/mm ». `tracking.js`: `INBOX_KINDS`,
+    `inboxKindText`, `confidenceText`, `inboxSummary`, `inboxHistoryFor`, `inboxTargets`,
+    `client.inboxAct`, `blank()`/`validateRecord` with `interview_at`.
+  - **Tests:** Node 270 (+34: `inbox.test.mjs` 29 — principal, service token on both routes
+    without Origin, 403 elsewhere, wrong CN / unset var → 401, my login everywhere, sure
+    interview/refusal applied, under threshold or other kind parked, exact threshold, no key,
+    idempotence with one call, 4 000-char cut, invalid key/date billed and parked, cap,
+    `ai_usage` row billed only, no candidates / no key, log traps + no `console.` in inbox.js,
+    validation, PUT confirm/correct/ignore/404/409/400, service token and foreign origin 403 on
+    PUT, followups due, `interview_at` round trip; 5 tracking helpers), browser 13 (+3: Valider
+    moves the card Envoyée → Entretien and PUTs once; Corriger at 390 → select + kind →
+    Enregistrer → exact PUT body, no horizontal scroll; Ignorer, then the record's history and
+    the « Entretien le » field). 1521 Python, ruff clean.
 - **Tableau Candidatures: render on demand, cron auto-queue, immediate « Générer »**
   (2026-11-02, branch `fix/m26-downloads`, ADR 0017 §8 amended):
   - **Prod bug:** rows « Prêt (v1) » with no links and an empty Lettre cell. Generation marks a
@@ -1105,6 +1160,18 @@ two Cloudflare secrets, M9 manual GitHub setup, `PROFILE_YAML` re-encoding, `SMT
   - 26 tests green, `ruff check .` clean
 
 ## Next step
+- **M27 in production (you):**
+  1. In Cloudflare Zero Trust → Access → Service Auth, create a service token; copy its
+     **Client ID** (`<hex>.access`) into `npx wrangler secret put ACCESS_SERVICE_CN`, and the
+     Client ID + Secret into n8n's credential; add a **Service Auth** policy on the dashboard
+     Access application allowing that token.
+  2. `npx wrangler d1 migrations apply job-match` (0007), `npx wrangler deploy`.
+  3. Check: `curl -H "CF-Access-Client-Id: …" -H "CF-Access-Client-Secret: …"
+     https://<host>/api/followups/due` → 200 `{today, due}`; the same on `/api/applications`
+     → 403; `POST /api/inbox` with a JSON `{message_id, from, subject, date, text}` → 201.
+  4. n8n: an IMAP/Gmail trigger → HTTP Request `POST /api/inbox` (the two CF-Access headers,
+     `message_id` = the Message-ID header); a daily cron → `GET /api/followups/due` → your
+     reminder. The dashboard's « Réponses à confirmer » block fills from the first unsure email.
 - **Deploy `fix/m26-downloads`:** `npx wrangler deploy` (no migration), then on prod
   Candidatures → Tableau: a « Prêt (v1) » row now shows « ⬇ PDF » / « ⬇ DOCX » and the first
   click renders and saves `CV_Mohamed_Chacrone_<Entreprise>.pdf` (a 503 means the master or
@@ -1342,6 +1409,9 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
 - ~~**M9 — WAL flush before data-repo push:**~~ **Resolved in M9.** `PRAGMA wal_checkpoint(TRUNCATE)` + `VACUUM` run in daily.yml before DB push. `*.sqlite-wal` and `*.sqlite-shm` added to `.gitignore`.
 
 ## Known issues
+- **Inbox (M27):** until the secret `ACCESS_SERVICE_CN` is set, every service token is refused
+  (401) and n8n cannot post. Haiku's `confidence` is trusted as is; the 0.85 threshold is the
+  knob. `interview_at` is not in the SQLite mirror.
 - The browser tests cover Candidatures and the Exécutions buttons only; Tri, Offres, Leads and
   the record panel are still checked by hand (docs/design/AUDIT.md).
 - 2026-11-01: `test_jobs.py` used a fixed `_NOW` (2026-10-01) that aged out of the 30-day dedup

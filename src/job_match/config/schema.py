@@ -215,6 +215,10 @@ class AiConfig:
     daily_limit: int = 100
     disagreement_gap: int = 25
     prompt_version: str = "1"
+    # The recruiter inbox (ADR 0018, worker/src/inbox.js): its own daily cap and the
+    # confidence threshold above which an interview or a refusal is applied unreviewed.
+    inbox_daily_limit: int = 50
+    inbox_confidence: float = 0.85
 
 
 @dataclass

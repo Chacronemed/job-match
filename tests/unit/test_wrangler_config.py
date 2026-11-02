@@ -44,6 +44,8 @@ def test_access_identifiers_are_secrets_not_config():
     text = (ROOT / "wrangler.jsonc").read_text(encoding="utf-8")
     cfg = _config()
     # `vars` carries plain knobs only (the AI cap): never an Access identifier nor a key.
+    # ACCESS_SERVICE_CN (ADR 0018), the service token's Client ID, is a secret like the others.
+    assert "ACCESS_SERVICE_CN" not in cfg.get("vars", {})
     for key, value in cfg.get("vars", {}).items():
         assert key.startswith("AI_"), key
         assert not key.startswith("CF_ACCESS") and "KEY" not in key and "SECRET" not in key
