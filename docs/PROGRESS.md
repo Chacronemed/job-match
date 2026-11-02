@@ -60,10 +60,12 @@ two Cloudflare secrets, M9 manual GitHub setup, `PROFILE_YAML` re-encoding, `SMT
 ## Done
 - **Tableau Candidatures: generate on demand, widths, direct downloads** (2026-11-02, ADR 0017
   §8 amended):
-  - **Worker:** `ESTIMATE_PER_DOCUMENT_USD = 0.06` (mirrored in `settings.yaml
-    documents.estimate_per_document_usd`, `DocumentsConfig`, pinned by
-    `test_worker_constants`); `budgetStatus` → `documents_budget` `{monthly_usd, spent_usd,
-    remaining_usd, estimate_usd}` in `GET /api/applications`; `requestMissingDocuments` behind
+  - **Worker:** `estimatePerDocument(db)` = the mean `cost_micro_usd` of the last 20 billed
+    `documents` rows (ready or failed, `cost_micro_usd > 0`; `ai_usage` only holds daily
+    sums), to the cent, or `DEFAULT_ESTIMATE_PER_DOCUMENT_USD = 0.08` with no history
+    (mirrored in `settings.yaml documents.default_estimate_per_document_usd`,
+    `DocumentsConfig`, pinned by `test_worker_constants`); `budgetStatus` → `documents_budget`
+    `{monthly_usd, spent_usd, remaining_usd, estimate_usd}` in `GET /api/applications`; `requestMissingDocuments` behind
     `POST /api/documents/missing` (Access + same-origin, 405 otherwise): one pending v1 per
     application in `KEEP_STATUSES` with no documents row, oldest first, capped by
     `floor(remaining / estimate)`, answers `{requested, skipped_budget, remaining_usd,

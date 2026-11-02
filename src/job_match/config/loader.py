@@ -397,11 +397,11 @@ def _parse_documents(value: object, path: Path) -> DocumentsConfig:
         if not isinstance(v, (str, int)) or isinstance(v, bool) or not str(v).strip():
             raise ConfigError(f"documents.{key} must be a non-empty string (in {path})")
         out[key] = str(v).strip()
-    est = raw.get("estimate_per_document_usd", d.estimate_per_document_usd)
+    est = raw.get("default_estimate_per_document_usd", d.default_estimate_per_document_usd)
     if isinstance(est, bool) or not isinstance(est, (int, float)) or est <= 0:
         raise ConfigError(
-            f"documents.estimate_per_document_usd must be a positive number (in {path})")
-    out["estimate_per_document_usd"] = float(est)
+            f"documents.default_estimate_per_document_usd must be a positive number (in {path})")
+    out["default_estimate_per_document_usd"] = float(est)
     phrases = raw.get("forbidden_phrases")
     out["forbidden_phrases"] = (
         list(d.forbidden_phrases) if phrases is None

@@ -14,7 +14,8 @@ import {
   buildTargetedRetry,
   costMicroUsd,
   errorTarget,
-  ESTIMATE_PER_DOCUMENT_USD,
+  DEFAULT_ESTIMATE_PER_DOCUMENT_USD,
+  estimatePerDocument,
   mergeRetry,
   RETRY_SCHEMA,
   cvLayout,
@@ -726,7 +727,22 @@ describe("API", () => {
     const res = await call("/api/applications");
     const body = await res.json();
     // 500k * 2 + 150k * 10 = 2.5 $ this month; October does not count
-    assert.deepEqual(body.documents_budget, { monthly_usd: 60, spent_usd: 2.5, remaining_usd: 57.5, estimate_usd: ESTIMATE_PER_DOCUMENT_USD });
+    assert.deepEqual(body.documents_budget, { monthly_usd: 60, spent_usd: 2.5, remaining_usd: 57.5, estimate_usd: DEFAULT_ESTIMATE_PER_DOCUMENT_USD });
+  });
+
+  test("the estimate is the mean cost of the last 20 billed documents, 0.08 $ without history", async () => {
+    assert.equal(DEFAULT_ESTIMATE_PER_DOCUMENT_USD, 0.08);
+    assert.equal(await estimatePerDocument(db), 0.08);
+    const insert = db.raw.prepare(
+      "INSERT INTO documents (job_key, version, status, cost_micro_usd, created_at, updated_at) VALUES (?, 1, ?, ?, ?, ?)",
+    );
+    // 25 old documents at 0.30 $ each, then 20 recent ones at 0.05 $: only the recent count
+    for (let i = 0; i < 25; i++) insert.run(`france_travail:OLD${i}`, "ready", 300000, "2026-09-01T00:00:00Z", `2026-09-01T00:00:${String(i).padStart(2, "0")}Z`);
+    for (let i = 0; i < 20; i++) insert.run(`france_travail:NEW${i}`, i % 2 ? "failed" : "ready", 50000, "2026-10-01T00:00:00Z", `2026-10-02T00:00:${String(i).padStart(2, "0")}Z`);
+    insert.run("france_travail:PEND", "pending", 0, "2026-11-01T00:00:00Z", "2026-11-01T00:00:00Z"); // unbilled: ignored
+    assert.equal(await estimatePerDocument(db), 0.05);
+    const body = await (await call("/api/applications")).json();
+    assert.equal(body.documents_budget.estimate_usd, 0.05);
   });
 
   test("POST /api/documents/missing requests a v1 for kept offers without a row, within the budget", async () => {
@@ -737,7 +753,7 @@ describe("API", () => {
     keep("france_travail:E5", "to_apply");
     db.raw.prepare("INSERT INTO documents (job_key, version, status, error_code, created_at, updated_at) VALUES (?, 1, 'failed', 'invented_number', ?, ?)")
       .run("france_travail:E5", NOW.toISOString(), NOW.toISOString()); // failed: has its own « Regénérer »
-    // 59.90 $ spent: room for one document at 0.06 $
+    // 59.90 $ spent: room for one document at the default 0.08 $
     db.raw.prepare("INSERT INTO ai_usage VALUES ('2026-11-01', 'anthropic', ?, 10, 29950000, 0)").run(DOCUMENTS_MODEL);
     let res = await call("/api/documents/missing", { method: "POST" });
     assert.equal(res.status, 200);

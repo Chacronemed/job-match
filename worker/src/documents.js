@@ -27,9 +27,11 @@ export const FORBIDDEN_PHRASES = ["sans régression", "zéro régression", "0 r�
 // Cache reads cost less: the estimate is an upper bound, like the rerank report's.
 export const PRICE_IN_PER_M = 2;
 export const PRICE_OUT_PER_M = 10;
-// What one CV + letter costs at most (ADR 0017 « Cost »: about $0.03, $0.06 with the retry);
-// the dashboard shows it before « Générer les manquants », the Worker caps the request by it.
-export const ESTIMATE_PER_DOCUMENT_USD = 0.06;
+// The estimate shown before « Générer les manquants » and used to cap that request: the mean
+// billed cost of the last ESTIMATE_SAMPLE documents (their `cost_micro_usd`, the same tokens
+// `ai_usage` aggregates by day), or this default while there is no history.
+export const DEFAULT_ESTIMATE_PER_DOCUMENT_USD = 0.08;
+export const ESTIMATE_SAMPLE = 20;
 export const DOCUMENTS_CRON = "*/10 * * * *";
 export const CREDIT_BACKOFF_HOURS = 6;
 export const ANTHROPIC_VERSION = "2026-10-21";
@@ -1100,6 +1102,19 @@ export async function requestDocuments(db, jobKey, now) {
   return row;
 }
 
+// The mean cost of the last billed documents, in dollars to the cent, or the default.
+export async function estimatePerDocument(db) {
+  const row = await db
+    .prepare(
+      "SELECT AVG(cost_micro_usd) AS mean FROM (SELECT cost_micro_usd FROM documents" +
+        " WHERE cost_micro_usd > 0 ORDER BY updated_at DESC, id DESC LIMIT ?)",
+    )
+    .bind(ESTIMATE_SAMPLE)
+    .first();
+  const mean = row && typeof row.mean === "number" && row.mean > 0 ? row.mean : null;
+  return mean === null ? DEFAULT_ESTIMATE_PER_DOCUMENT_USD : Math.max(0.01, Math.round(mean / 10000) / 100);
+}
+
 // The month's documents budget for the dashboard, in dollars rounded to the cent.
 export async function budgetStatus(db, env, now, opts = {}) {
   const monthly = monthlyBudget(env, opts);
@@ -1108,7 +1123,7 @@ export async function budgetStatus(db, env, now, opts = {}) {
     monthly_usd: monthly,
     spent_usd: spent,
     remaining_usd: Math.max(0, Math.round((monthly - spent) * 100) / 100),
-    estimate_usd: ESTIMATE_PER_DOCUMENT_USD,
+    estimate_usd: await estimatePerDocument(db),
   };
 }
 

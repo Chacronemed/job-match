@@ -8,7 +8,7 @@ import json
 from urllib.parse import quote
 
 STATUSES = ["to_apply", "applied", "interview", "rejected"]
-BUDGET = {"monthly_usd": 60, "spent_usd": 1.9, "remaining_usd": 58.1, "estimate_usd": 0.06}
+BUDGET = {"monthly_usd": 60, "spent_usd": 1.9, "remaining_usd": 58.1, "estimate_usd": 0.07}
 # the smallest PDF Chromium accepts as a download: a header and a trailer
 PDF = (b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
        b"2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n")
@@ -202,7 +202,7 @@ def test_generate_missing_confirms_with_count_and_cost_then_posts(open_dashboard
     page, errors = _open_table(open_dashboard, _api(job_keys), routes=routes)
     page.click("#apps-generate-missing")
     toast = page.locator("#toast")
-    assert "1 document · ≈ 0,06\u00a0$ (reste 58,10\u00a0$ ce mois)" in toast.inner_text()
+    assert "1 document · ≈ 0,07\u00a0$ (reste 58,10\u00a0$ ce mois)" in toast.inner_text()
     page.get_by_role("button", name="Annuler").click()
     assert page.api_calls == []  # nothing without the confirmation
     page.click("#apps-generate-missing")
