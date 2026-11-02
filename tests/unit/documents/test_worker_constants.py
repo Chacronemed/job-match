@@ -27,7 +27,8 @@ def test_settings_wrangler_and_worker_agree():
     assert _js_const("DOCUMENTS_PROMPT_VERSION") == d.prompt_version
     assert int(_js_const("MONTHLY_BUDGET_USD")) == d.monthly_budget_usd
     assert int(WRANGLER_CFG["vars"]["AI_DOCUMENTS_MONTHLY_USD"]) == d.monthly_budget_usd
-    assert float(_js_const("DEFAULT_ESTIMATE_PER_DOCUMENT_USD")) == d.default_estimate_per_document_usd
+    default_estimate = float(_js_const("DEFAULT_ESTIMATE_PER_DOCUMENT_USD"))
+    assert default_estimate == d.default_estimate_per_document_usd
     assert int(_js_const("BATCH_SIZE")) == d.batch_size
     assert int(_js_const("MAX_BULLETS")) == d.max_bullets
     assert int(_js_const("MAX_SKILLS")) == d.max_skills

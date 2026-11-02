@@ -92,7 +92,7 @@ two Cloudflare secrets, M9 manual GitHub setup, `PROFILE_YAML` re-encoding, `SMT
     element (`scrollWidth > clientWidth`) under Statut / CV / Lettre / the bar at 1440 and
     390, no horizontal scroll, tooltip = title; « Non communiquée » (the inlined data's
     company blanked through a `JSON.parse` init script); « Générer les manquants (1) » →
-    toast with « 1 document · ≈ 0,06 $ », Annuler sends nothing, Confirmer posts once and the
+    toast with « 1 document · ≈ 0,07 $ », Annuler sends nothing, Confirmer posts once and the
     row turns « En attente (v1) », the button reads (0) and is disabled; « ⬇ PDF » →
     `expect_download`, `suggested_filename == CV_Mohamed_Chacrone_Initech.pdf`, `%PDF-`
     magic, one tab. Screenshots at 1440 and 390 checked by me (table, toast).
