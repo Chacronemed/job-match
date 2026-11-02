@@ -222,6 +222,15 @@ describe("API client", () => {
     assert.equal(f.calls[0].init.body, undefined);
     assert.deepEqual(res, { document: { version: 2 } });
   });
+
+  test("requestMissing posts to /api/documents/missing without a body", async () => {
+    const f = fakeFetch(200, { requested: 2, skipped_budget: 0, remaining_usd: 58, documents: [] });
+    const res = await T.client(f).requestMissing();
+    assert.equal(f.calls[0].url, "/api/documents/missing");
+    assert.equal(f.calls[0].init.method, "POST");
+    assert.equal(f.calls[0].init.body, undefined);
+    assert.equal(res.requested, 2);
+  });
 });
 
 describe("documents badge", () => {
@@ -231,9 +240,31 @@ describe("documents badge", () => {
     assert.equal(T.docText({ status: "ready", version: 3 }), "Prêt (v3)");
     assert.equal(T.docText({ status: "failed", version: 2, error_code: "invented_skill" }), "Échec (invented_skill)");
     assert.equal(T.docText({ status: "weird" }), "Aucun");
-    assert.deepEqual(T.docBadge(null), { text: "Aucun document", kind: "none" });
-    assert.deepEqual(T.docBadge({ status: "running", version: 2 }), { text: "En cours (v2)", kind: "running" });
+    assert.deepEqual(T.docBadge(null), { text: "—", kind: "none", title: "Aucun document" });
+    assert.deepEqual(T.docBadge({ status: "running", version: 2 }), { text: "En cours (v2)", kind: "running", title: "" });
+    assert.deepEqual(T.docBadge({ status: "failed", version: 1, error_code: "invented_number" }), { text: "Échec", kind: "failed", title: "invented_number" });
   });
+
+  test("the missing documents are the kept applications without a row, the Worker's rule", () => {
+    const apps = {
+      "ft:A": { status: "to_apply" }, "ft:B": { status: "applied" }, "ft:C": { status: "interview" },
+      "ft:D": { status: "rejected" }, "ft:E": { status: "ignored" }, "ft:F": { status: "to_apply" },
+    };
+    const documents = { "ft:F": { status: "failed" } };
+    assert.deepEqual(T.missingDocuments(apps, documents), ["ft:A", "ft:B", "ft:C"]);
+    assert.deepEqual(T.missingDocuments({}, {}), []);
+  });
+
+  test("the budget summary caps the count by the remaining budget and prices it", () => {
+    const budget = { monthly_usd: 60, spent_usd: 1.9, remaining_usd: 58.1, estimate_usd: 0.06 };
+    assert.deepEqual(T.budgetSummary(budget, 7), { affordable: 7, estimate_usd: 0.42, text: "7 documents · ≈ 0,42 $ (reste 58,10 $ ce mois)" });
+    assert.equal(T.budgetSummary(budget, 1).text, "1 document · ≈ 0,06 $ (reste 58,10 $ ce mois)");
+    const tight = { monthly_usd: 60, spent_usd: 59.9, remaining_usd: 0.1, estimate_usd: 0.06 };
+    assert.equal(T.budgetSummary(tight, 3).text, "1 document · ≈ 0,06 $ (reste 0,10 $ ce mois) · 2 au-delà du budget");
+    assert.deepEqual(T.budgetSummary({ remaining_usd: 0, estimate_usd: 0.06 }, 2), { affordable: 0, estimate_usd: 0, text: "Budget mensuel épuisé (reste 0,00 $)" });
+    assert.deepEqual(T.budgetSummary(null, 2), { affordable: 2, estimate_usd: null, text: "2 documents · coût inconnu" });
+  });
+
 
   test("download links exist only once the files are rendered, and carry the version", () => {
     assert.equal(T.documentLinks("france_travail:1A", null), null);

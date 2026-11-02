@@ -4,7 +4,20 @@ the Offres status filter, and the view came up empty). Then the isolation: one b
 logged and replaced, the others show.
 """
 
+import json
+from urllib.parse import quote
+
 STATUSES = ["to_apply", "applied", "interview", "rejected"]
+BUDGET = {"monthly_usd": 60, "spent_usd": 1.9, "remaining_usd": 58.1, "estimate_usd": 0.06}
+# the smallest PDF Chromium accepts as a download: a header and a trailer
+PDF = (b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+       b"2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n")
+# every element under `sel` whose content is wider than its box: text-overflow at work
+NO_CLIP = """
+(sel) => Array.from(document.querySelectorAll(sel)).flatMap((n) => [n, ...n.querySelectorAll('*')])
+  .filter((n) => n.scrollWidth > n.clientWidth + 1)
+  .map((n) => n.tagName + '.' + n.className + ' ' + n.scrollWidth + '>' + n.clientWidth)
+"""
 SENTINEL = "1999-12-31"  # the follow_up_at the fault injection throws on
 HAS_CARDS = "document.querySelectorAll('#kb-board .kb-card').length > 0"
 
@@ -34,8 +47,9 @@ def _api(keys, broken=False):
     run = {"id": 1, "started_at": "2026-10-20T07:30:00Z", "finished_at": "2026-10-20T07:31:00Z",
            "outcome": "ok", "http_status": None, "provider": "anthropic",
            "counters": {"scored": 3, "cached": 1}}
+    # keys[2] (interview) has no documents row: the one « Générer les manquants » counts
     return {"applications": apps, "decisions": [], "skill_overrides": [], "ai_verdicts": [],
-            "ai_runs": [run], "documents": documents}
+            "ai_runs": [run], "documents": documents, "documents_budget": BUDGET}
 
 
 def _open_candidatures(open_dashboard, api, **kw):
@@ -70,9 +84,20 @@ def test_table_shows_every_row_without_console_errors(open_dashboard, job_keys):
     assert sorted(m.input_value() for m in menus.all()) == sorted(STATUSES)
     assert page.locator("#kb-table tbody tr", has_text="offre plus affichée").count() == 1
     assert page.locator("#kb-table th").count() == 8
-    # the ready version: PDF + DOCX for the CV and the letter; the failed one: a badge per cell
-    assert page.locator("#kb-table a[download]").count() == 4
-    assert page.locator("#kb-table .doc-badge", has_text="Échec").count() == 2
+    # the ready version: PDF + DOCX for the CV and the letter; the failed one: « Échec » with
+    # the code as the tooltip and « Regénérer »; a row without documents: « — » and « Générer »
+    assert page.locator("#kb-table a.doc-dl").count() == 4
+    labels = [a.inner_text() for a in page.locator("#kb-table a.doc-dl").all()]
+    assert labels == ["⬇ PDF", "⬇ DOCX"] * 2
+    failed = page.locator("#kb-table .doc-badge", has_text="Échec")
+    assert failed.count() == 1
+    assert failed.first.get_attribute("title") == "invented_number"
+    assert page.locator("#kb-table td.apps-docs button", has_text="Regénérer").count() == 1
+    buttons = page.locator("#kb-table td.apps-docs button", has_text="Générer")
+    assert buttons.count() == 2  # one of them is Regénérer; none on the gone, rejected offer
+    assert page.locator("#kb-table td.apps-docs .doc-badge.kind-none", has_text="—").count() == 1
+    assert page.locator("#apps-generate-missing").inner_text() == "Générer les manquants (1)"
+    assert not page.locator("#apps-generate-missing").is_disabled()
     assert page.evaluate("location.hash").endswith("view=table")
     assert errors == []
     # back to the Kanban, still clean
@@ -125,4 +150,88 @@ def test_run_now_buttons_are_enabled_once_tracking_loaded(open_dashboard, job_ke
     page.wait_for_function("!document.getElementById('ai-run-now').disabled")
     assert not page.locator("#docs-run-now").is_disabled()
     assert page.locator("#ai-runs-list .run-ai").count() == 1
+    assert errors == []
+
+
+def _open_table(open_dashboard, api, **kw):
+    page, errors = _open_candidatures(open_dashboard, api, **kw)
+    page.click("#apps-view-table")
+    page.wait_for_selector("#kb-table table.data.apps")
+    return page, errors
+
+
+def test_table_cells_are_never_truncated_at_1440_and_390(open_dashboard, job_keys):
+    for viewport in ((1440, 900), (390, 844)):
+        page, errors = _open_table(open_dashboard, _api(job_keys), viewport=viewport)
+        # the longest status label, « Candidature envoyée » (applied), is in the second row
+        assert page.locator("#kb-table select.kb-status").nth(0).is_visible()
+        clipped = page.evaluate(NO_CLIP, "#kb-table td.apps-status, #kb-table td.apps-docs, "
+                                "#kb-table td.doc-cell, #kb-table .kb-table-bar")
+        assert clipped == [], (viewport, clipped)
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), viewport
+        # the title ellipsizes and keeps the full text in its tooltip
+        first = page.locator("#kb-table td.apps-title .link-btn").first
+        assert first.get_attribute("title") == first.inner_text()
+        assert errors == []
+
+
+# The page inlines its data: blank the first offer's company as the script reads it.
+BLANK_COMPANY = """
+(() => { const parse = JSON.parse; JSON.parse = function (t) {
+  const v = parse.apply(this, arguments);
+  if (v && Array.isArray(v.jobs) && v.jobs.length) v.jobs[0].company = "";
+  return v; }; })();
+"""
+
+
+def test_unknown_company_reads_non_communiquee(open_dashboard, job_keys):
+    page, errors = _open_table(open_dashboard, _api(job_keys), init_script=BLANK_COMPANY)
+    unknown = page.locator("#kb-table td.apps-company .apps-unknown")
+    assert unknown.count() == 1
+    assert unknown.first.inner_text() == "Non communiquée"
+    assert page.locator("#kb-table td.apps-company", has_text="—").count() == 0
+    assert errors == []
+
+
+def test_generate_missing_confirms_with_count_and_cost_then_posts(open_dashboard, job_keys):
+    missing_key = job_keys[2]
+    answer = {"requested": 1, "skipped_budget": 0, "remaining_usd": 58.04,
+              "documents": [{"job_key": missing_key, "version": 1, "status": "pending"}]}
+    routes = {("POST", "/api/documents/missing"): (200, {"content-type": "application/json"},
+                                                   json.dumps(answer))}
+    page, errors = _open_table(open_dashboard, _api(job_keys), routes=routes)
+    page.click("#apps-generate-missing")
+    toast = page.locator("#toast")
+    assert "1 document · ≈ 0,06\u00a0$ (reste 58,10\u00a0$ ce mois)" in toast.inner_text()
+    page.get_by_role("button", name="Annuler").click()
+    assert page.api_calls == []  # nothing without the confirmation
+    page.click("#apps-generate-missing")
+    page.get_by_role("button", name="Confirmer").click()
+    page.wait_for_function(
+        "() => document.querySelectorAll("
+        "'#kb-table td.apps-docs .doc-badge.kind-pending').length === 1")
+    assert page.api_calls == [("POST", "/api/documents/missing")]
+    assert "1 génération demandée" in toast.inner_text()
+    assert page.locator("#apps-generate-missing").inner_text() == "Générer les manquants (0)"
+    assert page.locator("#apps-generate-missing").is_disabled()
+    assert errors == []
+
+
+def test_pdf_link_downloads_in_place_with_the_server_name(open_dashboard, job_keys):
+    path = f"/api/documents/{quote(job_keys[0], safe='')}/v2/cv.pdf"
+    headers = {"content-type": "application/pdf",
+               "content-disposition": 'attachment; filename="CV_Mohamed_Chacrone_Initech.pdf"',
+               "cache-control": "no-store"}
+    routes = {("GET", path): (200, headers, PDF)}
+    page, errors = _open_table(open_dashboard, _api(job_keys), routes=routes)
+    link = page.locator("#kb-table a.doc-dl", has_text="⬇ PDF").first
+    assert link.get_attribute("href") == path
+    with page.expect_download() as info:
+        link.click()
+    download = info.value
+    assert download.suggested_filename == "CV_Mohamed_Chacrone_Initech.pdf"
+    with open(download.path(), "rb") as fh:
+        assert fh.read(5) == b"%PDF-"
+    assert len(page.context.pages) == 1  # no new tab
+    assert page.api_calls == [("GET", path)]
     assert errors == []

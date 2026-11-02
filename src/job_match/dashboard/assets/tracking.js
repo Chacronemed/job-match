@@ -191,10 +191,34 @@
     return doc.version ? text + " (v" + doc.version + ")" : text;
   }
 
-  /* The badge of the latest version: {text, kind}; kind is the status or "none". */
+  /* The badge of the latest version: {text, kind, title}; kind is the status or "none". The
+     table keeps it short: « Échec » with the code as the tooltip, « — » without a row. */
   function docBadge(doc) {
-    if (!doc || DOC_STATUSES.indexOf(doc.status) < 0) return { text: "Aucun document", kind: "none" };
-    return { text: docText(doc), kind: doc.status };
+    if (!doc || DOC_STATUSES.indexOf(doc.status) < 0) return { text: "—", kind: "none", title: "Aucun document" };
+    if (doc.status === "failed") return { text: "Échec", kind: "failed", title: doc.error_code || "" };
+    return { text: docText(doc), kind: doc.status, title: "" };
+  }
+
+  /* The kept applications without any documents row: what « Générer les manquants » asks for.
+     The Worker applies the same rule (KEEP_STATUSES, no row at all). */
+  var KEEP_STATUSES = ["to_apply", "applied", "interview"];
+  function missingDocuments(apps, documents) {
+    return Object.keys(apps || {}).filter(function (k) {
+      return KEEP_STATUSES.indexOf(statusOf(apps[k])) >= 0 && !(documents && documents[k]);
+    }).sort();
+  }
+
+  /* « 7 documents · ≈ 0,42 $ (reste 58,10 $ ce mois) », from the Worker's documents_budget. */
+  function fmtUsd(n) { return n.toFixed(2).replace(".", ",") + " $"; }
+  function budgetSummary(budget, count) {
+    var ok = budget && typeof budget.remaining_usd === "number" && typeof budget.estimate_usd === "number" && budget.estimate_usd > 0;
+    if (!ok) return { affordable: count, estimate_usd: null, text: count + (count > 1 ? " documents" : " document") + " · coût inconnu" };
+    var affordable = Math.min(count, Math.floor(budget.remaining_usd / budget.estimate_usd));
+    if (affordable <= 0) return { affordable: 0, estimate_usd: 0, text: "Budget mensuel épuisé (reste " + fmtUsd(budget.remaining_usd) + ")" };
+    var estimate = Math.round(affordable * budget.estimate_usd * 100) / 100;
+    var text = affordable + (affordable > 1 ? " documents" : " document") + " · ≈ " + fmtUsd(estimate) + " (reste " + fmtUsd(budget.remaining_usd) + " ce mois)";
+    if (affordable < count) text += " · " + (count - affordable) + " au-delà du budget";
+    return { affordable: affordable, estimate_usd: estimate, text: text };
   }
 
   /* The download URLs of a version's four files (part 3), null until the files exist. */
@@ -241,6 +265,8 @@
       /* The generated CV + letter versions of an offer, and a new version on demand (ADR 0017). */
       documents: function (key) { return call("GET", "documents/" + encodeURIComponent(key)); },
       regenerate: function (key) { return call("POST", "documents/" + encodeURIComponent(key) + "/regenerate"); },
+      /* « Générer les manquants »: a pending row per kept offer without one, within the budget. */
+      requestMissing: function () { return call("POST", "documents/missing"); },
       /* « Lancer maintenant » in Exécutions: the Worker answers 202 and runs the pass after. */
       runAi: function () { return call("POST", "ai/run"); },
       runDocuments: function () { return call("POST", "documents/run"); }
@@ -257,6 +283,8 @@
     DOC_TEXT: DOC_TEXT,
     docText: docText,
     docBadge: docBadge,
+    missingDocuments: missingDocuments,
+    budgetSummary: budgetSummary,
     documentLinks: documentLinks,
     statusOf: statusOf,
     isActive: isActive,

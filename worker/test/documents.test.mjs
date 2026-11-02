@@ -14,6 +14,7 @@ import {
   buildTargetedRetry,
   costMicroUsd,
   errorTarget,
+  ESTIMATE_PER_DOCUMENT_USD,
   mergeRetry,
   RETRY_SCHEMA,
   cvLayout,
@@ -719,7 +720,53 @@ describe("API", () => {
     assert.deepEqual((await listDocuments(db)).map((d) => d.version), [2]);
   });
 
+  test("GET /api/applications carries the month's budget, rounded to the cent", async () => {
+    db.raw.prepare("INSERT INTO ai_usage VALUES ('2026-11-01', 'anthropic', ?, 3, 500000, 150000)").run(DOCUMENTS_MODEL);
+    db.raw.prepare("INSERT INTO ai_usage VALUES ('2026-10-30', 'anthropic', ?, 10, 90000000, 9000000)").run(DOCUMENTS_MODEL);
+    const res = await call("/api/applications");
+    const body = await res.json();
+    // 500k * 2 + 150k * 10 = 2.5 $ this month; October does not count
+    assert.deepEqual(body.documents_budget, { monthly_usd: 60, spent_usd: 2.5, remaining_usd: 57.5, estimate_usd: ESTIMATE_PER_DOCUMENT_USD });
+  });
+
+  test("POST /api/documents/missing requests a v1 for kept offers without a row, within the budget", async () => {
+    keep("france_travail:A1", "to_apply");
+    keep("france_travail:B2", "applied");
+    keep("france_travail:C3", "interview");
+    keep("france_travail:D4", "rejected"); // not kept: never requested
+    keep("france_travail:E5", "to_apply");
+    db.raw.prepare("INSERT INTO documents (job_key, version, status, error_code, created_at, updated_at) VALUES (?, 1, 'failed', 'invented_number', ?, ?)")
+      .run("france_travail:E5", NOW.toISOString(), NOW.toISOString()); // failed: has its own « Regénérer »
+    // 59.90 $ spent: room for one document at 0.06 $
+    db.raw.prepare("INSERT INTO ai_usage VALUES ('2026-11-01', 'anthropic', ?, 10, 29950000, 0)").run(DOCUMENTS_MODEL);
+    let res = await call("/api/documents/missing", { method: "POST" });
+    assert.equal(res.status, 200);
+    let body = await res.json();
+    assert.deepEqual([body.requested, body.skipped_budget, body.remaining_usd], [1, 2, 0.1]);
+    assert.deepEqual(body.documents, [{ job_key: "france_travail:A1", version: 1, status: "pending" }]);
+    db.raw.prepare("DELETE FROM ai_usage").run();
+    res = await call("/api/documents/missing", { method: "POST" });
+    body = await res.json();
+    assert.deepEqual([body.requested, body.skipped_budget], [2, 0]);
+    assert.deepEqual(body.documents.map((d) => d.job_key).sort(), ["france_travail:B2", "france_travail:C3"]);
+    res = await call("/api/documents/missing", { method: "POST" }); // idempotent
+    assert.deepEqual(await res.json(), { requested: 0, skipped_budget: 0, remaining_usd: 60, documents: [] });
+    assert.equal(db.raw.prepare("SELECT COUNT(*) AS n FROM documents WHERE status = 'pending'").get().n, 3);
+    assert.equal(db.raw.prepare("SELECT COUNT(*) AS n FROM documents WHERE job_key = 'france_travail:E5'").get().n, 1);
+  });
+
+  test("over budget, /missing requests nothing", async () => {
+    keep();
+    db.raw.prepare("INSERT INTO ai_usage VALUES ('2026-11-01', 'anthropic', ?, 10, 30000000, 0)").run(DOCUMENTS_MODEL);
+    const body = await (await call("/api/documents/missing", { method: "POST" })).json();
+    assert.deepEqual([body.requested, body.skipped_budget, body.remaining_usd], [0, 1, 0]);
+    assert.equal(db.raw.prepare("SELECT COUNT(*) AS n FROM documents").get().n, 0);
+  });
+
   test("the routes keep the Access and origin rules", async () => {
+    assert.equal((await call("/api/documents/missing", { method: "POST", origin: null })).status, 403);
+    assert.equal((await call("/api/documents/missing", { method: "POST", token: null })).status, 401);
+    assert.equal((await call("/api/documents/missing")).status, 405);
     assert.equal((await call(`/api/documents/${KEY}`, { token: null })).status, 401);
     assert.equal((await call(`/api/documents/${KEY}/regenerate`, { method: "POST", origin: null })).status, 403);
     assert.equal((await call("/api/documents/not%20a%20key")).status, 400);

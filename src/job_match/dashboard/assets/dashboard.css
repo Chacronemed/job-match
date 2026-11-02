@@ -688,6 +688,11 @@ select.posting-status { width: 180px; min-height: 32px; }
   select.posting-status { width: 100%; }
   table.data td.col-actions::before { display: none; }
   table.data td.col-actions:empty { display: none; }
+  table.data.apps tr { padding: 10px 14px; border-bottom: 1px solid var(--hairline); }
+  table.data.apps td.apps-title .link-btn { white-space: normal; overflow: visible; min-height: 44px; }
+  table.data.apps td.apps-title::before { display: none; }
+  table.data.apps td.doc-cell .doc-links a, table.data.apps .btn-sm { min-height: 44px; display: inline-flex; align-items: center; }
+  .kb-table-bar { justify-content: space-between; flex-wrap: wrap; }
   .chip-ev { min-height: 44px; }
   .why-grid { grid-template-columns: 1fr; }
   .override { margin-left: 0; }
@@ -749,14 +754,27 @@ body.is-dragging-card { user-select: none; -webkit-user-select: none; }
 .doc-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 6px 0 0; }
 .view-head .view-toggle { margin-left: auto; display: inline-flex; gap: 6px; }
 
-/* The table view (part 4): the same statuses, one row per application. */
+/* The table view (part 4): the same statuses, one row per application. Fixed layout: Offre
+   takes what is left and ellipsizes (full title in the tooltip); Statut, CV, Lettre and
+   Relance are sized for their longest value and never clip. */
 .kb-table[hidden], .kb-board[hidden] { display: none; }
 .kb-table { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.kb-table-bar { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin: 0 0 10px; }
+.kb-table-hint { font-size: 12px; color: var(--ink-muted); }
 table.data.apps th, table.data.apps td { vertical-align: middle; }
-table.data.apps td.apps-title { max-width: 320px; }
-table.data.apps td.apps-title .link-btn { text-align: left; overflow-wrap: anywhere; }
-table.data.apps .kb-status { min-height: 30px; }
+table.data.apps col.w-company { width: 16%; }
+table.data.apps col.w-ai { width: 72px; }
+table.data.apps col.w-status { width: 196px; }
+table.data.apps col.w-doc { width: 126px; }
+table.data.apps col.w-link { width: 76px; }
+table.data.apps col.w-due { width: 150px; }
+table.data.apps td.apps-title .link-btn { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+table.data.apps td.apps-status, table.data.apps td.apps-docs, table.data.apps td.doc-cell, table.data.apps td.apps-due { overflow: visible; text-overflow: clip; }
+table.data.apps td.apps-docs > * { vertical-align: middle; margin-right: 8px; }
+table.data.apps .kb-status { min-height: 30px; max-width: 100%; }
 table.data.apps td.is-due { color: var(--stretch-ink); font-weight: 500; }
+table.data.apps .apps-unknown { color: var(--ink-tertiary); font-style: italic; }
+.btn-sm { min-height: 26px; padding: 2px 10px; font-size: 12px; }
 
 @media (max-width: 1100px) {
   .kb-board { grid-template-columns: repeat(2, minmax(0, 1fr)); }

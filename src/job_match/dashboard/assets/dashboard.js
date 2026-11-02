@@ -384,7 +384,7 @@
 
   /* status: "off" (file:// or no fetch), "loading", "ready", "error". `apps` is what the page
      shows (optimistic), `confirmed` what the API last stored; a failed save goes back to it. */
-  var track = { status: "off", apps: {}, confirmed: {}, decisions: {}, overrides: {}, ai: {}, aiRuns: [], documents: {}, seq: {}, pending: 0 };
+  var track = { status: "off", apps: {}, confirmed: {}, decisions: {}, overrides: {}, ai: {}, aiRuns: [], documents: {}, budget: null, seq: {}, pending: 0 };
 
   /* Candidatures as a Kanban or as a table (ADR 0017 part 4): remembered per browser, and in
      the hash (#candidatures?view=table) so a link opens the same view. */
@@ -499,6 +499,7 @@
       var documents = {};
       (res.documents || []).forEach(function (d) { if (d && typeof d.job_key === "string") documents[d.job_key] = d; });
       track.documents = documents;
+      track.budget = res.documents_budget && typeof res.documents_budget === "object" ? res.documents_budget : null;
       renderAiRuns();
       track.overrides = overrides;
       track.apps = apps;
@@ -1742,8 +1743,22 @@
     return box;
   }
 
+  /* « Générer » / « Regénérer » (record panel and table): one new pending version. The button
+     stays off while the request runs; `onDone(doc)` refreshes the caller's own view. */
+  function requestDocuments(key, button, onDone) {
+    button.disabled = true;
+    api.regenerate(key).then(function (res) {
+      track.documents[key] = res.document;
+      if (onDone) onDone(res.document);
+      showToast("Documents demandés : prêts dans une dizaine de minutes.");
+    }).catch(function (err) {
+      button.disabled = false;
+      showToast(err && err.status === 409 ? "Une génération est déjà en cours." : "Demande refusée.");
+    });
+  }
+
   /* The generated CV + letter (ADR 0017): the latest version's status, and a new version on
-     demand. Downloads come with part 3. */
+     demand. */
   function documentsBlock(j) {
     var doc = track.documents[j.key] || null;
     var state = el("span", { class: "doc-state", role: "status", text: T.docText(doc) });
@@ -1751,15 +1766,7 @@
     var busy = doc && (doc.status === "pending" || doc.status === "running");
     if (busy) button.disabled = true;
     button.addEventListener("click", function () {
-      button.disabled = true;
-      api.regenerate(j.key).then(function (res) {
-        track.documents[j.key] = res.document;
-        state.textContent = T.docText(res.document);
-        showToast("Documents demandés : prêts dans une dizaine de minutes.");
-      }).catch(function (err) {
-        button.disabled = false;
-        showToast(err && err.status === 409 ? "Une génération est déjà en cours." : "Demande refusée.");
-      });
+      requestDocuments(j.key, button, function (d) { state.textContent = T.docText(d); });
     });
     var row = el("div", { class: "doc-row" }, [state, button]);
     var links = T.documentLinks(j.key, doc);
@@ -1946,7 +1953,7 @@
       dates.push("Relance le " + shortDay(app.follow_up_at) + (late > 0 ? " (" + late + " j de retard)" : T.isDue(app, today) ? " (aujourd’hui)" : ""));
     }
     if (dates.length) card.appendChild(el("p", { class: "kb-dates" + (T.isDue(app, today) ? " is-due" : ""), text: dates.join(" · ") }));
-    card.appendChild(el("p", { class: "kb-docs" }, docBadgeEl(track.documents[key] || null)));
+    card.appendChild(el("p", { class: "kb-docs" }, docBadgeEl(track.documents[key] || null, true)));
 
     var actions = el("div", { class: "kb-actions" });
     actions.appendChild(statusMenu(key, j, status));
@@ -1997,19 +2004,66 @@
     return sel;
   }
 
-  /* The documents badge (ADR 0017): the latest version's status. */
-  function docBadgeEl(doc) {
+  /* The documents badge (ADR 0017): the latest version's status. Short in the table
+     (« Échec », the code in the tooltip; « — » without a row), long on the card. */
+  function docBadgeEl(doc, long) {
     var b = T.docBadge(doc);
-    return el("span", { class: "doc-badge kind-" + b.kind, text: b.text });
+    if (long) return el("span", { class: "doc-badge kind-" + b.kind, text: doc ? T.docText(doc) : "Aucun document" });
+    return el("span", { class: "doc-badge kind-" + b.kind, text: b.text, title: b.title || null });
   }
 
-  /* A CV or letter cell: the PDF and DOCX links once rendered, the badge until then. */
+  /* A CV or letter cell: the PDF and DOCX links once rendered, the badge until then. The
+     Worker answers `Content-Disposition: attachment` with the file's name
+     (CV_Prenom_Nom_Entreprise.pdf), so a click downloads in place, no new tab. No `download`
+     attribute: with it Chromium names the file after the URL (cv.pdf) instead. */
   function fileCell(links, kind, doc, label) {
     if (!links) return docBadgeEl(doc);
     return el("span", { class: "doc-links" }, [
-      el("a", { href: links[kind + "_pdf"], download: true, "aria-label": label + " en PDF", text: "PDF ⬇" }),
-      el("a", { href: links[kind + "_docx"], download: true, class: "alt", "aria-label": label + " en DOCX", text: "DOCX" })
+      el("a", { href: links[kind + "_pdf"], class: "doc-dl", "aria-label": label + " en PDF", text: "⬇ PDF" }),
+      el("a", { href: links[kind + "_docx"], class: "doc-dl alt", "aria-label": label + " en DOCX", text: "⬇ DOCX" })
     ]);
+  }
+
+  /* The CV + Lettre cells of a row without files: one cell for both, with « Générer » when
+     the offer has no documents row, « Regénérer » after a failure, the badge while it runs.
+     No button on a rejected or ignored row, nor on an offer the page no longer lists. */
+  function docsCell(k, doc, canGenerate) {
+    var td = el("td", { class: "apps-docs", colspan: 2, "data-label": "CV · Lettre" });
+    var busy = doc && (doc.status === "pending" || doc.status === "running");
+    if (doc || !canGenerate) td.appendChild(docBadgeEl(doc));
+    if (canGenerate && !busy && (!doc || doc.status === "failed")) {
+      var button = el("button", { type: "button", class: "btn btn-sm", text: doc ? "Regénérer" : "Générer" });
+      button.addEventListener("click", function () {
+        requestDocuments(k, button, function () { renderApps(); });
+      });
+      td.appendChild(button);
+    }
+    return td;
+  }
+
+  /* « Générer les manquants » (table header): the count and the estimated cost in a held
+     toast, then one request; the cron or « Lancer maintenant » does the generation. */
+  function generateMissing(button) {
+    var missing = T.missingDocuments(track.apps, track.documents);
+    var summary = T.budgetSummary(track.budget, missing.length);
+    if (!summary.affordable) { showToast(summary.text); return; }
+    showToast("Générer " + summary.text + " ?", [
+      { text: "Confirmer", run: function () {
+        button.disabled = true;
+        api.requestMissing().then(function (res) {
+          (res.documents || []).forEach(function (d) { if (d && d.job_key) track.documents[d.job_key] = d; });
+          var n = res.requested | 0;
+          var text = n + (n > 1 ? " générations demandées" : " génération demandée") + " · prêtes dans une dizaine de minutes";
+          if (res.skipped_budget > 0) text += " · " + res.skipped_budget + " au-delà du budget";
+          showToast(text, [{ text: "Actualiser", run: function () { loadTracking(); } }]);
+          renderApps();
+        }).catch(function (err) {
+          button.disabled = false;
+          showToast("Non demandé (" + failureText(err) + ")");
+        });
+      } },
+      { text: "Annuler", run: function () {} }
+    ], { hold: true, focus: true, onEscape: function () {} });
   }
 
   /* Desktop drag between columns, Pointer Events (no HTML5 drag and drop). The status menu
@@ -2109,6 +2163,7 @@
   /* The table view: one row per application on the board, due ones first, then the most
      recently touched. Same statuses, same menu, plus the downloads. */
   var APP_COLUMNS = ["Offre", "Entreprise", "Score IA", "Statut", "CV", "Lettre", "Lien", "Relance"];
+  var APP_COL_CLASS = { Offre: "title", Entreprise: "company", "Score IA": "ai", Statut: "status", CV: "doc", Lettre: "doc", Lien: "link", Relance: "due" };
   function renderAppsTable(today, keys) {
     var wrap = byId("kb-table");
     clear(wrap);
@@ -2123,11 +2178,18 @@
       wrap.appendChild(el("p", { class: "kb-empty", text: "Garde des offres dans Tri pour les voir ici." }));
       return;
     }
+    var missing = T.missingDocuments(track.apps, track.documents);
+    var gen = el("button", { type: "button", class: "btn", id: "apps-generate-missing", text: "Générer les manquants (" + missing.length + ")" });
+    gen.disabled = !missing.length || track.status !== "ready";
+    gen.addEventListener("click", function () { generateMissing(gen); });
+    wrap.appendChild(el("div", { class: "kb-table-bar" }, [
+      el("span", { class: "kb-table-hint", text: missing.length ? "Sans CV ni lettre : " + missing.length : "Chaque candidature a ses documents." }), gen]));
+    var cols = el("colgroup", null, APP_COLUMNS.map(function (h) { return el("col", { class: "w-" + APP_COL_CLASS[h] }); }));
     var head = el("tr");
     APP_COLUMNS.forEach(function (h) { head.appendChild(el("th", { scope: "col", class: h === "Score IA" ? "num" : null, text: h })); });
     var body = el("tbody");
     rows.forEach(function (k) { body.appendChild(safeNode(k, function () { return appRow(k, today); }, function () { return brokenRow(k); })); });
-    wrap.appendChild(el("table", { class: "data apps", "aria-label": "Candidatures" }, [el("thead", null, head), body]));
+    wrap.appendChild(el("table", { class: "data apps fixed", "aria-label": "Candidatures" }, [cols, el("thead", null, head), body]));
   }
 
   function appRow(k, today) {
@@ -2137,21 +2199,29 @@
       var doc = track.documents[k] || null;
       var links = T.documentLinks(k, doc);
       var tr = el("tr", { "data-key": k });
-      var title = el("button", { type: "button", class: "link-btn", text: j ? (j.title || k) : k });
+      var titleText = j ? (j.title || k) : k;
+      var title = el("button", { type: "button", class: "link-btn", title: titleText, text: titleText });
       if (j) title.addEventListener("click", function () { openRecord(j, title); });
-      tr.appendChild(el("td", { class: "apps-title" }, title));
-      tr.appendChild(el("td", { text: j ? (j.company || "—") : "offre plus affichée" }));
+      tr.appendChild(el("td", { class: "apps-title", "data-label": "Offre" }, title));
+      var company = j ? (j.company || null) : "offre plus affichée";
+      tr.appendChild(el("td", { class: "apps-company", "data-label": "Entreprise", title: company },
+        company ? company : el("span", { class: "apps-unknown", text: "Non communiquée" })));
       var ai = j ? aiOf(j) : null;
-      tr.appendChild(el("td", { class: "num", text: ai ? String(ai.score) : "—" }));
-      tr.appendChild(el("td", null, statusMenu(k, j, T.statusOf(app))));
-      tr.appendChild(el("td", null, fileCell(links, "cv", doc, "CV")));
-      tr.appendChild(el("td", null, fileCell(links, "letter", doc, "Lettre")));
-      tr.appendChild(el("td", { class: "link-col" }, j && j.url && HTTP.test(j.url)
+      tr.appendChild(el("td", { class: "num", "data-label": "Score IA", text: ai ? String(ai.score) : "—" }));
+      tr.appendChild(el("td", { class: "apps-status", "data-label": "Statut" }, statusMenu(k, j, T.statusOf(app))));
+      if (links) {
+        tr.appendChild(el("td", { class: "doc-cell", "data-label": "CV" }, fileCell(links, "cv", doc, "CV")));
+        tr.appendChild(el("td", { class: "doc-cell", "data-label": "Lettre" }, fileCell(links, "letter", doc, "Lettre")));
+      } else {
+        /* the Worker only generates for a kept status and a listed offer (KEEP_STATUSES) */
+        tr.appendChild(docsCell(k, doc, Boolean(j) && T.missingDocuments({ k: app }, {}).length === 1));
+      }
+      tr.appendChild(el("td", { class: "link-col", "data-label": "Lien" }, j && j.url && HTTP.test(j.url)
         ? el("a", { href: j.url, target: "_blank", rel: "noopener noreferrer", "aria-label": "Voir l’offre : " + (j.title || k), text: "Offre ↗" })
         : "—"));
       var due = T.isDue(app, today);
       var late = due ? T.daysBetween(app.follow_up_at, today) : 0;
-      tr.appendChild(el("td", { class: due ? "is-due" : null, text: app.follow_up_at
+      tr.appendChild(el("td", { class: (due ? "is-due " : "") + "apps-due", "data-label": "Relance", text: app.follow_up_at
         ? shortDay(app.follow_up_at) + (late > 0 ? " (" + late + " j de retard)" : due ? " (aujourd’hui)" : "")
         : "—" }));
       return tr;

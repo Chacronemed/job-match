@@ -27,6 +27,9 @@ export const FORBIDDEN_PHRASES = ["sans régression", "zéro régression", "0 r�
 // Cache reads cost less: the estimate is an upper bound, like the rerank report's.
 export const PRICE_IN_PER_M = 2;
 export const PRICE_OUT_PER_M = 10;
+// What one CV + letter costs at most (ADR 0017 « Cost »: about $0.03, $0.06 with the retry);
+// the dashboard shows it before « Générer les manquants », the Worker caps the request by it.
+export const ESTIMATE_PER_DOCUMENT_USD = 0.06;
 export const DOCUMENTS_CRON = "*/10 * * * *";
 export const CREDIT_BACKOFF_HOURS = 6;
 export const ANTHROPIC_VERSION = "2026-10-21";
@@ -788,7 +791,7 @@ export function costMicroUsd(usage) {
   return (usage.tokens_in | 0) * PRICE_IN_PER_M + (usage.tokens_out | 0) * PRICE_OUT_PER_M;
 }
 
-function monthlyBudget(env, opts) {
+export function monthlyBudget(env, opts) {
   if (Number.isInteger(opts.budget)) return opts.budget;
   const fromEnv = Number(env.AI_DOCUMENTS_MONTHLY_USD);
   return Number.isInteger(fromEnv) && fromEnv > 0 ? fromEnv : MONTHLY_BUDGET_USD;
@@ -1095,6 +1098,42 @@ export async function requestDocuments(db, jobKey, now) {
     .bind(jobKey, version, stamp, stamp)
     .first();
   return row;
+}
+
+// The month's documents budget for the dashboard, in dollars rounded to the cent.
+export async function budgetStatus(db, env, now, opts = {}) {
+  const monthly = monthlyBudget(env, opts);
+  const spent = Math.round(await spentThisMonth(db, now) / 10000) / 100;
+  return {
+    monthly_usd: monthly,
+    spent_usd: spent,
+    remaining_usd: Math.max(0, Math.round((monthly - spent) * 100) / 100),
+    estimate_usd: ESTIMATE_PER_DOCUMENT_USD,
+  };
+}
+
+// « Générer les manquants »: one pending v1 row for every kept application that has no
+// documents row at all (a failed one has its own « Regénérer »), oldest first, as many as the
+// remaining budget allows at the estimate. Nothing is launched here: the cron or
+// « Lancer maintenant » takes the rows.
+export async function requestMissingDocuments(db, env, now, opts = {}) {
+  const budget = await budgetStatus(db, env, now, opts);
+  const marks = KEEP_STATUSES.map(() => "?").join(", ");
+  const rows = await db
+    .prepare(
+      "SELECT a.job_key FROM applications a WHERE a.status IN (" + marks + ")" +
+        " AND NOT EXISTS (SELECT 1 FROM documents d WHERE d.job_key = a.job_key) ORDER BY a.updated_at ASC",
+    )
+    .bind(...KEEP_STATUSES)
+    .all();
+  const keys = rows.results.map((r) => r.job_key);
+  const cap = Math.floor(budget.remaining_usd / budget.estimate_usd);
+  const requested = [];
+  for (const key of keys.slice(0, Math.max(0, cap))) {
+    const row = await requestFirstDocuments(db, key, now);
+    if (row) requested.push(row);
+  }
+  return { requested: requested.length, skipped_budget: keys.length - requested.length, remaining_usd: budget.remaining_usd, documents: requested };
 }
 
 // First "Garder": one pending row when the offer has none yet.

@@ -58,10 +58,14 @@ def open_dashboard(browser, dashboard_data):
     html = render_index(data)
     pages = []
 
-    def _open(api, hash_="#candidatures", init_script=None, viewport=(1440, 900)):
-        ctx = browser.new_context(viewport={"width": viewport[0], "height": viewport[1]})
+    def _open(api, hash_="#candidatures", init_script=None, viewport=(1440, 900), routes=None):
+        """`routes`: {(method, path): (status, headers, body)} answered before the 404; the
+        calls made to them are appended to `page.api_calls` as (method, path)."""
+        ctx = browser.new_context(viewport={"width": viewport[0], "height": viewport[1]},
+                                  accept_downloads=True)
         page = ctx.new_page()
         errors = []
+        page.api_calls = []
         page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
         page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
         if init_script:
@@ -69,10 +73,15 @@ def open_dashboard(browser, dashboard_data):
 
         def handle(route, request):
             path = request.url[len(ORIGIN):].split("#")[0]
+            extra = (routes or {}).get((request.method, path))
             if path in ("", "/", "/index.html"):
                 route.fulfill(status=200, content_type="text/html; charset=utf-8", body=html)
             elif path == "/api/applications" and request.method == "GET":
                 route.fulfill(status=200, content_type="application/json", body=json.dumps(api))
+            elif extra is not None:
+                page.api_calls.append((request.method, path))
+                status, headers, body = extra
+                route.fulfill(status=status, headers=headers, body=body)
             elif path.startswith("/api/"):
                 route.fulfill(status=404, content_type="application/json",
                               body='{"error":"not found"}')

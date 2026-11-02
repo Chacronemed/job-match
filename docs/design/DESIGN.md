@@ -124,7 +124,7 @@ Every number in the sidebar, the tab bar and the view heads comes from one funct
 | Counter | Definition |
 |---|---|
 | Tri | Listed offers still « À examiner » (untriaged) whose score is at or above `digest.min_score`; an offer with no score counts, its score is unknown, not low (`triageQueue`) |
-| Candidatures | Tracked offers whose status is on the board (À candidater, Envoyée, Entretien, Refusée), listed or not (a closed offer still counts) |
+| Candidatures | Tracked offers whose status is on the board (À candidater, Envoyée, Entretien, Refusée), listed or not (a closed offer still counts). The Tableau view is fixed-layout: Offre ellipsizes (tooltip), Statut / CV / Lettre never clip; « ⬇ PDF » « ⬇ DOCX » download in place; « Générer » / « Regénérer » (`.btn-sm`) sit in a merged CV · Lettre cell; « Générer les manquants (N) » confirms count and cost in a held toast |
 | Offres | Listed rows: open offers within `jobs.max_age_days`; a group of postings counts once |
 | Leads | Funding leads in the snapshot |
 | Exécutions | Runs in the snapshot (the last 30) |
