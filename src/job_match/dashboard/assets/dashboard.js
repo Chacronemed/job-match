@@ -384,7 +384,7 @@
 
   /* status: "off" (file:// or no fetch), "loading", "ready", "error". `apps` is what the page
      shows (optimistic), `confirmed` what the API last stored; a failed save goes back to it. */
-  var track = { status: "off", apps: {}, confirmed: {}, decisions: {}, overrides: {}, ai: {}, aiRuns: [], documents: {}, budget: null, seq: {}, pending: 0 };
+  var track = { status: "off", apps: {}, confirmed: {}, decisions: {}, overrides: {}, ai: {}, aiRuns: [], documents: {}, budget: null, inbox: { to_confirm: [], history: [] }, seq: {}, pending: 0 };
 
   /* Candidatures as a Kanban or as a table (ADR 0017 part 4): remembered per browser, and in
      the hash (#candidatures?view=table) so a link opens the same view. */
@@ -501,6 +501,7 @@
       (res.documents || []).forEach(function (d) { if (d && typeof d.job_key === "string") documents[d.job_key] = d; });
       track.documents = documents;
       track.budget = res.documents_budget && typeof res.documents_budget === "object" ? res.documents_budget : null;
+      track.inbox = readInbox(res.inbox);
       renderAiRuns();
       track.overrides = overrides;
       track.apps = apps;
@@ -525,6 +526,15 @@
   }
 
   byId("track-retry").addEventListener("click", loadTracking);
+
+  /* The recruiter replies (ADR 0018): the ones waiting for me and the handled ones. */
+  function readInbox(raw) {
+    var ok = function (it) { return it && typeof it === "object" && typeof it.message_id === "string"; };
+    return {
+      to_confirm: raw && Array.isArray(raw.to_confirm) ? raw.to_confirm.filter(ok) : [],
+      history: raw && Array.isArray(raw.history) ? raw.history.filter(ok) : []
+    };
+  }
 
   function fieldId(prefix, j, name) {
     return "t-" + prefix + "-" + j.id + "-" + name;
@@ -561,6 +571,7 @@
     T.STATUSES.forEach(function (s) { status.appendChild(el("option", { value: s, text: T.STATUS_TEXT[s] })); });
     var applied = el("input", { type: "date", autocomplete: "off" });
     var follow = el("input", { type: "date", autocomplete: "off" });
+    var interview = el("input", { type: "date", autocomplete: "off" });
     var cv = el("input", { type: "url", inputmode: "url", autocomplete: "off", spellcheck: "false", placeholder: "https://…" });
     var cvOpen = el("a", { class: "cv-open", target: "_blank", rel: "noopener noreferrer", text: "Ouvrir" });
     var note = el("textarea", { rows: "3", maxlength: String(T.NOTE_MAX), placeholder: "Contact, salaire, prochaine étape…" });
@@ -570,6 +581,7 @@
       field("status", "Statut", status),
       field("applied_at", "Candidature envoyée le", applied),
       field("follow_up_at", "Relance le", follow),
+      field("interview_at", "Entretien le", interview),
       field("cv_url", "CV envoyé", cv, cvOpen),
       field("note", "Note", note, counter)
     ]);
@@ -597,6 +609,7 @@
       status.value = r.status;
       applied.value = r.applied_at;
       follow.value = r.follow_up_at;
+      interview.value = r.interview_at;
       cv.value = r.cv_url;
       note.value = r.note;
       syncExtras();
@@ -618,6 +631,7 @@
         status: status.value,
         applied_at: applied.value,
         follow_up_at: follow.value,
+        interview_at: interview.value,
         note: note.value,
         cv_url: cv.value.trim()
       };
@@ -701,7 +715,7 @@
     verdictBlock.addEventListener("keydown", function (ev) { ev.stopPropagation(); });
 
     var noteTimer;
-    [status, applied, follow, cv].forEach(function (c) { c.addEventListener("change", commit); });
+    [status, applied, follow, interview, cv].forEach(function (c) { c.addEventListener("change", commit); });
     cv.addEventListener("input", syncExtras);
     note.addEventListener("input", function () {
       syncExtras();
@@ -1741,7 +1755,25 @@
     if (j.postings) box.appendChild(el("section", { class: "record-sec" }, [postingsBlock(j)]));
     box.appendChild(el("section", { class: "record-sec" }, [el("h3", { text: "Suivi" }), form]));
     if (j.key && track.status === "ready") box.appendChild(el("section", { class: "record-sec" }, [documentsBlock(j)]));
+    if (j.key && track.status === "ready") {
+      var replies = T.inboxHistoryFor(j.key, track.inbox.history.concat(track.inbox.to_confirm));
+      if (replies.length) box.appendChild(el("section", { class: "record-sec" }, [inboxHistoryBlock(replies)]));
+    }
     return box;
+  }
+
+  /* « Réponses reçues » in the record panel (ADR 0018): every reply attached to this offer. */
+  function inboxHistoryBlock(replies) {
+    var list = el("ul", { class: "inbox-history" });
+    replies.forEach(function (it) {
+      list.appendChild(el("li", null, [
+        el("span", { class: "inbox-date", text: it.received_at ? fmtShortDate(it.received_at) : "—" }),
+        el("span", { class: "inbox-kind kind-" + (it.kind || "none"), text: T.inboxKindText(it.kind) }),
+        el("span", { class: "inbox-subject", text: it.subject || "(sans objet)" }),
+        el("span", { class: "inbox-state", text: T.INBOX_STATE_TEXT[it.state] || it.state })
+      ]));
+    });
+    return el("div", { class: "inbox-block" }, [el("h3", { text: "Réponses reçues" }), list]);
   }
 
   /* « Générer » / « Regénérer » (record panel and table): one new pending version. The button
@@ -1984,6 +2016,7 @@
       var late = T.isDue(app, today) ? T.daysBetween(app.follow_up_at, today) : 0;
       dates.push("Relance le " + shortDay(app.follow_up_at) + (late > 0 ? " (" + late + " j de retard)" : T.isDue(app, today) ? " (aujourd’hui)" : ""));
     }
+    if (app.interview_at) dates.push("Entretien le " + shortDay(app.interview_at));
     if (dates.length) card.appendChild(el("p", { class: "kb-dates" + (T.isDue(app, today) ? " is-due" : ""), text: dates.join(" · ") }));
     card.appendChild(el("p", { class: "kb-docs" }, docBadgeEl(track.documents[key] || null, true)));
 
@@ -2150,6 +2183,7 @@
     board.hidden = appsView === "table";
     byId("kb-table").hidden = appsView !== "table";
     byId("kb-off").hidden = canTriage() || track.status === "loading";
+    renderInbox();
     var keys = boardKeys();
     var dueKeys = Object.keys(track.apps).filter(function (k) { return T.isDue(track.apps[k], today); })
       .sort(function (a, b) { return track.apps[a].follow_up_at < track.apps[b].follow_up_at ? -1 : 1; });
@@ -2191,6 +2225,95 @@
       board.appendChild(col);
     });
     updateCounts();
+  }
+
+  /* « Réponses à confirmer » (ADR 0018): the recruiter replies the Worker did not apply by
+     itself (unsure, or neither an interview nor a refusal). Valider applies the proposed
+     verdict, Corriger lets me pick the application, the kind and the date, Ignorer archives.
+     The item leaves the block as soon as the Worker answers; the application it returns
+     replaces the one on screen. */
+  function renderInbox() {
+    var box = byId("kb-inbox");
+    if (!box) return;
+    clear(box);
+    var items = track.status === "ready" ? track.inbox.to_confirm : [];
+    box.hidden = items.length === 0;
+    if (!items.length) return;
+    box.appendChild(el("h3", { class: "kb-inbox-title", text: "Réponses à confirmer (" + items.length + ")" }));
+    var list = el("div", { class: "inbox-list" });
+    items.forEach(function (it) { list.appendChild(safeNode(it.message_id, function () { return inboxItem(it); }, function () { return el("p", { class: "kb-empty", text: "Réponse illisible" }); })); });
+    box.appendChild(list);
+  }
+
+  function inboxDone(it, res) {
+    track.inbox.to_confirm = track.inbox.to_confirm.filter(function (x) { return x.message_id !== it.message_id; });
+    if (res && res.item) track.inbox.history.unshift(res.item);
+    if (res && res.application && res.application.job_key) {
+      track.apps[res.application.job_key] = track.confirmed[res.application.job_key] = res.application;
+      refreshBadges(res.application.job_key);
+    }
+    renderApps();
+  }
+
+  function inboxItem(it) {
+    var summary = T.inboxSummary(it, postingByKey);
+    var art = el("article", { class: "inbox-item", "data-id": it.message_id });
+    var head = el("p", { class: "inbox-head" }, [
+      el("span", { class: "inbox-kind kind-" + (it.kind || "none"), text: T.inboxKindText(it.kind) }),
+      it.confidence !== null && it.confidence !== undefined ? el("span", { class: "inbox-conf", text: T.confidenceText(it.confidence) }) : null,
+      el("span", { class: "inbox-date", text: it.received_at ? fmtShortDate(it.received_at) : "" })
+    ]);
+    art.appendChild(head);
+    art.appendChild(el("p", { class: "inbox-subject", text: it.subject || "(sans objet)" }));
+    art.appendChild(el("p", { class: "inbox-meta", text: [it.sender_domain || "expéditeur inconnu", summary.text].join(" → ") }));
+    if (it.interview_at) art.appendChild(el("p", { class: "inbox-meta", text: "Entretien le " + shortDay(it.interview_at) }));
+
+    var actions = el("div", { class: "inbox-actions" });
+    var validate = el("button", { type: "button", class: "btn btn-primary btn-small", text: "Valider" });
+    var correct = el("button", { type: "button", class: "btn btn-small", text: "Corriger" });
+    var ignore = el("button", { type: "button", class: "btn btn-small", text: "Ignorer" });
+    var needsKey = (it.kind === "entretien" || it.kind === "refus") && !summary.key;
+    if (!it.kind || needsKey) validate.disabled = true;
+    actions.appendChild(validate); actions.appendChild(correct); actions.appendChild(ignore);
+    art.appendChild(actions);
+    var form = null;
+
+    function send(body, text) {
+      [validate, correct, ignore].forEach(function (b) { b.disabled = true; });
+      api.inboxAct(it.message_id, body).then(function (res) {
+        showToast(text);
+        inboxDone(it, res);
+      }).catch(function (err) {
+        [validate, correct, ignore].forEach(function (b) { b.disabled = false; });
+        if (!it.kind || needsKey) validate.disabled = true;
+        showToast("Non enregistré (" + failureText(err) + ")", [{ text: "Réessayer", run: function () { send(body, text); } }]);
+      });
+    }
+    validate.addEventListener("click", function () { send({ action: "confirm" }, "Réponse validée"); });
+    ignore.addEventListener("click", function () { send({ action: "ignore" }, "Réponse ignorée"); });
+    correct.addEventListener("click", function () {
+      if (form) { form.hidden = !form.hidden; return; }
+      var target = el("select", { name: "application_key", "aria-label": "Candidature concernée" });
+      T.inboxTargets(track.apps, postingByKey).forEach(function (k) {
+        var j = postingByKey[k];
+        target.appendChild(el("option", { value: k, text: j ? [j.title || k, j.company || null].filter(Boolean).join(" · ") : k }));
+      });
+      if (summary.key) target.value = summary.key;
+      var kind = el("select", { name: "kind", "aria-label": "Type de réponse" });
+      T.INBOX_KINDS.forEach(function (k) { kind.appendChild(el("option", { value: k, text: T.INBOX_KIND_TEXT[k] })); });
+      kind.value = it.kind && T.INBOX_KINDS.indexOf(it.kind) >= 0 ? it.kind : "autre";
+      var date = el("input", { type: "date", name: "interview_at", "aria-label": "Date d’entretien", value: it.interview_at || "", autocomplete: "off" });
+      var save = el("button", { type: "button", class: "btn btn-primary btn-small", text: "Enregistrer" });
+      save.addEventListener("click", function () {
+        if (!target.value) { target.focus(); return; }
+        if (date.value && !T.isDay(date.value)) { date.focus(); return; }
+        send({ action: "correct", application_key: target.value, kind: kind.value, interview_at: date.value || null }, "Réponse corrigée");
+      });
+      form = el("div", { class: "inbox-correct" }, [target, kind, date, save]);
+      art.appendChild(form);
+      target.focus();
+    });
+    return art;
   }
 
   /* The table view: one row per application on the board, due ones first, then the most

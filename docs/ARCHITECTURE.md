@@ -414,6 +414,11 @@ deployed `data.json`, sends each new offer above the digest threshold with an an
 Claude API (Haiku), falls back to Workers AI, stores strict JSON verdicts in D1, and the dashboard orders the
 Tri by them. The core runs without it; the scores are never averaged.
 
+**Recruiter inbox (M27, ADR 0018).** n8n posts each reply to `POST /api/inbox` with an Access service token
+(accepted on that route and `GET /api/followups/due` only); the Worker (`worker/src/inbox.js`) has Haiku
+classify it against my sent applications, applies a sure interview or refusal, parks the rest for the
+dashboard's « Réponses à confirmer » block. The email text is never stored nor logged.
+
 ---
 
 ## 10. career-ops companion-tool strategy

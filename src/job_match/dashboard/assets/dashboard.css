@@ -716,6 +716,30 @@ select.posting-status { width: 180px; min-height: 32px; }
 
 /* ---------- Candidatures ---------- */
 
+/* « Réponses à confirmer » (ADR 0018) */
+.kb-inbox { margin: 0 0 16px; padding: 12px 16px; border-radius: var(--r-lg); background: var(--primary-soft); }
+.kb-inbox[hidden] { display: none; }
+.kb-inbox-title { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--primary); }
+.inbox-list { display: grid; gap: 8px; }
+.inbox-item { padding: 10px 12px; border-radius: var(--r-md); background: var(--surface-2); min-width: 0; }
+.inbox-head { margin: 0 0 4px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; color: var(--ink-muted); }
+.inbox-kind { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 500; background: var(--surface-3); color: var(--ink-muted); }
+.inbox-kind.kind-entretien { background: var(--primary-soft); color: var(--primary); }
+.inbox-kind.kind-refus { background: var(--danger-soft, #3a1d1d); color: var(--danger, #f08080); }
+.inbox-kind.kind-relance_recruteur { background: var(--stretch-soft); color: var(--stretch-ink); }
+.inbox-conf, .inbox-date, .inbox-state { font-variant-numeric: tabular-nums; }
+.inbox-subject { margin: 0 0 2px; font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
+.inbox-meta { margin: 0 0 6px; font-size: 12px; color: var(--ink-subtle); overflow-wrap: anywhere; }
+.inbox-actions, .inbox-correct { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.inbox-correct { margin-top: 8px; }
+.inbox-correct select, .inbox-correct input { min-width: 0; max-width: 100%; font-size: 12px; }
+.inbox-history { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; font-size: 12px; }
+.inbox-history li { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.inbox-history .inbox-subject { font-size: 12px; font-weight: 400; flex: 1 1 160px; }
+.inbox-state { color: var(--ink-tertiary); }
+@media (max-width: 768px) {
+  .inbox-actions .btn, .inbox-correct .btn, .inbox-correct select, .inbox-correct input { min-height: 44px; }
+}
 .kb-due { margin: 0 0 16px; padding: 12px 16px; border-radius: var(--r-lg); background: var(--stretch-soft); }
 .kb-due[hidden] { display: none; }
 .kb-due-title { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--stretch-ink); }

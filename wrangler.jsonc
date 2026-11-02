@@ -28,9 +28,14 @@
 	},
 	// AI_DOCUMENTS_MONTHLY_USD caps the month's estimated spend on the documents model
 	// (config/settings.yaml documents.monthly_budget_usd repeats it, a test keeps them equal).
+	// AI_INBOX_DAILY_LIMIT caps the Haiku calls the recruiter inbox makes a day (ADR 0018;
+	// config/settings.yaml ai.inbox_daily_limit repeats it). ACCESS_SERVICE_CN, the Client ID of
+	// the Access service token n8n uses (the JWT's common_name, "<hex>.access"), is a Worker
+	// secret like the other Access identifiers: this file is public.
 	"vars": {
 		"AI_DAILY_LIMIT": "100",
-		"AI_DOCUMENTS_MONTHLY_USD": "60"
+		"AI_DOCUMENTS_MONTHLY_USD": "60",
+		"AI_INBOX_DAILY_LIMIT": "50"
 	},
 	// Workers AI, the fallback once the Claude API says the credit is spent.
 	"ai": {

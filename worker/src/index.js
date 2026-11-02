@@ -16,7 +16,13 @@
 //   POST /api/documents/run  -> 202 {started, kind}  (the documents pass, now, in the background)
 //   POST /api/documents/missing -> {requested, skipped_budget, remaining_usd, documents}
 //                               (a pending row per kept offer without one, within the budget)
-// Every API call needs a valid Access JWT and a same-origin request. JSON only, no CORS.
+//   POST /api/inbox              -> 201 {message_id, state, kind, confidence, proposed_key, ai}
+//                                   (a recruiter email from n8n, classified by Haiku; ADR 0018)
+//   GET  /api/followups/due      -> {today, due: [{key, title, company, url, applied_at, follow_up_at}]}
+//   PUT  /api/inbox/:message_id  -> {item, application}  (Valider / Corriger / Ignorer)
+// Every API call needs a valid Access JWT: my login (an `email` claim) everywhere, or the Access
+// service token whose Client ID is the ACCESS_SERVICE_CN secret (the `common_name` claim) on
+// /api/inbox and /api/followups/due only. Browser calls must be same-origin; JSON only, no CORS.
 // Request bodies, notes and URLs are never logged. The crons (`scheduled`) run the AI rerank
 // (ai.js, ADR 0016, twice a day) and the documents generation (documents.js, ADR 0017, every
 // ten minutes) and log their counters only.
@@ -40,10 +46,23 @@ import {
   runDocuments,
 } from "./documents.js";
 import { MIME } from "./render.js";
-import { JwksUnavailable, verifyAccessJwt } from "./auth.js";
-import { isJobKey, isSkill, validateApplication, validateDecision } from "./validate.js";
+import { actOnInbox, handleInbox, listFollowupsDue, listInbox } from "./inbox.js";
+import { day, loadAsset } from "./ai.js";
+import { JwksUnavailable, principalOf, verifyAccessJwt } from "./auth.js";
+import {
+  isJobKey,
+  isMessageId,
+  isSkill,
+  validateApplication,
+  validateDecision,
+  validateInboxAction,
+  validateInboxMessage,
+} from "./validate.js";
 
 const MAX_BODY = 8 * 1024;
+const INBOX_MAX_BODY = 64 * 1024; // an email, cut to 4 000 characters before the model anyway
+// The routes a service token may call (ADR 0018); everything else is mine alone.
+const SERVICE_ROUTES = new Set(["/api/inbox", "/api/followups/due"]);
 const BASE_HEADERS = {
   "Content-Type": "application/json; charset=utf-8",
   "Cache-Control": "no-store",
@@ -65,13 +84,13 @@ function sameOrigin(request, url) {
   return origin === url.origin; // writes must say where they come from
 }
 
-async function readJson(request) {
+async function readJson(request, limit = MAX_BODY) {
   const type = request.headers.get("Content-Type") || "";
   if (!/^application\/json(\s*;|$)/i.test(type)) return { error: [415, "body: must be application/json"] };
   const declared = Number(request.headers.get("Content-Length") || 0);
-  if (declared > MAX_BODY) return { error: [413, "body: too large"] };
+  if (declared > limit) return { error: [413, "body: too large"] };
   const text = await request.text();
-  if (text.length > MAX_BODY) return { error: [413, "body: too large"] };
+  if (text.length > limit) return { error: [413, "body: too large"] };
   try {
     return { body: JSON.parse(text) };
   } catch {
@@ -81,7 +100,7 @@ async function readJson(request) {
 
 async function listApplications(env) {
   const apps = await env.DB.prepare(
-    "SELECT job_key, status, applied_at, follow_up_at, note, cv_url, updated_at" +
+    "SELECT job_key, status, applied_at, follow_up_at, interview_at, note, cv_url, updated_at, sent_documents_version" +
       " FROM applications ORDER BY updated_at DESC",
   ).all();
   // The latest verdict per job, enough for the dashboard to show it.
@@ -100,6 +119,7 @@ async function listApplications(env) {
     ai_runs: await listRuns(env.DB),
     documents: await listDocuments(env.DB),
     documents_budget: await budgetStatus(env.DB, env, new Date()),
+    inbox: await listInbox(env.DB),
   });
 }
 
@@ -132,14 +152,15 @@ async function putApplication(request, env, key) {
   if (checked.error) return fail(400, checked.error);
   const a = checked.value;
   const row = await env.DB.prepare(
-    "INSERT INTO applications (job_key, status, applied_at, follow_up_at, note, cv_url, updated_at)" +
-      " VALUES (?, ?, ?, ?, ?, ?, ?)" +
+    "INSERT INTO applications (job_key, status, applied_at, follow_up_at, interview_at, note, cv_url, updated_at)" +
+      " VALUES (?, ?, ?, ?, ?, ?, ?, ?)" +
       " ON CONFLICT(job_key) DO UPDATE SET status = excluded.status," +
       " applied_at = excluded.applied_at, follow_up_at = excluded.follow_up_at," +
+      " interview_at = excluded.interview_at," +
       " note = excluded.note, cv_url = excluded.cv_url, updated_at = excluded.updated_at" +
-      " RETURNING job_key, status, applied_at, follow_up_at, note, cv_url, updated_at",
+      " RETURNING job_key, status, applied_at, follow_up_at, interview_at, note, cv_url, updated_at",
   )
-    .bind(key, a.status, a.applied_at, a.follow_up_at, a.note, a.cv_url, new Date().toISOString())
+    .bind(key, a.status, a.applied_at, a.follow_up_at, a.interview_at, a.note, a.cv_url, new Date().toISOString())
     .first();
   // "Garder" asks for the documents once; "Candidature envoyée" remembers which version went.
   const now = new Date();
@@ -209,6 +230,32 @@ async function postDecision(request, env) {
   return json(201, { decision: row });
 }
 
+// n8n's email (ADR 0018): validated, cut, classified, stored without its text. The log line
+// carries the state and the AI outcome only.
+async function postInbox(request, env) {
+  const read = await readJson(request, INBOX_MAX_BODY);
+  if (read.error) return fail(...read.error);
+  const checked = validateInboxMessage(read.body);
+  if (checked.error) return fail(400, checked.error);
+  const out = await handleInbox(env, checked.value);
+  if (out.status === 201) console.log("inbox " + out.body.state + " kind=" + (out.body.kind || "none") + " ai=" + out.body.ai);
+  return json(out.status, out.body);
+}
+
+async function getFollowupsDue(env) {
+  const today = day(new Date());
+  return json(200, { today, due: await listFollowupsDue(env.DB, await loadAsset(env, "/data.json"), today) });
+}
+
+async function putInbox(request, env, id) {
+  const read = await readJson(request);
+  if (read.error) return fail(...read.error);
+  const checked = validateInboxAction(read.body);
+  if (checked.error) return fail(400, checked.error);
+  const out = await actOnInbox(env.DB, id, checked.value, new Date());
+  return json(out.status, out.body);
+}
+
 function decodeKey(segment) {
   try {
     return decodeURIComponent(segment);
@@ -227,6 +274,17 @@ async function route(request, env, url, ctx) {
     const pass = kind === "ai" ? runScheduled(env) : runDocumentsScheduled(env);
     if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(pass); else pass.catch(() => {});
     return json(202, { started: true, kind });
+  }
+  if (path === "/api/inbox") {
+    return request.method === "POST" ? postInbox(request, env) : fail(405, "method not allowed");
+  }
+  if (path === "/api/followups/due") {
+    return request.method === "GET" ? getFollowupsDue(env) : fail(405, "method not allowed");
+  }
+  if (path.startsWith("/api/inbox/")) {
+    const id = decodeKey(path.slice("/api/inbox/".length));
+    if (!isMessageId(id)) return fail(400, "message_id: invalid");
+    return request.method === "PUT" ? putInbox(request, env, id) : fail(405, "method not allowed");
   }
   if (path === "/api/documents/missing") {
     if (request.method !== "POST") return fail(405, "method not allowed");
@@ -290,8 +348,11 @@ export async function handleApi(request, env, ctx) {
     if (err instanceof JwksUnavailable) return fail(503, "auth keys unavailable");
     return fail(401, "unauthenticated");
   }
-  if (!identity) return fail(401, "unauthenticated");
-  if (!sameOrigin(request, url)) return fail(403, "cross-origin request refused");
+  const who = principalOf(identity, env);
+  if (!who) return fail(401, "unauthenticated");
+  // A machine (n8n) reaches two routes and sends no Origin; a browser must be same-origin.
+  if (who.kind === "service" && !SERVICE_ROUTES.has(url.pathname)) return fail(403, "service token: route not allowed");
+  if (who.kind === "user" && !sameOrigin(request, url)) return fail(403, "cross-origin request refused");
   try {
     return await route(request, env, url, ctx);
   } catch {
