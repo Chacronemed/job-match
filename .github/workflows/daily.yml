@@ -55,6 +55,14 @@ jobs:
           ssh-keyscan github.com >> ~/.ssh/known_hosts
           git config --global core.sshCommand "ssh -i ~/.ssh/data_deploy_key -F /dev/null"
 
+      # Diagnostic: the key's fingerprint (never the key) and GitHub's answer to it. With a
+      # deploy key `ssh -T` exits 1 after "Hi Chacronemed/job-match-data!": that line is the
+      # check, so the exit code is not fatal here; a failing clone right after is.
+      - name: Check data-repo key
+        run: |
+          ssh-keygen -lf ~/.ssh/data_deploy_key
+          ssh -T -i ~/.ssh/data_deploy_key -F /dev/null -o IdentitiesOnly=yes git@github.com || true
+
       - name: Clone data repo
         run: |
           git clone --depth=1 git@github.com:Chacronemed/job-match-data.git data-repo
