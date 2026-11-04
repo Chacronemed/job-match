@@ -1791,6 +1791,75 @@
     });
   }
 
+  /* Rendering in the browser (ADR 0019). The Worker's own render.js is served as a module
+     (assets/render.js); its three libraries (pdf-lib, fontkit, fflate, browser builds in
+     vendor/) and the two Inter TTFs (fonts/) are fetched on the first click only, once.
+     Everything is same-origin (CSP script-src 'self'). The contact details come from
+     content.json's `contact` (R2), the text from `content`, the facts from `master`. */
+  var VENDOR_SCRIPTS = ["vendor/pdf-lib.min.js", "vendor/fontkit.umd.min.js", "vendor/fflate.js"];
+  var renderer = { libs: null, module: null, fonts: null };
+  function loadScript(src) {
+    return new Promise(function (resolve, reject) {
+      var tag = el("script", { src: src });
+      tag.addEventListener("load", function () { resolve(); });
+      tag.addEventListener("error", function () { reject(new Error("script " + src)); });
+      document.head.appendChild(tag);
+    });
+  }
+  function loadRenderer() {
+    if (!renderer.libs) {
+      renderer.libs = VENDOR_SCRIPTS.reduce(function (p, src) { return p.then(function () { return loadScript(src); }); }, Promise.resolve())
+        .catch(function (err) { renderer.libs = null; throw err; });
+    }
+    if (!renderer.module) {
+      renderer.module = renderer.libs.then(function () { return import("./assets/render.js"); })
+        .catch(function (err) { renderer.module = null; throw err; });
+    }
+    if (!renderer.fonts) {
+      renderer.fonts = Promise.all([api.bytes("fonts/Inter-Regular.ttf"), api.bytes("fonts/Inter-Bold.ttf")])
+        .then(function (b) { return { regular: b[0], bold: b[1] }; })
+        .catch(function (err) { renderer.fonts = null; throw err; });
+    }
+    return Promise.all([renderer.module, renderer.fonts]).then(function (r) { return { R: r[0], fonts: r[1] }; });
+  }
+  /* One file of one version: the bundle -> the template's model -> bytes, named by the
+     template (fileName). `kind` is cv | letter, `ext` pdf | docx. */
+  function renderDocument(bundle, kind, ext, R, fonts) {
+    var now = new Date();
+    var model = kind === "cv" ? R.cvModel(bundle.content, bundle.master, bundle.contact) : R.letterModel(bundle.content, bundle.contact, now);
+    var company = bundle.content.offer ? bundle.content.offer.company : "";
+    /* the same names renderAll gives: CV_, Lettre_ or Cover_letter_ */
+    var label = kind === "cv" ? "CV" : (model.language === "en" ? "Cover_letter" : "Lettre");
+    var name = R.fileName(label, bundle.contact, company, ext);
+    var bytes;
+    if (ext === "pdf") bytes = kind === "cv" ? R.renderCvPdf(model, fonts) : R.renderLetterPdf(model, fonts);
+    else bytes = kind === "cv" ? R.renderCvDocx(model) : R.renderLetterDocx(model);
+    return Promise.resolve(bytes).then(function (b) { return { name: name, bytes: b, type: R.MIME[ext] }; });
+  }
+  function saveBlob(file) {
+    var url = URL.createObjectURL(new Blob([file.bytes], { type: file.type }));
+    var a = el("a", { href: url, download: file.name });
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { a.remove(); URL.revokeObjectURL(url); }, 1000);
+  }
+  function downloadDocument(key, version, kind, ext, link) {
+    if (link.getAttribute("aria-busy") === "true") return;
+    var text = link.textContent;
+    link.setAttribute("aria-busy", "true");
+    link.textContent = "Rendu\u2026";
+    Promise.all([api.content(key, version), loadRenderer()]).then(function (r) {
+      return renderDocument(r[0], kind, ext, r[1].R, r[1].fonts);
+    }).then(function (file) {
+      saveBlob(file);
+    }).catch(function (err) {
+      showToast("Document non t\u00e9l\u00e9charg\u00e9 (" + failureText(err) + ")");
+    }).then(function () {
+      link.removeAttribute("aria-busy");
+      link.textContent = text;
+    });
+  }
+
   /* After « Générer » the Worker runs the pass at once: the table refreshes its documents
      every WATCH_MS while one of the watched offers is pending or running, WATCH_MAX times at
      most (two minutes), quietly (no loading state, nothing else of the tracking is touched).
@@ -1835,8 +1904,8 @@
     var row = el("div", { class: "doc-row" }, [state, button]);
     var links = T.documentLinks(j.key, doc);
     if (links) {
-      row.appendChild(el("span", { class: "doc-links" }, [el("span", { text: "CV :" }), fileCell(links, "cv", doc, "CV")]));
-      row.appendChild(el("span", { class: "doc-links" }, [el("span", { text: "Lettre :" }), fileCell(links, "letter", doc, "Lettre")]));
+      row.appendChild(el("span", { class: "doc-links" }, [el("span", { text: "CV :" }), fileCell(links, "cv", doc, "CV", j.key)]));
+      row.appendChild(el("span", { class: "doc-links" }, [el("span", { text: "Lettre :" }), fileCell(links, "letter", doc, "Lettre", j.key)]));
     }
     return el("div", { class: "documents" }, [el("h3", { text: "Documents" }), row]);
   }
@@ -2077,16 +2146,20 @@
     return el("span", { class: "doc-badge kind-" + b.kind, text: b.text, title: b.title || null });
   }
 
-  /* A CV or letter cell: the PDF and DOCX links once rendered, the badge until then. The
-     Worker answers `Content-Disposition: attachment` with the file's name
-     (CV_Prenom_Nom_Entreprise.pdf), so a click downloads in place, no new tab. No `download`
-     attribute: with it Chromium names the file after the URL (cv.pdf) instead. */
-  function fileCell(links, kind, doc, label) {
+  /* A CV or letter cell: the PDF and DOCX links once the version is ready, the badge until
+     then. A click renders the file here (ADR 0019) and saves it under the template's name
+     (CV_Prenom_Nom_Entreprise.pdf) through a blob link: no new tab, no server rendering. */
+  function fileCell(links, kind, doc, label, key) {
     if (!links) return docBadgeEl(doc);
-    return el("span", { class: "doc-links" }, [
-      el("a", { href: links[kind + "_pdf"], class: "doc-dl", "aria-label": label + " en PDF", text: "⬇ PDF" }),
-      el("a", { href: links[kind + "_docx"], class: "doc-dl alt", "aria-label": label + " en DOCX", text: "⬇ DOCX" })
-    ]);
+    function link(ext, cls) {
+      var a = el("a", { href: "#", class: cls, "aria-label": label + " en " + ext.toUpperCase(), text: "\u2b07 " + ext.toUpperCase() });
+      a.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        downloadDocument(key, links.version, kind, ext, a);
+      });
+      return a;
+    }
+    return el("span", { class: "doc-links" }, [link("pdf", "doc-dl"), link("docx", "doc-dl alt")]);
   }
 
   /* The CV + Lettre cells of a row without files: one cell for both, with « Générer » when
@@ -2366,8 +2439,8 @@
       tr.appendChild(el("td", { class: "num", "data-label": "Score IA", text: ai ? String(ai.score) : "—" }));
       tr.appendChild(el("td", { class: "apps-status", "data-label": "Statut" }, statusMenu(k, j, T.statusOf(app))));
       if (links) {
-        tr.appendChild(el("td", { class: "doc-cell", "data-label": "CV" }, fileCell(links, "cv", doc, "CV")));
-        tr.appendChild(el("td", { class: "doc-cell", "data-label": "Lettre" }, fileCell(links, "letter", doc, "Lettre")));
+        tr.appendChild(el("td", { class: "doc-cell", "data-label": "CV" }, fileCell(links, "cv", doc, "CV", k)));
+        tr.appendChild(el("td", { class: "doc-cell", "data-label": "Lettre" }, fileCell(links, "letter", doc, "Lettre", k)));
       } else {
         /* the Worker only generates for a kept status and a listed offer (KEEP_STATUSES) */
         tr.appendChild(docsCell(k, doc, Boolean(j) && T.missingDocuments({ k: app }, {}).length === 1));

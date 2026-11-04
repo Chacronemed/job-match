@@ -225,3 +225,16 @@ describe("renderAll", () => {
     for (const f of files) assert.ok(f.bytes.length > 1000, f.name);
   });
 });
+
+describe("the renderer runs in the browser too (ADR 0019)", () => {
+  test("render.js uses no Node API and only the three imports the page rewrites to globals", () => {
+    const text = readFileSync(new URL("../src/render.js", import.meta.url), "utf8");
+    for (const word of ["Buffer", "process.", "require(", "node:", "import.meta"]) assert.ok(!text.includes(word), word);
+    const imports = [...text.matchAll(/^import .*$/gm)].map((m) => m[0]);
+    assert.deepEqual(imports, [
+      'import fontkit from "@pdf-lib/fontkit";',
+      'import { strToU8, zipSync } from "fflate";',
+      'import { PDFDocument, rgb } from "pdf-lib";',
+    ]);
+  });
+});

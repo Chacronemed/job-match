@@ -25,6 +25,7 @@ def test_assets_are_served_first_and_the_worker_only_runs_on_the_api():
     assert cfg["assets"]["binding"] == "ASSETS"
     assert cfg["assets"]["run_worker_first"] == ["/api/*"]
     assert "compatibility_date" in cfg
+    assert "rules" not in cfg  # no font bundled: the Worker renders nothing (ADR 0019)
 
 
 def test_one_d1_database_with_the_repo_migrations():

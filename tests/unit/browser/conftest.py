@@ -11,10 +11,13 @@ import pytest
 
 from job_match.config.schema import Settings
 from job_match.dashboard.data import build_dashboard_data
-from job_match.dashboard.render import render_index
+from job_match.dashboard.render import render_index, write_site
 from job_match.persistence.db import Database
 
 ORIGIN = "http://jm.test"
+# the files the page may fetch after load: the renderer, its libraries, the PDF fonts
+STATIC_TYPES = {".js": "text/javascript", ".ttf": "font/ttf", ".json": "application/json",
+                ".md": "text/markdown", ".txt": "text/plain"}
 
 
 def _require(reason):
@@ -48,14 +51,17 @@ def dashboard_data(seed_dashboard):
 
 
 @pytest.fixture
-def open_dashboard(browser, dashboard_data):
+def open_dashboard(browser, dashboard_data, tmp_path):
     """`open_dashboard(api, hash, init_script=None)` -> (page, errors).
 
-    Serves the rendered page at ORIGIN and answers `GET /api/applications` with `api`;
-    `errors` collects console errors and uncaught exceptions as they happen.
+    Serves the rendered page at ORIGIN, the files `write_site` writes next to it (the document
+    renderer, its libraries and the PDF fonts, ADR 0019) and answers `GET /api/applications`
+    with `api`; `errors` collects console errors and uncaught exceptions as they happen.
     """
     data, _seed = dashboard_data
     html = render_index(data)
+    site = tmp_path / "site"
+    write_site(data, site)
     pages = []
 
     def _open(api, hash_="#candidatures", init_script=None, viewport=(1440, 900), routes=None):
@@ -89,7 +95,13 @@ def open_dashboard(browser, dashboard_data):
             elif path.startswith("/api/"):
                 route.fulfill(status=404, content_type="application/json",
                               body='{"error":"not found"}')
-            else:  # manifest, icons, the font: present in a deployed site, empty here
+            elif (site / path.lstrip("/")).is_file():
+                file = site / path.lstrip("/")
+                if file.suffix in (".js", ".ttf"):  # what a download fetches, not the page font
+                    page.api_calls.append((request.method, path))
+                kind = STATIC_TYPES.get(file.suffix, "application/octet-stream")
+                route.fulfill(status=200, content_type=kind, body=file.read_bytes())
+            else:  # manifest, icons, the woff2 font: present in a deployed site, empty here
                 route.fulfill(status=200, body=b"")
 
         page.route(f"{ORIGIN}/**", handle)

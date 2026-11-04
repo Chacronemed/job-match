@@ -243,15 +243,11 @@
     return { affordable: affordable, estimate_usd: estimate, text: text };
   }
 
-  /* The download URLs of a version's four files (part 3): ready means downloadable, the
-     Worker renders a file the cron has not yet on the first request. */
-  var FILE_KINDS = ["cv_pdf", "cv_docx", "letter_pdf", "letter_docx"];
+  /* A ready version is downloadable (ADR 0019): the page fetches its content.json (the
+     text, the master and the contact sheet) and renders the PDF or the DOCX itself. */
   function documentLinks(key, doc) {
     if (!doc || doc.status !== "ready" || !doc.version) return null;
-    var base = "/api/documents/" + encodeURIComponent(key) + "/v" + doc.version + "/";
-    var out = {};
-    FILE_KINDS.forEach(function (k) { out[k] = base + k.replace("_", "."); });
-    return out;
+    return { content: "/api/documents/" + encodeURIComponent(key) + "/v" + doc.version + "/content.json", version: doc.version };
   }
 
   /* ---- recruiter replies (ADR 0018) ---- */
@@ -329,6 +325,15 @@
       /* The generated CV + letter versions of an offer, and a new version on demand (ADR 0017). */
       documents: function (key) { return call("GET", "documents/" + encodeURIComponent(key)); },
       regenerate: function (key) { return call("POST", "documents/" + encodeURIComponent(key) + "/regenerate"); },
+      /* What the browser renders a version from: {content, master, contact} (ADR 0019). */
+      content: function (key, version) { return call("GET", "documents/" + encodeURIComponent(key) + "/v" + version + "/content.json"); },
+      /* A same-origin file as bytes (the PDF fonts). */
+      bytes: function (url) {
+        return fetchImpl(url, { credentials: "same-origin" }).then(function (res) {
+          if (!res.ok) { var err = new Error("HTTP " + res.status); err.status = res.status; throw err; }
+          return res.arrayBuffer();
+        }).then(function (buf) { return new Uint8Array(buf); });
+      },
       /* « Générer les manquants »: a pending row per kept offer without one, within the budget. */
       requestMissing: function () { return call("POST", "documents/missing"); },
       /* « Lancer maintenant » in Exécutions: the Worker answers 202 and runs the pass after. */

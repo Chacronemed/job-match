@@ -3,15 +3,15 @@
 // so nothing is invented, stored in R2. Pure where it can be: the prompt, the schema, the
 // language detection, the validator and the cost take plain values; the effects (D1, R2, the
 // assets binding, the API) live in `runDocuments`. The model never sees a contact detail: the
-// master carries none (the Python validator refuses one), and contact.json is only read by the
-// renderer (part 3). Nothing here logs: not the key, not the master, not a prompt, not a text.
+// master carries none (the Python validator refuses one), and contact.json is only read by
+// `loadBundle` for the browser, which renders the PDF and the DOCX itself (ADR 0019): the Worker
+// does no rendering. Nothing here logs: not the key, not the master, not a prompt, not a text.
 
 import { countCall, day, loadAsset } from "./ai.js";
-import { renderAll } from "./render.js";
 
 // config/settings.yaml `documents:` repeats these; a test keeps them equal.
 export const DOCUMENTS_MODEL = "claude-sonnet-5-5";
-export const DOCUMENTS_PROMPT_VERSION = "4";
+export const DOCUMENTS_PROMPT_VERSION = "5";
 export const MONTHLY_BUDGET_USD = 60;
 export const BATCH_SIZE = 5;
 export const MAX_BULLETS = 18;
@@ -34,6 +34,11 @@ export const DEFAULT_ESTIMATE_PER_DOCUMENT_USD = 0.08;
 export const ESTIMATE_SAMPLE = 20;
 export const DOCUMENTS_CRON = "*/10 * * * *";
 export const CREDIT_BACKOFF_HOURS = 6;
+// A row left `running` this long was cut short (the Worker killed mid-pass): it goes back to
+// pending. A `failed` row whose cause was the network or a timeout (`api_error`) is retried
+// once by itself; the validator's codes never are (that is « Regénérer »).
+export const STUCK_MINUTES = 15;
+export const AUTO_RETRY_CODES = ["api_error"];
 export const ANTHROPIC_VERSION = "2026-10-21";
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const MAX_TOKENS = 3000;
@@ -50,7 +55,9 @@ export const ERROR_CODES = [
   "availability_missing", "availability_misplaced", "profile_chronology", "conclusion_facts",
   "skills_order", "too_few_bullets", "headline_techs",
 ];
-const TIME_CONNECTOR = /\b(puis|ensuite|avant|apres|then|before|after|later)\b/;
+// Sequence connectors only: "X puis Y" says X came first. "après" / "avant" carry their direction
+// in the syntax ("Y, après X" is true with Y the most recent) and are not checked (prompt v5).
+const TIME_CONNECTOR = /\b(puis|ensuite|then|later)\b/;
 // First-person present tense, the forms the model reaches for when it forgets an experience is
 // over ("j'assure", "je gère", "I manage"). Matched after the pronoun, ending-insensitive.
 const PRESENT_VERBS = [
@@ -185,9 +192,9 @@ export const SYSTEM_PROMPT = [
   "- profile : 2 à 3 phrases (" + MAX_PROFILE_CHARS + " caractères au plus) : qui il est, ce qu'il",
   "  cherche (le champ target), et la phrase de disponibilité donnée dans le message, reprise",
   "  mot pour mot comme une phrase complète terminée par un point. À la première personne,",
-  "  sans jamais s'adresser au lecteur : ni « vous », ni « votre », ni « vos ». Si le profil",
-  "  enchaîne des expériences avec un connecteur temporel (puis, ensuite, avant, après), leur",
-  "  ordre est l'ordre réel des dates du maître ; sinon, pas de connecteur.",
+  "  sans jamais s'adresser au lecteur : ni « vous », ni « votre », ni « vos ». Le profil cite",
+  "  l'expérience la plus récente d'abord ; « puis » et « ensuite » n'enchaînent des expériences",
+  "  que dans l'ordre réel des dates du maître ; « après » et « avant » gardent leur sens.",
   "- selected_bullets : tous les bullets du maître qui ont un rapport avec l'offre, choisis par",
   "  leur id (" + MAX_BULLETS + " au plus) : tu n'écartes un bullet que s'il est hors sujet pour",
   "  ce poste, et une expérience qui en a " + MIN_BULLETS_PER_EXPERIENCE + " ou plus en garde au moins",
@@ -203,9 +210,10 @@ export const SYSTEM_PROMPT = [
   "  dans chaque groupe les items que l'offre demande en premier. Un item peut être omis.",
   "  Le groupe Développement et tout item de langage ou framework de développement",
   "  (" + DEV_LANGUAGES.slice(0, 6).join(", ") + "…) seulement si l'offre le cite.",
-  "- headline_techs : " + HEADLINE_TECHS[0] + " à " + HEADLINE_TECHS[1] + " technologies que l'offre",
-  "  demande et que le maître possède (telles qu'écrites dans le maître : Kubernetes, Terraform,",
-  "  GitLab CI/CD…), les plus importantes d'abord : la ligne sous le nom du CV.",
+  "- headline_techs : jusqu'à " + HEADLINE_TECHS[1] + " technologies prises dans la liste « technologies du",
+  "  maître que l'offre cite » du message, telles qu'écrites dans cette liste, les plus importantes",
+  "  d'abord, " + HEADLINE_TECHS[0] + " au moins quand la liste en compte " + HEADLINE_TECHS[0] + " ; toute la liste",
+  "  quand elle en compte moins ; vide quand la liste est vide. C'est la ligne sous le nom du CV.",
   "- letter.paragraphs : 3 à 5 paragraphes (" + MAX_LETTER_CHARS + " caractères au plus en",
   "  tout), chacun une liste de phrases {text, sources}. sources sont les id des bullets du",
   "  maître dont la phrase tire ses faits : chaque outil, chiffre, réalisation, employeur ou",
@@ -277,6 +285,7 @@ export function buildUser(job, language, ctx) {
     "Date du jour : " + day(ctx.today) + ".",
     "Phrase de disponibilité, à reprendre mot pour mot dans le profil et en conclusion de la lettre : « " + ctx.availability + " ».",
     "Expériences terminées, à raconter au passé : " + (finished.length ? finished.join(", ") : "aucune") + ".",
+    "Technologies du maître que l'offre cite (pour headline_techs) : " + (ctx.candidates && ctx.candidates.length ? ctx.candidates.join(", ") : "aucune") + ".",
     "<offre>",
     "Titre : " + String(job.title || ""),
     "Entreprise : " + String(job.company || "non précisée"),
@@ -466,6 +475,8 @@ const wholeTerm = (term) => new RegExp("(?<!\\w)" + term.replace(/[.*+?^${}()|[\
 
 // Each experience with the folded terms that name it: its employer, and the context words of
 // its title ("alternance", "stage"...). A sentence using one of them must cite that experience.
+// `orderTerms` leaves out a context word two experiences share ("stagiaire" twice): one word
+// cannot place two experiences in the profile's chronology (prompt v5).
 function experienceContexts(master) {
   const out = [];
   for (const e of master.experiences || []) {
@@ -473,6 +484,28 @@ function experienceContexts(master) {
     const title = fold(e.title);
     for (const w of CONTEXT_WORDS) if (wholeTerm(w).test(title)) terms.push(w);
     out.push({ id: e.id, terms, start: String(e.start || ""), bullets: new Set((e.bullets || []).map((b) => b.id)) });
+  }
+  const count = new Map();
+  for (const e of out) for (const t of e.terms) count.set(t, (count.get(t) || 0) + 1);
+  for (const e of out) e.orderTerms = e.terms.filter((t) => count.get(t) === 1);
+  return out;
+}
+
+// The master's skills the offer names, as the master writes them: the only values allowed in
+// headline_techs, told to the model and checked here. Nothing in it can be invented.
+export function headlineCandidates(master, offer) {
+  const offerText = fold((offer.title || "") + " " + (offer.company || "") + " " + (offer.description_excerpt || ""));
+  const inOffer = (text) => {
+    const forms = [fold(text), ...String(text).split(/[,/()]| et /).map(fold)].filter((f) => f.length >= 2);
+    return forms.some((f) => wholeTerm(f).test(offerText));
+  };
+  const seen = new Set();
+  const out = [];
+  for (const sk of master.skills || []) {
+    const label = typeof sk === "string" ? sk : sk.label || sk.id;
+    if (!label || seen.has(fold(label)) || !inOffer(label)) continue;
+    seen.add(fold(label));
+    out.push(label);
   }
   return out;
 }
@@ -592,7 +625,7 @@ export function validateDocument(doc, master, offer, expectedLanguage, ctx = {})
     const named = [];
     for (const e of contexts) {
       let at = -1;
-      for (const term of e.terms) {
+      for (const term of e.orderTerms) {
         const m = wholeTerm(term).exec(profile);
         if (m && (at < 0 || m.index < at)) at = m.index;
       }
@@ -659,13 +692,19 @@ export function validateDocument(doc, master, offer, expectedLanguage, ctx = {})
     }
   });
 
-  // The title line: 5 to 6 technologies the offer asks for and the master holds.
-  if (doc.headline_techs.length < HEADLINE_TECHS[0] || doc.headline_techs.length > HEADLINE_TECHS[1]) {
-    errors.push("headline_techs: " + doc.headline_techs.length + " technologies (" + HEADLINE_TECHS[0] + " to " + HEADLINE_TECHS[1] + ")");
+  // The title line: up to 6 technologies the offer asks for and the master holds, 5 at least
+  // when the offer names that many (most France Travail offers name fewer: prompt v5).
+  const candidates = headlineCandidates(master, offer);
+  const minTechs = Math.min(HEADLINE_TECHS[0], candidates.length);
+  if (doc.headline_techs.length < minTechs || doc.headline_techs.length > HEADLINE_TECHS[1]) {
+    errors.push("headline_techs: " + doc.headline_techs.length + " technologies (" + minTechs + " to " + HEADLINE_TECHS[1] + ", the offer names " + candidates.length + ")");
   }
+  const seenTechs = new Set();
   for (const t of doc.headline_techs) {
     if (typeof t !== "string" || !terms.has(fold(t))) errors.push("headline_techs: " + String(t).slice(0, 40) + " is not in the master");
     else if (!inOffer(t)) errors.push("headline_techs: " + t.slice(0, 40) + " is not in the offer");
+    else if (seenTechs.has(fold(t))) errors.push("headline_techs: " + t.slice(0, 40) + " twice");
+    if (typeof t === "string") seenTechs.add(fold(t));
   }
 
   const paragraphs = doc.letter.paragraphs;
@@ -852,6 +891,46 @@ function offerIndex(data) {
 // The cron. {outcome, http_status, counters}: ok | idle (nothing pending: not recorded, not
 // logged) | stopped (a 4xx that is not a quota) | budget | credit | no_master | failed.
 // `opts.fetch`, `opts.now`, `opts.budget` exist for the tests.
+// What the browser renders from (ADR 0019): the version's content.json, the master and the
+// contact sheet, all three from R2. The contact details leave the Worker here and nowhere
+// else, to my own browser behind Access. Null when the version is not ready or a sheet is
+// missing.
+export async function loadBundle(env, jobKey, version) {
+  const row = await env.DB.prepare(
+    "SELECT content_key FROM documents WHERE job_key = ? AND version = ? AND status = 'ready'",
+  ).bind(jobKey, version).first();
+  if (!row || !row.content_key) return null;
+  const [contentObj, masterObj, contactObj] = await Promise.all([
+    env.DOCS.get(row.content_key), env.DOCS.get(MASTER_KEY), env.DOCS.get(CONTACT_KEY),
+  ]);
+  if (!contentObj || !masterObj || !contactObj) return null;
+  try {
+    const [content, master, contact] = await Promise.all([contentObj.json(), masterObj.json(), contactObj.json()]);
+    return { content, master, contact };
+  } catch {
+    return null;
+  }
+}
+
+// The rows a cut-short pass left `running` go back to pending; the count of them.
+export async function requeueStuck(db, now) {
+  const cutoff = new Date(now.getTime() - STUCK_MINUTES * 60_000).toISOString();
+  const r = await db.prepare(
+    "UPDATE documents SET status = 'pending', updated_at = ? WHERE status = 'running' AND updated_at < ?",
+  ).bind(now.toISOString(), cutoff).run();
+  return r && r.meta ? r.meta.changes | 0 : 0;
+}
+
+// The failed rows whose cause was a cut or a timeout are retried once (auto_retried marks it).
+export async function retryCutOff(db, now) {
+  const marks = AUTO_RETRY_CODES.map(() => "?").join(", ");
+  const r = await db.prepare(
+    "UPDATE documents SET status = 'pending', auto_retried = 1, updated_at = ?" +
+      " WHERE status = 'failed' AND auto_retried = 0 AND error_code IN (" + marks + ")",
+  ).bind(now.toISOString(), ...AUTO_RETRY_CODES).run();
+  return r && r.meta ? r.meta.changes | 0 : 0;
+}
+
 // `opts.keys`: only these offers' pending rows (« Générer » runs one offer at once), and no
 // auto-queue. Without it, the cron first queues every « À candidater » offer that has no
 // documents row yet (BATCH_SIZE a pass, within the budget), then takes the pending rows.
@@ -859,10 +938,13 @@ export async function runDocuments(env, opts = {}) {
   const fetchFn = opts.fetch || globalThis.fetch;
   const now = opts.now || new Date();
   const today = day(now);
-  const counters = { pending: 0, queued: 0, taken: 0, ready: 0, failed: 0, retried: 0, skipped: 0, errors: 0 };
+  const counters = { pending: 0, queued: 0, requeued: 0, auto_retried: 0, taken: 0, ready: 0, failed: 0, retried: 0, skipped: 0, errors: 0 };
   const result = (outcome, status) => ({ outcome, http_status: status === undefined ? null : status, counters });
   const keys = Array.isArray(opts.keys) && opts.keys.length ? opts.keys : null;
   const configured = Boolean(env.DOCS && env.ANTHROPIC_API_KEY);
+
+  counters.requeued = await requeueStuck(env.DB, now);
+  counters.auto_retried = await retryCutOff(env.DB, now);
 
   if (!keys && configured) {
     const queued = await requestMissingDocuments(env.DB, env, now, { statuses: ["to_apply"], limit: BATCH_SIZE, budget: opts.budget });
@@ -917,6 +999,7 @@ export async function runDocuments(env, opts = {}) {
       today: now,
       availability: availabilityText(master.available_from, now, language),
       finished: finishedExperiences(master, now),
+      candidates: headlineCandidates(master, job),
     };
     const messages = [{ role: "user", content: buildUser(job, language, ctx) }];
     let usageSum = { tokens_in: 0, tokens_out: 0 };
@@ -1003,82 +1086,6 @@ export async function runDocuments(env, opts = {}) {
   return result("ok");
 }
 
-// Part 3: the ready versions without files yet get their four files in R2. The contact sheet
-// is read here and nowhere else: the model never saw it. A render failure keeps the content
-// and marks the row `render_error`; the next pass tries again. Without font bytes (the Node
-// tests, or a bundle without them) nothing is rendered.
-export async function renderReady(env, opts = {}) {
-  const now = opts.now || new Date();
-  const counters = { rendered: 0, render_errors: 0 };
-  if (!opts.fonts || !env.DOCS) return counters;
-  // A row whose render failed once goes after the fresh ones: it never blocks the batch.
-  const rows = await env.DB.prepare(
-    "SELECT id, job_key, version, content_key FROM documents WHERE status = 'ready' AND cv_pdf_key IS NULL" +
-      " ORDER BY (error_code = 'render_error') ASC, id LIMIT ?",
-  ).bind(BATCH_SIZE).all();
-  if (!rows.results.length) return counters;
-  const sheets = await loadSheets(env);
-  for (const row of rows.results) {
-    const done = await renderRow(env, row, opts.fonts, now, sheets);
-    counters[done ? "rendered" : "render_errors"] += 1;
-  }
-  return counters;
-}
-
-// The master and the contact sheet from R2, both or null.
-async function loadSheets(env) {
-  const [masterObj, contactObj] = await Promise.all([env.DOCS.get(MASTER_KEY), env.DOCS.get(CONTACT_KEY)]);
-  try {
-    const master = masterObj ? await masterObj.json() : null;
-    const contact = contactObj ? await contactObj.json() : null;
-    return master && contact ? { master, contact } : null;
-  } catch {
-    return null;
-  }
-}
-
-// The four files of one ready version, from its content.json, stored in R2 and their keys in
-// the row. True when done; false leaves `render_error` on the row and the content in R2. Used
-// by the cron batch and by the download route when the cron has not rendered the row yet.
-export async function renderRow(env, row, fonts, now, sheets) {
-  try {
-    if (!fonts) throw new Error("no fonts");
-    const s = sheets === undefined ? await loadSheets(env) : sheets;
-    if (!s) throw new Error("no master or contact");
-    const obj = row.content_key ? await env.DOCS.get(row.content_key) : null;
-    if (!obj) throw new Error("no content");
-    const content = await obj.json();
-    const files = await renderAll(content, s.master, s.contact, fonts, now);
-    const keys = {};
-    for (const f of files) {
-      const key = "docs/" + row.job_key + "/v" + row.version + "/" + f.name;
-      await env.DOCS.put(key, f.bytes, { httpMetadata: { contentType: f.contentType }, customMetadata: { filename: f.filename } });
-      keys[f.name] = key;
-    }
-    await env.DB.prepare(
-      "UPDATE documents SET cv_pdf_key = ?, cv_docx_key = ?, letter_pdf_key = ?, letter_docx_key = ?," +
-        " error_code = NULL, updated_at = ? WHERE id = ?",
-    ).bind(keys["cv.pdf"], keys["cv.docx"], keys["letter.pdf"], keys["letter.docx"], now.toISOString(), row.id).run();
-    return true;
-  } catch {
-    await env.DB.prepare("UPDATE documents SET error_code = 'render_error', updated_at = ? WHERE id = ?").bind(now.toISOString(), row.id).run();
-    return false;
-  }
-}
-
-export const FILE_COLUMNS = { "cv.pdf": "cv_pdf_key", "cv.docx": "cv_docx_key", "letter.pdf": "letter_pdf_key", "letter.docx": "letter_docx_key" };
-
-// One ready version with its content and file keys, or null when it is not ready.
-export async function fileRow(db, jobKey, version) {
-  return db
-    .prepare(
-      "SELECT id, job_key, version, content_key, cv_pdf_key, cv_docx_key, letter_pdf_key, letter_docx_key" +
-        " FROM documents WHERE job_key = ? AND version = ? AND status = 'ready'",
-    )
-    .bind(jobKey, version)
-    .first();
-}
-
 export async function recordDocumentRun(db, startedAt, finishedAt, run) {
   await db
     .prepare(
@@ -1092,25 +1099,25 @@ export async function recordDocumentRun(db, startedAt, finishedAt, run) {
 export async function listDocuments(db) {
   const rows = await db
     .prepare(
-      "SELECT job_key, version, status, language, error_code, updated_at, cv_pdf_key FROM documents" +
+      "SELECT job_key, version, status, language, error_code, updated_at FROM documents" +
         " WHERE id IN (SELECT MAX(id) FROM documents GROUP BY job_key)",
     )
     .all();
   return rows.results.map((r) => ({
     job_key: r.job_key, version: r.version, status: r.status, language: r.language,
-    error_code: r.error_code, updated_at: r.updated_at, files: Boolean(r.cv_pdf_key),
+    error_code: r.error_code, updated_at: r.updated_at,
   }));
 }
 
 export async function listVersions(db, jobKey) {
   const rows = await db
     .prepare(
-      "SELECT version, status, language, error_code, model, prompt_version, cost_micro_usd, created_at, updated_at, cv_pdf_key" +
+      "SELECT version, status, language, error_code, model, prompt_version, cost_micro_usd, created_at, updated_at" +
         " FROM documents WHERE job_key = ? ORDER BY version DESC",
     )
     .bind(jobKey)
     .all();
-  return rows.results.map(({ cv_pdf_key, ...r }) => ({ ...r, files: Boolean(cv_pdf_key) }));
+  return rows.results;
 }
 
 // A new pending version, or null when one is already pending or running (409 for the API).
