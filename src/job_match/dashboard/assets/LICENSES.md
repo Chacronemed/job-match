@@ -5,7 +5,7 @@ The dashboard is built with the third-party works below, each with the full text
 | Asset | Where | Licence |
 |---|---|---|
 | Inter Variable (latin subset, via @fontsource-variable/inter 5.3.0) | `fonts/InterVariable-latin.woff2` | SIL Open Font License 1.1 |
-| Inter 4.1 static Regular and Bold (rsms/inter release), embedded in the PDF documents by the browser | `fonts/Inter-Regular.ttf`, `fonts/Inter-Bold.ttf` (from `worker/fonts/`) | SIL Open Font License 1.1 (`fonts/LICENSE-Inter.txt`) |
+| Inter 4.1 static Regular and Bold (rsms/inter release), embedded in the PDF documents by the browser | `fonts/Inter-Regular-latin.ttf`, `fonts/Inter-Bold-latin.ttf` (Latin subsets of `worker/fonts/`, `scripts/build_pdf_fonts.py`) | SIL Open Font License 1.1 (`fonts/LICENSE-Inter.txt`) |
 | Lucide icons (lucide-static 1.61.0, subset as icon nodes) | inlined in `index.html` (`lucide.js`) | ISC |
 | Radix Colors 3.0.0 (slate, violet, green, amber, red and blue dark scales; values copied) | inlined in `index.html` (`tokens.css`) | MIT |
 | pdf-lib 1.17.1 (browser build, bundles pako 1.0.11) | `vendor/pdf-lib.min.js` | MIT |

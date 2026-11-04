@@ -301,36 +301,43 @@ def test_pdf_link_renders_in_the_page_and_saves_under_the_template_name(open_das
     assert head == b"%PDF-"
     assert len(page.context.pages) == 1  # no new tab
     assert page.url.endswith("view=table")  # href="#" did not move the page
-    # one content.json call, the renderer, its three libraries and the two fonts: no file route
-    calls = page.api_calls[1:]
-    assert calls[0] == ("GET", content)
-    assert sorted(c[1] for c in calls[1:]) == sorted([
+    # one content.json call (no file route), and once each the renderer, its three libraries
+    # and the two Latin fonts (preloaded when Candidatures opened, or fetched by the click)
+    assert page.api_calls[1:] == [("GET", content)]
+    assert sorted(page.file_calls) == sorted([
         "/assets/render.js", "/vendor/pdf-lib.min.js", "/vendor/fontkit.umd.min.js",
-        "/vendor/fflate.js", "/fonts/Inter-Regular.ttf", "/fonts/Inter-Bold.ttf"])
-    assert not [c for c in page.api_calls if c[1].endswith((".pdf", ".docx"))]
-    # the second file reuses everything: content.json again, nothing else
+        "/vendor/fflate.js", "/fonts/Inter-Bold-latin.ttf", "/fonts/Inter-Regular-latin.ttf"])
+    # the second file reuses everything, content.json included: no request at all
     name, head = _download(page, "\u2b07 DOCX")
     assert name == "CV_Mohamed_Chacrone_Initech.docx"
     assert head[:2] == b"PK"
-    assert page.api_calls[len(calls) + 1:] == [("GET", content)]
+    assert page.api_calls[2:] == []
+    assert len(page.file_calls) == 6
     assert errors == []
 
 
 def test_letter_docx_downloads_too_and_a_failed_content_call_says_so(open_dashboard, job_keys):
     content, routes = _bundle_routes(job_keys[0])
     page, errors = _open_table(open_dashboard, _api(job_keys), routes=routes)
+
+    # a version the Worker no longer has: a toast, no download, the link usable again
+    def gone(route, _req):
+        route.fulfill(status=404, content_type="application/json",
+                      body='{"error":"document: not found"}')
+
+    page.route("**/content.json", gone)
+    page.locator("#kb-table a.doc-dl", has_text="\u2b07 PDF").first.click()
+    page.wait_for_selector("#toast", state="visible")
+    assert "non téléchargé" in page.locator("#toast").inner_text()
+    page.wait_for_function("() => !document.querySelector('#kb-table a.doc-dl[aria-busy]')")
+    # the failure is not kept: once the Worker answers again, the same link downloads
+    page.unroute("**/content.json", gone)
     name, head = _download(page, "\u2b07 PDF")  # the letter's PDF is the third link
     assert name == "CV_Mohamed_Chacrone_Initech.pdf"
     letter = page.locator("#kb-table td.doc-cell").nth(1).locator("a.doc-dl.alt")
     with page.expect_download() as info:
         letter.click()
     assert info.value.suggested_filename == "Lettre_Mohamed_Chacrone_Initech.docx"
-    # a version the Worker no longer has: a toast, no download, the link usable again
-    page.route("**/content.json", lambda route, _req: route.fulfill(
-        status=404, content_type="application/json", body='{"error":"document: not found"}'))
-    page.locator("#kb-table a.doc-dl", has_text="\u2b07 PDF").first.click()
-    page.wait_for_selector("#toast", state="visible")
-    assert "non téléchargé" in page.locator("#toast").inner_text()
     assert [e for e in errors if "404" not in e] == []  # the deliberate 404 is logged by Chromium
 
 
@@ -369,6 +376,8 @@ def test_generer_runs_now_and_the_links_appear_without_a_reload(open_dashboard, 
     generate = page.get_by_role("button", name="Générer", exact=True)  # not « Regénérer »
     assert generate.count() == 1
     generate.click()
+    # the ⬇ links come up where the button was: a pointer left there would prefetch content.json
+    page.mouse.move(0, 0)
     page.wait_for_function(
         "() => document.querySelectorAll("
         "'#kb-table td.apps-docs .doc-badge.kind-pending').length === 1")

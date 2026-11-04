@@ -57,6 +57,32 @@ function contactLine(contact) {
   return [contact.location, contact.email, contact.phone, contact.linkedin, contact.github].filter(Boolean).join("  •  ");
 }
 
+// The characters the embedded Latin subsets of Inter carry (scripts/build_pdf_fonts.py, same
+// list): any other one is folded before it is measured (an accented letter loses its accent, the
+// rest becomes « ? »), so a PDF never shows an empty box and its text stays extractable.
+// Inter has no soft hyphen (dropped) nor ŉ (U+0149).
+const SUPPORTED_RANGES = [
+  [0x20, 0x7e], [0xa0, 0xac], [0xae, 0x148], [0x14a, 0x17f], [0x2009, 0x2009], [0x202f, 0x202f],
+  [0x2010, 0x2015], [0x2018, 0x201e], [0x2020, 0x2022], [0x2026, 0x2026], [0x2030, 0x2030], [0x2032, 0x2033], [0x2039, 0x203a],
+  [0x20ac, 0x20ac], [0x2122, 0x2122], [0x2212, 0x2212], [0x2190, 0x2193],
+];
+export function supported(codePoint) {
+  return SUPPORTED_RANGES.some(([lo, hi]) => codePoint >= lo && codePoint <= hi);
+}
+const SPACES = /[\t\u2000-\u2008\u200a\u205f\u3000]/g;
+export function pdfText(text) {
+  const src = String(text).replace(SPACES, " ").replace(/\u00ad/g, "");
+  let out = "";
+  for (const ch of src) {
+    if (ch === "\n" || supported(ch.codePointAt(0))) out += ch;
+    else {
+      const base = ch.normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+      out += base && [...base].every((c) => supported(c.codePointAt(0))) ? base : "?";
+    }
+  }
+  return out;
+}
+
 function fold(text) {
   return String(text).normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
@@ -187,7 +213,7 @@ function wrapRuns(runs, fonts, size, maxWidth) {
     const parts = r.text.split(/(\s+)/);
     for (const p of parts) if (p) words.push({ text: p, bold: r.bold, space: /^\s+$/.test(p) });
   }
-  const width = (w) => (w.bold ? fonts.bold : fonts.regular).widthOfTextAtSize(w.text, size);
+  const width = (w) => fonts.width(w.text, w.bold, size);
   const lines = [];
   let line = [];
   let lineWidth = 0;
@@ -213,6 +239,8 @@ function wrapRuns(runs, fonts, size, maxWidth) {
   return lines.length ? lines : [[]];
 }
 
+// `doc` null: a measuring writer. It lays the text out exactly as the drawing one (same widths,
+// same breaks, same pages and fill) but draws nothing, so the layout search costs no PDF.
 class Writer {
   constructor(doc, fonts, size, maxPages = Infinity) {
     this.doc = doc;
@@ -229,7 +257,7 @@ class Writer {
     this.newPage();
   }
   newPage() {
-    this.page = this.doc.addPage([PAGE.width, PAGE.height]);
+    this.page = this.doc ? this.doc.addPage([PAGE.width, PAGE.height]) : null;
     this.pages += 1;
     this.y = PAGE.height - MARGIN;
   }
@@ -250,17 +278,18 @@ class Writer {
     return (top - this.y) / (top - MARGIN);
   }
   runs(runs, { size = this.size, indent = 0, color = rgb(0.1, 0.1, 0.1), gap = 0, lineHeight = this.lineHeight, bullet = false } = {}) {
-    const lines = wrapRuns(runs, this.fonts, size, this.width - indent - (bullet ? 12 : 0));
+    const lines = wrapRuns(runs.map((r) => ({ ...r, text: pdfText(r.text) })), this.fonts, size, this.width - indent - (bullet ? 12 : 0));
     const lh = size * lineHeight;
     for (const [i, line] of lines.entries()) {
       if (!this.ensure(lh)) return;
       this.y -= lh;
       let x = MARGIN + indent + (bullet ? 12 : 0);
+      if (!this.page) continue;
       if (bullet && i === 0) this.page.drawText("•", { x: MARGIN + indent + 2, y: this.y, size, font: this.fonts.regular, color });
       for (const w of line) {
         const font = w.bold ? this.fonts.bold : this.fonts.regular;
         this.page.drawText(w.text, { x, y: this.y, size, font, color });
-        x += font.widthOfTextAtSize(w.text, size);
+        x += this.fonts.width(w.text, w.bold, size);
       }
     }
     this.y -= gap;
@@ -273,9 +302,9 @@ class Writer {
     const size = this.size + 1.5;
     if (!this.ensure(size * 3)) return;
     this.y -= size * 1.5;
-    this.page.drawText(text.toUpperCase(), { x: MARGIN, y: this.y, size, font: this.fonts.bold, color: rgb(0.12, 0.2, 0.35) });
+    if (this.page) this.page.drawText(pdfText(text.toUpperCase()), { x: MARGIN, y: this.y, size, font: this.fonts.bold, color: rgb(0.12, 0.2, 0.35) });
     this.y -= 4;
-    this.page.drawLine({ start: { x: MARGIN, y: this.y }, end: { x: PAGE.width - MARGIN, y: this.y }, thickness: 0.6, color: rgb(0.12, 0.2, 0.35) });
+    if (this.page) this.page.drawLine({ start: { x: MARGIN, y: this.y }, end: { x: PAGE.width - MARGIN, y: this.y }, thickness: 0.6, color: rgb(0.12, 0.2, 0.35) });
     this.y -= 5;
   }
   space(n) {
@@ -283,12 +312,27 @@ class Writer {
   }
 }
 
+// The fonts come already reduced to Latin (scripts/build_pdf_fonts.py): they are embedded
+// whole, as pdf-lib's run-time subsetting was most of a render's cost. Widths are memoized
+// per (text, weight, size): the layout search measures the same words again and again.
 async function newDoc(fontBytes, meta) {
   const doc = await PDFDocument.create();
   doc.registerFontkit(fontkit);
+  const regular = await doc.embedFont(fontBytes.regular, { subset: false });
+  const bold = await doc.embedFont(fontBytes.bold, { subset: false });
+  const widths = new Map();
   const fonts = {
-    regular: await doc.embedFont(fontBytes.regular, { subset: true }),
-    bold: await doc.embedFont(fontBytes.bold, { subset: true }),
+    regular,
+    bold,
+    width(text, isBold, size) {
+      const key = (isBold ? "b" : "r") + size + "|" + text;
+      let w = widths.get(key);
+      if (w === undefined) {
+        w = (isBold ? bold : regular).widthOfTextAtSize(text, size);
+        widths.set(key, w);
+      }
+      return w;
+    },
   };
   doc.setTitle(meta.title);
   doc.setAuthor(meta.author);
@@ -298,8 +342,8 @@ async function newDoc(fontBytes, meta) {
 }
 
 // One layout: `variant` = {projects: how many project entries, extras: boolean}.
-async function layoutCv(model, fontBytes, size, variant, maxPages = Infinity) {
-  const { doc, fonts } = await newDoc(fontBytes, { title: "CV " + model.name, author: model.name });
+// `doc` null measures only (see Writer); the result then has no bytes.
+async function layoutCv(model, doc, fonts, size, variant, maxPages = Infinity) {
   const w = new Writer(doc, fonts, size, maxPages);
   if (variant.compact) w.lineHeight = 1.22;
   const grey = rgb(0.3, 0.3, 0.3);
@@ -325,7 +369,7 @@ async function layoutCv(model, fontBytes, size, variant, maxPages = Infinity) {
       w.space(variant.compact ? 2 : 3);
     }
   }
-  return { bytes: await doc.save(), pages: w.pages, fill: Math.min(1, w.fill()), size, projects: variant.projects, extras: variant.extras, compact: Boolean(variant.compact), cut: w.overflow };
+  return { bytes: doc ? await doc.save() : null, pages: w.pages, fill: Math.min(1, w.fill()), size, projects: variant.projects, extras: variant.extras, compact: Boolean(variant.compact), cut: w.overflow };
 }
 
 // The fullest one-page layout: every variant (all the projects down to none, with and
@@ -343,16 +387,23 @@ export async function renderCvPdfInfo(model, fontBytes) {
       if (hasExtras) variants.push({ projects: p, extras: false, compact });
     }
   }
+  // Every candidate is measured with the fonts of one document; only the winner is drawn.
+  const meta = { title: "CV " + model.name, author: model.name };
+  const { fonts } = await newDoc(fontBytes, meta);
+  const draw = async (size, variant, maxPages) => {
+    const out = await newDoc(fontBytes, meta);
+    return layoutCv(model, out.doc, out.fonts, size, variant, maxPages);
+  };
   let best = null;
   for (const variant of variants) {
     for (const size of SIZES) {
-      const out = await layoutCv(model, fontBytes, size, variant);
-      if (out.pages === 1 && out.fill >= MIN_FILL) return out;
-      if (out.pages === 1 && (!best || out.fill > best.fill)) best = out;
+      const out = await layoutCv(model, null, fonts, size, variant);
+      if (out.pages === 1 && out.fill >= MIN_FILL) return draw(size, variant);
+      if (out.pages === 1 && (!best || out.fill > best.fill)) best = { size, variant, fill: out.fill };
     }
   }
-  if (best) return best;
-  return layoutCv(model, fontBytes, SIZES[SIZES.length - 1], { projects: 0, extras: false, compact: true }, MAX_PAGES);
+  if (best) return draw(best.size, best.variant);
+  return draw(SIZES[SIZES.length - 1], { projects: 0, extras: false, compact: true }, MAX_PAGES);
 }
 
 export async function renderCvPdf(model, fontBytes) {

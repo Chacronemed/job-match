@@ -314,14 +314,17 @@ def test_the_site_ships_the_renderer_its_libraries_and_the_pdf_fonts(tmp_path, d
         assert (site / "vendor" / name).stat().st_size > 10_000
     for name in PDF_FONTS:
         assert (site / "fonts" / name).is_file()
-    assert (site / "fonts" / "Inter-Regular.ttf").read_bytes()[:4] == b"\x00\x01\x00\x00"
+    for name in ("Inter-Regular-latin.ttf", "Inter-Bold-latin.ttf"):  # TTF, Latin subsets
+        font = (site / "fonts" / name).read_bytes()
+        assert font[:4] == b"\x00\x01\x00\x00" and len(font) < 60_000
     licences = (site / "LICENSES.md").read_text(encoding="utf-8")
     for name in ("pdf-lib", "fontkit", "fflate", "pako"):
         assert name in licences
     html = (site / "index.html").read_text(encoding="utf-8")
     for src in ("vendor/pdf-lib.min.js", "vendor/fontkit.umd.min.js", "vendor/fflate.js",
-                "./assets/render.js", "fonts/Inter-Regular.ttf", "fonts/Inter-Bold.ttf"):
-        assert src in html  # fetched on the first download, same origin
+                "./assets/render.js", "fonts/Inter-Regular-latin.ttf",
+                "fonts/Inter-Bold-latin.ttf"):
+        assert src in html  # preloaded with Candidatures, same origin
 
 
 def test_the_renderer_rewrite_refuses_an_import_it_does_not_know():

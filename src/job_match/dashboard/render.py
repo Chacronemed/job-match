@@ -33,7 +33,7 @@ VENDOR = {
     "fontkit.umd.min.js": Path("node_modules", "@pdf-lib", "fontkit", "dist", "fontkit.umd.min.js"),
     "fflate.js": Path("node_modules", "fflate", "umd", "index.js"),
 }
-PDF_FONTS = ("Inter-Regular.ttf", "Inter-Bold.ttf", "LICENSE-Inter.txt")
+PDF_FONTS = ("Inter-Regular-latin.ttf", "Inter-Bold-latin.ttf", "LICENSE-Inter.txt")
 _IMPORTS = {
     'import fontkit from "@pdf-lib/fontkit";': "const fontkit = globalThis.fontkit;",
     'import { strToU8, zipSync } from "fflate";': "const { strToU8, zipSync } = globalThis.fflate;",

@@ -5,7 +5,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 
+import fontkit from "@pdf-lib/fontkit";
 import { unzipSync } from "fflate";
+import { PDFDocument } from "pdf-lib";
 import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
 
 import {
@@ -17,16 +19,18 @@ import {
   HEADINGS,
   letterModel,
   MAX_PAGES,
+  pdfText as safeText,
   renderAll,
   renderCvDocx,
   renderCvPdf,
   renderCvPdfInfo,
   renderLetterPdf,
+  supported,
 } from "../src/render.js";
 
 const FONTS = {
-  regular: readFileSync(new URL("../fonts/Inter-Regular.ttf", import.meta.url)),
-  bold: readFileSync(new URL("../fonts/Inter-Bold.ttf", import.meta.url)),
+  regular: readFileSync(new URL("../fonts/Inter-Regular-latin.ttf", import.meta.url)),
+  bold: readFileSync(new URL("../fonts/Inter-Bold-latin.ttf", import.meta.url)),
 };
 const NOW = new Date("2026-11-01T08:10:00Z");
 
@@ -188,6 +192,27 @@ describe("PDF", () => {
     assert.ok(!out.text.includes("PROJETS"), "projects dropped first");
   });
 
+  test("the layout search draws one PDF: the candidates are only measured", async () => {
+    const create = PDFDocument.create;
+    let created = 0;
+    PDFDocument.create = (...a) => { created += 1; return create.apply(PDFDocument, a); };
+    try {
+      const info = await renderCvPdfInfo(cvModel(CONTENT, MASTER, CONTACT), FONTS);
+      assert.equal(info.pages, 1);
+    } finally {
+      PDFDocument.create = create;
+    }
+    assert.equal(created, 2, "one document to measure with, one drawn");
+  });
+
+  test("a character outside the Latin subset is folded, never an empty box", async () => {
+    assert.equal(safeText("Ștefan Kovač ✓ 12\u2003h"), "Stefan Kovač ? 12 h");
+    assert.equal(safeText("« 3 000 € » – œuvre → ok"), "« 3 000 € » – œuvre → ok");
+    const contact = { ...CONTACT, first_name: "Ștefan" };
+    const { text } = await pdfText(await renderCvPdf(cvModel(CONTENT, MASTER, contact), FONTS));
+    assert.ok(text.includes("Stefan Trapmarker"), text.slice(0, 80));
+  });
+
   test("the letter carries the template's formulas and the model's paragraphs", async () => {
     const bytes = await renderLetterPdf(letterModel(CONTENT, CONTACT, NOW), FONTS);
     const { numPages, text } = await pdfText(bytes);
@@ -236,5 +261,21 @@ describe("the renderer runs in the browser too (ADR 0019)", () => {
       'import { strToU8, zipSync } from "fflate";',
       'import { PDFDocument, rgb } from "pdf-lib";',
     ]);
+  });
+});
+
+describe("fonts", () => {
+  // The two subsets (scripts/build_pdf_fonts.py) carry exactly the characters pdfText keeps.
+  test("the Latin subsets map every supported character, and only those", () => {
+    for (const [name, bytes] of Object.entries(FONTS)) {
+      const font = fontkit.create(bytes);
+      const mapped = font.characterSet.filter((c) => c >= 0x20 && c < 0xffff); // 0xffff: the cmap end marker
+      const expected = [];
+      for (let c = 0x20; c < 0x3000; c++) if (supported(c)) expected.push(c);
+      assert.deepEqual(mapped.filter((c) => !supported(c)), [], name + ": mapped but not supported");
+      assert.deepEqual(expected.filter((c) => !font.hasGlyphForCodePoint(c)), [], name + ": supported but missing");
+      assert.ok(!font.GSUB, name + ": no substitution table");
+      assert.ok(bytes.length < 60000, name + ": " + bytes.length + " bytes");
+    }
   });
 });

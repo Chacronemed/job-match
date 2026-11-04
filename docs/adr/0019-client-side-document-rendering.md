@@ -15,7 +15,20 @@ In production `GET /api/documents/<key>/v1/cv.pdf` answered Cloudflare error 110
 
 ## Consequences
 
-- The Worker's CPU per request is back to D1 + JSON. Downloading costs the browser one to three seconds the first time (1.3 MB of scripts, then the layout search), nothing server-side.
+- The Worker's CPU per request is back to D1 + JSON. Downloading costs the browser one to three seconds the first time (1.3 MB of scripts, then the layout search), nothing server-side. (Down to a fraction of a second, see the amendment.)
 - The deployed site holds the renderer and the libraries: 1.4 MB more of static assets behind Access; nothing of it is personal.
 - The first pass after the deploy requeues the 15 stuck rows (within the budget, five a pass); the 36 ready versions are downloadable at once.
 - `files` disappears from `GET /api/applications` and `GET /api/documents/:key`: ready means downloadable, nothing else to report.
+
+## Amendment (2026-11-04): the first download in under 1.5 s
+
+**Measured before** (Node, a full-size CV: three experiences, three projects, an Engagement line; the browser runs the same V8): the PDF took **5.4–6.2 s**, all of it CPU. `renderCvPdfInfo` built **18 complete PDFs** to keep one, each ~300 ms (`PDFDocument.create`, fontkit parsing the 400 KB TTF twice, every word measured, `save()` re-subsetting both fonts). The DOCX took 20 ms. The downloads were 1.3 MB of scripts and 830 KB of fonts.
+
+1. **The layout search measures, it does not draw.** `Writer` without a document lays the text out exactly as the drawing one (same widths, breaks, pages and fill) and draws nothing; widths are memoized per (text, weight, size). Only the winning variant is drawn and saved: two `PDFDocument`s a CV (one to measure with, one drawn), checked by a render test. Same choice as before on every fixture. Alternative: caching parsed fonts across documents (pdf-lib embeds per document, not possible without forking it).
+2. **Latin fonts reduced at build time, embedded whole.** `scripts/build_pdf_fonts.py` (fontTools, run once, outputs committed) writes `worker/fonts/Inter-{Regular,Bold}-latin.ttf`, ~40 KB each: Basic Latin, Latin-1, Latin Extended-A, the typographic punctuation, €, ™, arrows, no hinting, **kerning only, GSUB dropped**. With `subset: false` a substituted glyph (Inter's `calt` raises « + » before a digit) has no code point of its own and pdf-lib's ToUnicode mapped it to the wrong letter: « +33 » was extracted as « Ň33 ». Without substitutions every glyph is one character, as an ATS expects. `render.js` `pdfText` folds any other character before measuring (accent dropped, else « ? »; soft hyphen removed), so a PDF never shows an empty box; a render test checks the fonts map exactly the supported set. Alternative: run-time subsetting with the small fonts (still the slowest step of `save`).
+3. **Preloading.** Opening Candidatures loads the three libraries (in parallel), the module and the fonts in `requestIdleCallback`; the pointer or the focus reaching a ⬇ link fetches that version's `content.json`. A failed preload is silent: the click loads again and reports.
+4. **Session cache.** The bundle per key + version, and each rendered file per key + version + kind + format (+ the day for the dated letter): a second click saves the same bytes, no request. A failure is not cached.
+5. **One file per click** as before; the DOCX no longer waits for the PDF fonts.
+6. **Timing** with the User Timing API: `jm:libs`, `jm:module`, `jm:fonts`, `jm:content`, `jm:render:pdf|docx`, `jm:download` (`performance.getEntriesByType("measure")` in the console).
+
+**Measured after:** Node, the same CV 284–460 ms. Playwright (`tests/unit/browser/test_download_speed.py`, budgets 1 500 / 300 ms): first « ⬇ PDF » ~125 ms after the preload (render 85 ms, content 5 ms), second click ~37 ms (1 ms in the page); preloading itself ~0.8 s, off the click. The site ships 80 KB of PDF fonts instead of 830 KB.

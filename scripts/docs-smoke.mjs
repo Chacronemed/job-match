@@ -93,7 +93,7 @@ async function renderLocally(r) {
   const master = readJson("master/cv_master.json", "master.json");
   const contact = readJson("master/contact.json", "contact.json");
   const content = readJson(r.content_key, "content.json");
-  const fonts = { regular: readFileSync("worker/fonts/Inter-Regular.ttf"), bold: readFileSync("worker/fonts/Inter-Bold.ttf") };
+  const fonts = { regular: readFileSync("worker/fonts/Inter-Regular-latin.ttf"), bold: readFileSync("worker/fonts/Inter-Bold-latin.ttf") };
   const files = await renderAll(content, master, contact, fonts, new Date());
   const info = await renderCvPdfInfo(cvModel(content, master, contact), fonts);
   console.log("  CV: " + info.pages + " page" + (info.pages > 1 ? "s" : "") + ", fill " + Math.round(info.fill * 100) + " %, " + info.size + " pt, " + info.projects + " project(s)" + (info.extras ? ", engagement" : "") + (info.compact ? ", compact lines" : "") + (info.cut ? ", CUT at the bottom: too much content" : ""));

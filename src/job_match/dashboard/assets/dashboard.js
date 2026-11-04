@@ -176,6 +176,7 @@
       currentTab = name;
       if (entering) {
         if (recordOpen && recordFor !== name) closeRecord(false);
+        if (name === "candidatures") preloadRenderer();
         renderCurrent();
         byId("main").scrollTop = 0;
       }
@@ -1793,11 +1794,26 @@
 
   /* Rendering in the browser (ADR 0019). The Worker's own render.js is served as a module
      (assets/render.js); its three libraries (pdf-lib, fontkit, fflate, browser builds in
-     vendor/) and the two Inter TTFs (fonts/) are fetched on the first click only, once.
+     vendor/) and the two Latin Inter TTFs (fonts/, already reduced at build time) are fetched
+     once: in the background when Candidatures opens (preloadRenderer), else on the first click.
      Everything is same-origin (CSP script-src 'self'). The contact details come from
-     content.json's `contact` (R2), the text from `content`, the facts from `master`. */
+     content.json's `contact` (R2), the text from `content`, the facts from `master`.
+     Each step is timed with the User Timing API (performance.getEntriesByType("measure")):
+     "jm:libs", "jm:module", "jm:fonts", "jm:content", "jm:render:pdf|docx", "jm:download". */
   var VENDOR_SCRIPTS = ["vendor/pdf-lib.min.js", "vendor/fontkit.umd.min.js", "vendor/fflate.js"];
+  var PDF_FONT_FILES = ["fonts/Inter-Regular-latin.ttf", "fonts/Inter-Bold-latin.ttf"];
   var renderer = { libs: null, module: null, fonts: null };
+  function measure(name, start, detail) {
+    try { performance.measure(name, { start: start, end: performance.now(), detail: detail || null }); } catch (e) { /* no User Timing L3 */ }
+  }
+  /* A promise kept in `renderer[slot]`, timed once, forgotten on failure (a later call retries). */
+  function once(slot, name, make) {
+    if (!renderer[slot]) {
+      var t0 = performance.now();
+      renderer[slot] = make().then(function (v) { measure(name, t0); return v; }, function (err) { renderer[slot] = null; throw err; });
+    }
+    return renderer[slot];
+  }
   function loadScript(src) {
     return new Promise(function (resolve, reject) {
       var tag = el("script", { src: src });
@@ -1806,25 +1822,50 @@
       document.head.appendChild(tag);
     });
   }
-  function loadRenderer() {
-    if (!renderer.libs) {
-      renderer.libs = VENDOR_SCRIPTS.reduce(function (p, src) { return p.then(function () { return loadScript(src); }); }, Promise.resolve())
-        .catch(function (err) { renderer.libs = null; throw err; });
+  /* The renderer module; it reads the three UMD globals when it loads (they are independent
+     of each other, so they load in parallel). */
+  function loadModule() {
+    return once("module", "jm:module", function () {
+      return once("libs", "jm:libs", function () { return Promise.all(VENDOR_SCRIPTS.map(loadScript)); })
+        .then(function () { return import("./assets/render.js"); });
+    });
+  }
+  function loadFonts() {
+    return once("fonts", "jm:fonts", function () {
+      return Promise.all(PDF_FONT_FILES.map(api.bytes)).then(function (b) { return { regular: b[0], bold: b[1] }; });
+    });
+  }
+  /* When Candidatures opens: the libraries and the fonts while the browser is idle, so the
+     first ⬇ waits only for its content.json and the layout. A failure here is silent: the
+     click loads them again and reports it. */
+  var preloadAsked = false;
+  function preloadRenderer() {
+    if (preloadAsked) return;
+    preloadAsked = true;
+    var idle = window.requestIdleCallback || function (fn) { return setTimeout(fn, 200); };
+    idle(function () {
+      loadModule().catch(function () {});
+      loadFonts().catch(function () {});
+    }, { timeout: 2000 });
+  }
+  /* content.json per version, kept for the session (a version never changes), fetched as soon
+     as the pointer or the focus reaches a ⬇ link, so it is often there before the click. */
+  var bundles = {};
+  function loadBundle(key, version) {
+    var k = key + "|v" + version;
+    if (!bundles[k]) {
+      var t0 = performance.now();
+      bundles[k] = api.content(key, version).then(function (b) { measure("jm:content", t0, k); return b; }, function (err) { delete bundles[k]; throw err; });
     }
-    if (!renderer.module) {
-      renderer.module = renderer.libs.then(function () { return import("./assets/render.js"); })
-        .catch(function (err) { renderer.module = null; throw err; });
-    }
-    if (!renderer.fonts) {
-      renderer.fonts = Promise.all([api.bytes("fonts/Inter-Regular.ttf"), api.bytes("fonts/Inter-Bold.ttf")])
-        .then(function (b) { return { regular: b[0], bold: b[1] }; })
-        .catch(function (err) { renderer.fonts = null; throw err; });
-    }
-    return Promise.all([renderer.module, renderer.fonts]).then(function (r) { return { R: r[0], fonts: r[1] }; });
+    return bundles[k];
+  }
+  function prefetchBundle(key, version) {
+    loadBundle(key, version).catch(function () {});
   }
   /* One file of one version: the bundle -> the template's model -> bytes, named by the
-     template (fileName). `kind` is cv | letter, `ext` pdf | docx. */
+     template (fileName). `kind` is cv | letter, `ext` pdf | docx: only that file is rendered. */
   function renderDocument(bundle, kind, ext, R, fonts) {
+    var t0 = performance.now();
     var now = new Date();
     var model = kind === "cv" ? R.cvModel(bundle.content, bundle.master, bundle.contact) : R.letterModel(bundle.content, bundle.contact, now);
     var company = bundle.content.offer ? bundle.content.offer.company : "";
@@ -1834,7 +1875,25 @@
     var bytes;
     if (ext === "pdf") bytes = kind === "cv" ? R.renderCvPdf(model, fonts) : R.renderLetterPdf(model, fonts);
     else bytes = kind === "cv" ? R.renderCvDocx(model) : R.renderLetterDocx(model);
-    return Promise.resolve(bytes).then(function (b) { return { name: name, bytes: b, type: R.MIME[ext] }; });
+    return Promise.resolve(bytes).then(function (b) {
+      measure("jm:render:" + ext, t0, kind);
+      return { name: name, bytes: b, type: R.MIME[ext] };
+    });
+  }
+  /* The files rendered this session, by key + version + kind + format (+ the day for the
+     letter, which is dated): a second click saves the same bytes at once. The DOCX does not
+     wait for the PDF fonts. */
+  var rendered = {};
+  function renderedFile(key, version, kind, ext) {
+    var k = [key, "v" + version, kind, ext, kind === "letter" ? new Date().toDateString() : ""].join("|");
+    if (!rendered[k]) {
+      var ready = [loadBundle(key, version), loadModule()];
+      if (ext === "pdf") ready.push(loadFonts());
+      rendered[k] = Promise.all(ready).then(function (r) {
+        return renderDocument(r[0], kind, ext, r[1], r[2]);
+      }).catch(function (err) { delete rendered[k]; throw err; });
+    }
+    return rendered[k];
   }
   function saveBlob(file) {
     var url = URL.createObjectURL(new Blob([file.bytes], { type: file.type }));
@@ -1845,15 +1904,15 @@
   }
   function downloadDocument(key, version, kind, ext, link) {
     if (link.getAttribute("aria-busy") === "true") return;
+    var t0 = performance.now();
     var text = link.textContent;
     link.setAttribute("aria-busy", "true");
-    link.textContent = "Rendu\u2026";
-    Promise.all([api.content(key, version), loadRenderer()]).then(function (r) {
-      return renderDocument(r[0], kind, ext, r[1].R, r[1].fonts);
-    }).then(function (file) {
+    link.textContent = "Rendu…";
+    renderedFile(key, version, kind, ext).then(function (file) {
       saveBlob(file);
+      measure("jm:download", t0, kind + "." + ext);
     }).catch(function (err) {
-      showToast("Document non t\u00e9l\u00e9charg\u00e9 (" + failureText(err) + ")");
+      showToast("Document non téléchargé (" + failureText(err) + ")");
     }).then(function () {
       link.removeAttribute("aria-busy");
       link.textContent = text;
@@ -2156,6 +2215,9 @@
       a.addEventListener("click", function (ev) {
         ev.preventDefault();
         downloadDocument(key, links.version, kind, ext, a);
+      });
+      ["pointerenter", "focus"].forEach(function (type) {
+        a.addEventListener(type, function () { prefetchBundle(key, links.version); });
       });
       return a;
     }
