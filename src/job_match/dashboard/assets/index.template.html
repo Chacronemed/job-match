@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' __SCRIPT_HASHES__; style-src 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" id="theme-color" content="#111113">
 <meta name="robots" content="noindex, nofollow">
@@ -240,29 +240,6 @@ __CSS__
 </div>
 
 <script type="application/json" id="data">__DATA__</script>
-<script>
-__TRACKING_JS__
-</script>
-<script>
-__TRIAGE_JS__
-</script>
-<script>
-__ICONS_JS__
-</script>
-<script>
-__SCORE_JS__
-</script>
-<script>
-__DESC_JS__
-</script>
-<script>
-__UI_JS__
-</script>
-<script>
-__PALETTE_JS__
-</script>
-<script>
-__JS__
-</script>
+__SCRIPTS__
 </body>
 </html>

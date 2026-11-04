@@ -76,6 +76,20 @@ def test_kanban_shows_every_status_without_console_errors(open_dashboard, job_ke
     assert errors == []
 
 
+def test_csp_runs_the_page_and_blocks_an_injected_inline_script(open_dashboard, job_keys):
+    """script-src names the page's own scripts by hash: they run (the board renders with no
+    console error), and an inline script added afterwards is refused by the browser."""
+    page, errors = _open_candidatures(open_dashboard, _api(job_keys))
+    assert page.locator("#kb-board .kb-card").count() == 4
+    assert errors == []
+    page.evaluate(
+        "() => { const s = document.createElement('script');"
+        " s.textContent = 'window.__cspProbe = 1'; document.body.appendChild(s); }"
+    )
+    assert page.evaluate("window.__cspProbe") is None
+    assert len(errors) == 1 and "Content Security Policy" in errors[0]
+
+
 def test_table_shows_every_row_without_console_errors(open_dashboard, job_keys):
     page, errors = _open_candidatures(open_dashboard, _api(job_keys))
     page.click("#apps-view-table")
@@ -221,24 +235,103 @@ def test_generate_missing_confirms_with_count_and_cost_then_posts(open_dashboard
     assert errors == []
 
 
-def test_pdf_link_downloads_in_place_with_the_server_name(open_dashboard, job_keys):
-    path = f"/api/documents/{quote(job_keys[0], safe='')}/v1/cv.pdf"
-    headers = {"content-type": "application/pdf",
-               "content-disposition": 'attachment; filename="CV_Mohamed_Chacrone_Initech.pdf"',
-               "cache-control": "no-store"}
-    routes = {("GET", path): (200, headers, PDF)}
-    page, errors = _open_table(open_dashboard, _api(job_keys), routes=routes)
-    link = page.locator("#kb-table a.doc-dl", has_text="⬇ PDF").first
-    assert link.get_attribute("href") == path
+# What GET /api/documents/<key>/v1/content.json answers (ADR 0019): the generated text, the
+# master and the contact sheet. Small, and every value is made up.
+BUNDLE = {
+    "content": {
+        "job_key": None, "version": 1, "language": "fr", "model": "test", "prompt_version": "4",
+        "generated_at": "2026-10-20T09:00:00Z",
+        "offer": {"key": None, "title": "Ingénieur DevOps", "company": "Initech"},
+        "profile": "Ingénieur DevOps orienté Kubernetes. Disponible à partir de janvier 2027.",
+        "selected_bullets": [{"id": "exp1.b1", "text": "Migration de 12 services vers GKE."}],
+        "skill_groups": [{"group": "Conteneurs", "items": ["Kubernetes (GKE)", "Helm"]}],
+        "headline_techs": ["Kubernetes", "Helm"],
+        "letter": {"paragraphs": [
+            {"sentences": [{"text": "Votre offre chez Initech correspond à ce que je cherche.",
+                            "sources": []}]},
+            {"sentences": [{"text": "Disponible à partir de janvier 2027, je serais heureux d’en "
+                                    "discuter avec vous.", "sources": []}]}]},
+        "highlights": ["Kubernetes"],
+        "availability": "Disponible à partir de janvier 2027.",
+        "cv": {"experiences": [{"id": "exp1", "employer": "Acme Cloud", "title": "DevOps",
+                                "start": "2025-01", "end": None, "location": "Nantes",
+                                "bullets": [{"id": "exp1.b1",
+                                             "text": "Migration de 12 services vers GKE."}]}],
+               "projects": []},
+    },
+    "master": {
+        "headline": "Ingénieur DevOps", "skill_groups": [],
+        "education": [{"degree": "Ingénieur", "school": "ENSIAS", "location": "Rabat",
+                       "start": "2022-09", "end": "2025-06"}],
+        "languages": [{"name": "Français", "level": "bilingue"}], "extras": [],
+    },
+    "contact": {"first_name": "Mohamed", "last_name": "Chacrone", "title": "Ingénieur DevOps",
+                "email": "m@example.com", "phone": "+33 6 00 00 00 00", "linkedin": "",
+                "github": "", "location": "Lyon"},
+}
+
+
+def _bundle_routes(key):
+    bundle = json.loads(json.dumps(BUNDLE))
+    bundle["content"]["job_key"] = key
+    bundle["content"]["offer"]["key"] = key
+    path = f"/api/documents/{quote(key, safe='')}/v1/content.json"
+    headers = {"content-type": "application/json", "cache-control": "no-store"}
+    return path, {("GET", path): (200, headers, json.dumps(bundle))}
+
+
+def _download(page, label):
+    link = page.locator("#kb-table a.doc-dl", has_text=label).first
     with page.expect_download() as info:
         link.click()
     download = info.value
-    assert download.suggested_filename == "CV_Mohamed_Chacrone_Initech.pdf"
     with open(download.path(), "rb") as fh:
-        assert fh.read(5) == b"%PDF-"
+        head = fh.read(5)
+    page.wait_for_function("() => !document.querySelector('#kb-table a.doc-dl[aria-busy]')")
+    return download.suggested_filename, head
+
+
+def test_pdf_link_renders_in_the_page_and_saves_under_the_template_name(open_dashboard, job_keys):
+    content, routes = _bundle_routes(job_keys[0])
+    page, errors = _open_table(open_dashboard, _api(job_keys), routes=routes)
+    link = page.locator("#kb-table a.doc-dl", has_text="\u2b07 PDF").first
+    assert link.get_attribute("href") == "#"
+    name, head = _download(page, "\u2b07 PDF")
+    assert name == "CV_Mohamed_Chacrone_Initech.pdf"
+    assert head == b"%PDF-"
     assert len(page.context.pages) == 1  # no new tab
-    assert page.api_calls[1:] == [("GET", path)]
+    assert page.url.endswith("view=table")  # href="#" did not move the page
+    # one content.json call, the renderer, its three libraries and the two fonts: no file route
+    calls = page.api_calls[1:]
+    assert calls[0] == ("GET", content)
+    assert sorted(c[1] for c in calls[1:]) == sorted([
+        "/assets/render.js", "/vendor/pdf-lib.min.js", "/vendor/fontkit.umd.min.js",
+        "/vendor/fflate.js", "/fonts/Inter-Regular.ttf", "/fonts/Inter-Bold.ttf"])
+    assert not [c for c in page.api_calls if c[1].endswith((".pdf", ".docx"))]
+    # the second file reuses everything: content.json again, nothing else
+    name, head = _download(page, "\u2b07 DOCX")
+    assert name == "CV_Mohamed_Chacrone_Initech.docx"
+    assert head[:2] == b"PK"
+    assert page.api_calls[len(calls) + 1:] == [("GET", content)]
     assert errors == []
+
+
+def test_letter_docx_downloads_too_and_a_failed_content_call_says_so(open_dashboard, job_keys):
+    content, routes = _bundle_routes(job_keys[0])
+    page, errors = _open_table(open_dashboard, _api(job_keys), routes=routes)
+    name, head = _download(page, "\u2b07 PDF")  # the letter's PDF is the third link
+    assert name == "CV_Mohamed_Chacrone_Initech.pdf"
+    letter = page.locator("#kb-table td.doc-cell").nth(1).locator("a.doc-dl.alt")
+    with page.expect_download() as info:
+        letter.click()
+    assert info.value.suggested_filename == "Lettre_Mohamed_Chacrone_Initech.docx"
+    # a version the Worker no longer has: a toast, no download, the link usable again
+    page.route("**/content.json", lambda route, _req: route.fulfill(
+        status=404, content_type="application/json", body='{"error":"document: not found"}'))
+    page.locator("#kb-table a.doc-dl", has_text="\u2b07 PDF").first.click()
+    page.wait_for_selector("#toast", state="visible")
+    assert "non téléchargé" in page.locator("#toast").inner_text()
+    assert [e for e in errors if "404" not in e] == []  # the deliberate 404 is logged by Chromium
 
 
 def test_remembered_table_view_presses_the_right_chip(open_dashboard, job_keys):

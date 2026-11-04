@@ -10,8 +10,8 @@
 //   GET  /api/documents/:key             -> {documents: [versions]}   (ADR 0017)
 //   POST /api/documents/:key/regenerate  -> {document}  (201, or 409 while one is pending);
 //                                           the pass for that offer runs now (ctx.waitUntil)
-//   GET  /api/documents/:key/v<n>/(cv|letter).(pdf|docx) -> the file, as an attachment,
-//                                           rendered on first download when the cron has not
+//   GET  /api/documents/:key/v<n>/content.json -> {content, master, contact}: what the browser
+//                                           renders the PDF and the DOCX from (ADR 0019)
 //   POST /api/ai/run         -> 202 {started, kind}  (the rerank pass, now, in the background)
 //   POST /api/documents/run  -> 202 {started, kind}  (the documents pass, now, in the background)
 //   POST /api/documents/missing -> {requested, skipped_budget, remaining_usd, documents}
@@ -31,21 +31,16 @@ import { listRuns, listVerdicts, recordRun, runRerank } from "./ai.js";
 import {
   budgetStatus,
   DOCUMENTS_CRON,
-  FILE_COLUMNS,
-  FILE_NAMES,
-  fileRow,
   latestReadyVersion,
   listDocuments,
   listVersions,
+  loadBundle,
   recordDocumentRun,
   requestDocuments,
-  renderReady,
-  renderRow,
   requestFirstDocuments,
   requestMissingDocuments,
   runDocuments,
 } from "./documents.js";
-import { MIME } from "./render.js";
 import { actOnInbox, handleInbox, listFollowupsDue, listInbox } from "./inbox.js";
 import { day, loadAsset } from "./ai.js";
 import { JwksUnavailable, principalOf, verifyAccessJwt } from "./auth.js";
@@ -174,30 +169,15 @@ async function putApplication(request, env, key) {
   return json(200, { application: row });
 }
 
-// The file itself, from R2, as an attachment named after the contact and the company. The
-// name was fixed at render time (R2 custom metadata), so nothing personal is read here. A
-// ready version the cron has not rendered yet (generated before part 3, or a stuck batch) is
-// rendered now, once, and stored: ready means downloadable.
-async function downloadDocument(env, key, version, name) {
-  const column = FILE_COLUMNS[name];
-  let row = await fileRow(env.DB, key, version);
-  if (row && !row[column] && row.content_key) {
-    const done = await renderRow(env, row, await loadFonts(env), new Date());
-    if (!done) return fail(503, "document: render failed");
-    row = await fileRow(env.DB, key, version);
-  }
-  const r2key = row ? row[column] : null;
-  const obj = r2key ? await env.DOCS.get(r2key) : null;
-  if (!obj) return fail(404, "document: not found");
-  const filename = (obj.customMetadata && obj.customMetadata.filename) || name;
-  return new Response(obj.body, {
+// What the browser renders from (ADR 0019): the content, the master and the contact sheet of
+// one ready version. The contact details travel to my own browser behind Access, never to a
+// log or a model. `no-store`: the file is private and the version may be regenerated.
+async function getContent(env, key, version) {
+  const bundle = await loadBundle(env, key, version);
+  if (!bundle) return fail(404, "document: not found");
+  return new Response(JSON.stringify(bundle), {
     status: 200,
-    headers: {
-      "Content-Type": MIME[name.split(".").pop()] || "application/octet-stream",
-      "Content-Disposition": 'attachment; filename="' + filename.replace(/["\\]/g, "") + '"',
-      "Cache-Control": "no-store",
-      "X-Content-Type-Options": "nosniff",
-    },
+    headers: { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
   });
 }
 
@@ -308,12 +288,12 @@ async function route(request, env, url, ctx) {
   }
   if (path.startsWith("/api/documents/")) {
     const rest = path.slice("/api/documents/".length);
-    const file = /^(.+)\/v([1-9][0-9]{0,5})\/(cv\.pdf|cv\.docx|letter\.pdf|letter\.docx)$/.exec(rest);
+    const file = /^(.+)\/v([1-9][0-9]{0,5})\/content\.json$/.exec(rest);
     if (file) {
       const key = decodeKey(file[1]);
-      if (!isJobKey(key) || !FILE_NAMES.includes(file[3])) return fail(400, "job_key: invalid");
+      if (!isJobKey(key)) return fail(400, "job_key: invalid");
       if (!env.DOCS) return fail(500, "server misconfigured");
-      return request.method === "GET" ? downloadDocument(env, key, Number(file[2]), file[3]) : fail(405, "method not allowed");
+      return request.method === "GET" ? getContent(env, key, Number(file[2])) : fail(405, "method not allowed");
     }
     const regenerate = rest.endsWith("/regenerate");
     const key = decodeKey(regenerate ? rest.slice(0, -"/regenerate".length) : rest);
@@ -379,18 +359,6 @@ export default {
 // pending documents run, five at most. A pass with nothing to do leaves no trace; the others
 // log one line of counters and write one document_runs row. `opts.keys` limits a pass to
 // those offers (« Générer »).
-// The PDF font, bundled by wrangler as bytes (worker/src/fonts.js). Node cannot import it:
-// the tests pass `opts.fonts` themselves, and without it nothing is rendered.
-// The Node tests pass the bytes as `env.fonts` (the download route has no `opts`).
-async function loadFonts(env) {
-  if (env && env.fonts) return env.fonts;
-  try {
-    return (await import("./fonts.js")).FONTS;
-  } catch {
-    return null;
-  }
-}
-
 export async function runDocumentsScheduled(env, opts = {}) {
   const stamp = () => (opts.now || new Date()).toISOString();
   const startedAt = stamp();
@@ -399,16 +367,6 @@ export async function runDocumentsScheduled(env, opts = {}) {
     run = await runDocuments(env, opts);
   } catch {
     run = { outcome: "failed", http_status: null, counters: {} };
-  }
-  // Part 3: the files of every ready version that has none yet, this pass's and earlier ones'.
-  try {
-    const fonts = opts.fonts === undefined ? await loadFonts(env) : opts.fonts;
-    const rendered = await renderReady(env, { ...opts, fonts });
-    if (rendered.rendered || rendered.render_errors) {
-      run = { ...run, outcome: run.outcome === "idle" ? "ok" : run.outcome, counters: { ...run.counters, ...rendered } };
-    }
-  } catch {
-    run = { ...run, counters: { ...run.counters, render_errors: 1 } };
   }
   if (run.outcome === "idle") return run;
   const status = run.http_status === null ? "" : " http=" + run.http_status;

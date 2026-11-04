@@ -24,8 +24,8 @@ class FakeStatement {
     return row ? { ...row } : null;
   }
   async run() {
-    this.db.prepare(this.sql).run(...this.params);
-    return { success: true };
+    const r = this.db.prepare(this.sql).run(...this.params);
+    return { success: true, meta: { changes: Number(r.changes) } }; // D1's shape, the part we read
   }
 }
 

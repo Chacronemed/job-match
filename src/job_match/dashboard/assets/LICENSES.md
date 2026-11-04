@@ -1,13 +1,16 @@
 # Third-party assets in the dashboard
 
-The dashboard is built with three third-party works. Each one is listed below with the full text of its licence.
+The dashboard is built with the third-party works below, each with the full text of its licence. The last three render the CV and the cover letter in the browser (ADR 0019); they are copied from the Worker's npm install into `vendor/`.
 
 | Asset | Where | Licence |
 |---|---|---|
 | Inter Variable (latin subset, via @fontsource-variable/inter 5.3.0) | `fonts/InterVariable-latin.woff2` | SIL Open Font License 1.1 |
-| Inter 4.1 static Regular and Bold (rsms/inter release), embedded in the PDF documents by the Worker | `worker/fonts/Inter-Regular.ttf`, `worker/fonts/Inter-Bold.ttf` (repo) | SIL Open Font License 1.1 (`worker/fonts/LICENSE-Inter.txt`) |
+| Inter 4.1 static Regular and Bold (rsms/inter release), embedded in the PDF documents by the browser | `fonts/Inter-Regular.ttf`, `fonts/Inter-Bold.ttf` (from `worker/fonts/`) | SIL Open Font License 1.1 (`fonts/LICENSE-Inter.txt`) |
 | Lucide icons (lucide-static 1.61.0, subset as icon nodes) | inlined in `index.html` (`lucide.js`) | ISC |
 | Radix Colors 3.0.0 (slate, violet, green, amber, red and blue dark scales; values copied) | inlined in `index.html` (`tokens.css`) | MIT |
+| pdf-lib 1.17.1 (browser build, bundles pako 1.0.11) | `vendor/pdf-lib.min.js` | MIT |
+| @pdf-lib/fontkit 1.1.1 (browser build, bundles pako 1.0.11) | `vendor/fontkit.umd.min.js` | MIT |
+| fflate 0.8.2 (browser build) | `vendor/fflate.js` | MIT |
 
 ## Inter: SIL Open Font License 1.1
 
@@ -179,4 +182,15 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+```
+
+## pdf-lib, @pdf-lib/fontkit, fflate and pako: MIT License
+
+The MIT licence text above applies to each, with these copyright lines:
+
+```
+pdf-lib: Copyright (c) 2019 Andrew Dillon
+@pdf-lib/fontkit: Copyright (c) 2014 Devon Govett (fontkit), Andrew Dillon (@pdf-lib fork)
+fflate: Copyright (c) 2023 Arjun Barrett
+pako: Copyright (C) 2014-2017 by Vitaly Puzrin and Andrei Tuputcyn
 ```

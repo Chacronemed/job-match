@@ -268,16 +268,12 @@ describe("documents badge", () => {
   });
 
 
-  test("download links exist for every ready version, files rendered or not, and carry the version", () => {
+  test("a ready version links to its content.json, whatever `files` says; nothing else does", () => {
     assert.equal(T.documentLinks("france_travail:1A", null), null);
-    assert.ok(T.documentLinks("france_travail:1A", { status: "ready", version: 2, files: false })); // rendered on download
-    assert.equal(T.documentLinks("france_travail:1A", { status: "failed", version: 2, files: false }), null);
-    assert.equal(T.documentLinks("france_travail:1A", { status: "pending", version: 3, files: true }), null);
-    assert.deepEqual(T.documentLinks("france_travail:1A", { status: "ready", version: 2, files: true }), {
-      cv_pdf: "/api/documents/france_travail%3A1A/v2/cv.pdf",
-      cv_docx: "/api/documents/france_travail%3A1A/v2/cv.docx",
-      letter_pdf: "/api/documents/france_travail%3A1A/v2/letter.pdf",
-      letter_docx: "/api/documents/france_travail%3A1A/v2/letter.docx",
+    assert.equal(T.documentLinks("france_travail:1A", { status: "failed", version: 2 }), null);
+    assert.equal(T.documentLinks("france_travail:1A", { status: "pending", version: 3 }), null);
+    assert.deepEqual(T.documentLinks("france_travail:1A", { status: "ready", version: 2, files: false }), {
+      content: "/api/documents/france_travail%3A1A/v2/content.json", version: 2,
     });
   });
 });

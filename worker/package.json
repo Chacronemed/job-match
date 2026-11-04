@@ -1,13 +1,11 @@
 {
   "private": true,
   "type": "module",
-  "description": "job-match Worker: static dashboard, /api/ tracking routes, the AI rerank and the application documents (PDF/DOCX rendering needs the dependencies below).",
-  "dependencies": {
+  "description": "job-match Worker: static dashboard, /api/ tracking routes, the AI rerank and the application documents. The PDF/DOCX libraries below are not bundled in the Worker (ADR 0019): the dashboard build copies their browser builds into site/vendor and the Node tests use them.",
+  "devDependencies": {
     "@pdf-lib/fontkit": "1.1.1",
     "fflate": "0.8.2",
-    "pdf-lib": "1.17.1"
-  },
-  "devDependencies": {
+    "pdf-lib": "1.17.1",
     "pdfjs-dist": "5.4.296"
   }
 }

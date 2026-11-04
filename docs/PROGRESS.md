@@ -3,7 +3,25 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**M27: boîte de réception recruteurs + relances dues, côté Worker (n8n client)** (branch
+**Fix prod 1102 : le rendu PDF/DOCX quitte le Worker** (branch `fix/m26-client-render` from
+`fix/m26-downloads`, 2026-11-04, ADR 0019 accepted). **Done locally, to deploy by the Daily run
+only** (Next step). Prod: `GET /api/documents/<clé>/v1/cv.pdf` → Cloudflare 1102 (the Free
+plan's 10 ms of CPU; a CV layout costs seconds). The browser now renders from
+`GET /api/documents/<clé>/v<n>/content.json` with the same `render.js`; the Worker only
+generates, validates and stores JSON; rows `running` for 15 min go back to pending, an
+`api_error` failure is retried once; migration 0008. D1 prod read (lecture seule): 36 ready
+without files, 15 running stuck, 29 failed = 23 validator + 6 `offer_gone` + 0 cut. See Done.
+**Pre-merge pass (2026-11-04, same day):** `cpu.test.mjs` at 5 ms a call (mean of 20), CSP
+`script-src` by sha256 hashes (no `'unsafe-inline'`), prompt **v5** after the analysis of the 14
+prod rows (`headline_techs` ×7, `profile_chronology` ×7: both rules too strict, ADR 0017
+amendment). **Next step, in order:** (1) merge, the Daily run deploys the Worker + site;
+(2) Cloudflare → Workers & Pages → `job-match` → Metrics → « CPU time » P999 < 10 ms, no 1102;
+(3) requeue the 14 rows (prod write, not done here: the v4 cron would replay the same refusals):
+`npx --prefix worker wrangler d1 execute job-match --remote --command "UPDATE documents SET status = 'pending', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE status = 'failed' AND id IN (9,33,39,43,44,45,47,49,50,54,57,68,69,72)"`;
+(4) after two cron passes: `SELECT status, error_code, COUNT(*) FROM documents GROUP BY 1, 2`
+(expected: `ready`, or codes other than those two).
+
+Before it: **M27: boîte de réception recruteurs + relances dues, côté Worker (n8n client)** (branch
 `fix/m26-downloads`, 2026-11-02, ADR 0018 accepted). **Done locally, not deployed** (Next step:
 migration 0007, deploy, the Access service token and its Service Auth policy, then the n8n
 flows). An Access service token named `ACCESS_SERVICE_CN` may call `POST /api/inbox` and
@@ -76,6 +94,74 @@ production rows. Still pending: the M21 Cloudflare setup, the data-repo cleanup 
 two Cloudflare secrets, M9 manual GitHub setup, `PROFILE_YAML` re-encoding, `SMTP_PORT` variable.
 
 ## Done
+- **Fix prod 1102: the browser renders the documents** (2026-11-04, ADR 0019, branch
+  `fix/m26-client-render`):
+  - **Cause:** `renderAll` in the Worker (every CV layout variant × 3 sizes × pdf-lib) needs
+    seconds of CPU; Workers Free allows 10 ms a request, `wrangler dev` does not enforce it.
+    The `*/10` cron was killed inside `renderReady` (rows left `running`), the first-download
+    render too (1102 on « ⬇ PDF »).
+  - **Prod D1, read-only (2026-11-04, 80 rows):** `ready` 36 (none with files, oldest
+    2026-11-01), `running` 15 (stuck since 2026-11-02 13:23 UTC), `failed` 29: `headline_techs`
+    7, `profile_chronology` 7, `offer_gone` 6, `unknown_name` 5, `invalid_json` /
+    `invented_skill` / `too_long` / `unsourced_tool` 1 each. **23 from the validator (22 codes +
+    `invalid_json`), 6 `offer_gone`, 0 `api_error`, 0 `render_error`:** the cut never made an
+    « Échec », it left rows `running` or `ready` without files.
+  - **Worker:** `renderReady`, `renderRow`, `loadSheets`, `fileRow`, `FILE_COLUMNS`,
+    `downloadDocument`, `loadFonts` and `src/fonts.js` deleted; no import of `render.js`,
+    pdf-lib, fflate or fontkit from `index.js` (they are devDependencies now; wrangler `rules`
+    for `.ttf` gone). New `GET /api/documents/:key/v<n>/content.json` → `loadBundle`
+    `{content, master, contact}` from R2, `no-store`, 404 when not ready or a sheet is missing;
+    the file routes are gone (400 like any bad key). `runDocuments` starts with `requeueStuck`
+    (`running` older than `STUCK_MINUTES` = 15 → pending) and `retryCutOff` (`failed` with
+    `AUTO_RETRY_CODES` = [`api_error`] and `auto_retried = 0` → pending, `auto_retried = 1`;
+    **migration 0008**); counters `requeued`, `auto_retried`. `listDocuments` / `listVersions`
+    drop `files`. The `*_key` columns stay, unused (`docs-smoke` still fills them locally).
+  - **Dashboard:** `write_site` → `write_renderer`: `worker/src/render.js` copied to
+    `assets/render.js` with its three imports rewritten to the UMD globals
+    (`browser_renderer`; the ESM builds import `pako`, which has no ESM build), browser builds
+    to `vendor/` (`pdf-lib.min.js`, `fontkit.umd.min.js`, `fflate.js`, from
+    `worker/node_modules`, found from the repo or the cwd for `pip install .`), the two Inter
+    TTFs + licence to `fonts/`; a clear `FileNotFoundError` naming `npm ci --prefix worker`.
+    CSP `script-src 'self'` + the sha256 of the 8 inline scripts (`render.script_hash`,
+    template placeholders `__SCRIPTS__` / `__SCRIPT_HASHES__`). `tracking.js`: `documentLinks` → `{content,
+    version}`, `client.content(key, version)`, `client.bytes(url)`. `dashboard.js`:
+    `fileCell(links, kind, doc, label, key)` → `href="#"` links; `downloadDocument` fetches
+    the bundle and `loadRenderer()` (the three scripts injected once, `import("./assets/
+    render.js")` once, the fonts once), renders the one file (`renderDocument`: `cvModel` /
+    `letterModel` → `renderCvPdf` / `renderLetterPdf` / `renderCvDocx` / `renderLetterDocx`),
+    saves it through a blob link named by `fileName` (`CV_`, `Lettre_`, `Cover_letter_`);
+    « Rendu… » + `aria-busy` while it runs, toast « Document non téléchargé (…) » on failure.
+    « Échec » keeps the code in its tooltip (`docBadge`). LICENSES.md lists pdf-lib, fontkit,
+    fflate, pako.
+  - **Tests:** Node 287 (270 before, the five « files » tests gone: content route shape / 404 / 401 / `no-store` / nothing stored,
+    stuck row requeued and a fresh one left, `api_error` retried once then left and a validator
+    code never, static walk of the Worker's imports, `render.js` without Node API;
+    `cpu.test.mjs`: every route of the `index.js` header + the documents pass under **5 ms of
+    CPU a call**, mean of 20 calls after a warm-up (`process.cpuUsage`; Windows ticks by 15.6 ms,
+    a single call read 0 / 16 / 31 ms), and the header must list every route called; `fakeD1.run`
+    returns `meta.changes`). Python 1526 (`write_site` ships renderer / vendor / fonts and
+    the page names them, `browser_renderer` refuses an unknown or a missing import,
+    `write_renderer` names the npm install, no wrangler `rules`; browser: « ⬇ PDF » saves
+    `CV_Mohamed_Chacrone_Initech.pdf` with `%PDF-` from a mocked `content.json`, exactly one
+    content call + the 6 static files and **no `.pdf`/`.docx` request**, then « ⬇ DOCX » reuses
+    everything (`PK`); the letter DOCX name; a 404 bundle → toast, link usable). `conftest`
+    serves the written site's `.js`/`.ttf` and records them in `page.api_calls`. ruff clean.
+  - **Pre-merge pass (2026-11-04):**
+    - **CSP:** `render_index` emits the 8 `<script>` blocks itself and puts their sha256 in
+      `script-src 'self' 'sha256-…' ×8`; `style-src 'unsafe-inline'` unchanged. Tests: the
+      hashes equal the recomputed ones (test_render); browser: the board renders with 0 console
+      errors, then an injected inline `<script>` leaves `window.__cspProbe` undefined and logs
+      one « Content Security Policy » error.
+    - **Prompt v5 (`documents.js`, ADR 0017 amendment):** `headlineCandidates(master, offer)`
+      (master skill labels the offer names, deduplicated) is told to the model in the user
+      message and bounds `headline_techs` to `min(5, candidates)…6`, each in the master, in the
+      offer and once. Replay on the 7 offers still in the local base: 6 named fewer than 5
+      master skills (1, 2, 3, 4, 4, 4, 6) — the 5-6 rule was unsatisfiable. `TIME_CONNECTOR` =
+      `puis|ensuite|then|later` only (« après/avant » carry their sense: « alternance chez Atos,
+      après un PFE chez Orange » is true, recent first), and a context word two experiences share
+      (`stagiaire` twice in the real master) orders nothing (`orderTerms`). No invention gate
+      touched. Tests: three-skill / one-skill / no-skill offers, « après » recent-first, two
+      « Stagiaire » experiences, `buildUser` carries the list. Node 291, Python 1526, ruff clean.
 - **M27: recruiter inbox + due follow-ups for n8n** (2026-11-02, ADR 0018):
   - **Auth (`auth.js principalOf`):** a JWT with `email` is me (every route); one with
     `common_name` equal to the Worker secret `ACCESS_SERVICE_CN` (the service token's Client
@@ -1172,12 +1258,17 @@ two Cloudflare secrets, M9 manual GitHub setup, `PROFILE_YAML` re-encoding, `SMT
   4. n8n: an IMAP/Gmail trigger → HTTP Request `POST /api/inbox` (the two CF-Access headers,
      `message_id` = the Message-ID header); a daily cron → `GET /api/followups/due` → your
      reminder. The dashboard's « Réponses à confirmer » block fills from the first unsure email.
-- **Deploy `fix/m26-downloads`:** `npx wrangler deploy` (no migration), then on prod
-  Candidatures → Tableau: a « Prêt (v1) » row now shows « ⬇ PDF » / « ⬇ DOCX » and the first
-  click renders and saves `CV_Mohamed_Chacrone_<Entreprise>.pdf` (a 503 means the master or
-  contact sheet is missing in R2: `job-match cv push`); « Générer » on a row → « En cours… » →
-  links within two minutes without a reload; the next `*/10` pass queues the « À candidater »
-  offers without documents (a `document_runs` row with `queued`). Then the M26 round 4 below.
+- **Deploy `fix/m26-client-render` by the Daily run only** (merge, then the 07:00 UTC run or
+  a `workflow_dispatch`): it applies migrations 0007 + 0008, runs `npm ci --prefix worker`,
+  builds the site (now with `assets/render.js`, `vendor/`, the TTFs) and deploys. Then on prod
+  Candidatures → Tableau: « ⬇ PDF » on a « Prêt » row reads « Rendu… » one to three seconds
+  (first click: 1.3 MB of scripts) and saves `CV_Mohamed_Chacrone_<Entreprise>.pdf`; a toast
+  « Document non téléchargé (…) » means `content.json` answered 404 (master or contact sheet
+  missing in R2: `job-match cv push`). The first `*/10` pass requeues the 15 stuck rows
+  (`document_runs.counters.requeued`), five generated a pass within the budget; the 36 ready
+  versions download at once. Check `wrangler tail` shows no 1102 on `/api/documents/`. The
+  Exécutions « Lancer maintenant » for documents runs the same pass. Then the M26 round 4
+  below (`docs-smoke --render-only` still renders locally with the same `render.js`).
 - **M26 review, round 4 (you):** costs at list price, two attempts each time: v1 $0.069 /
   $0.076, v2 $0.074 / $0.084, v3 $0.078 / $0.081 (first-attempt codes: `unsourced_tool` ×2;
   `unknown_name` ×2 + `unsourced_tool` ×2). Prompt v4 (availability as a full sentence, once
@@ -1409,6 +1500,10 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
 - ~~**M9 — WAL flush before data-repo push:**~~ **Resolved in M9.** `PRAGMA wal_checkpoint(TRUNCATE)` + `VACUUM` run in daily.yml before DB push. `*.sqlite-wal` and `*.sqlite-shm` added to `.gitignore`.
 
 ## Known issues
+- **Documents (ADR 0019):** the 29 prod « Échec » rows are validator codes (23) and
+  `offer_gone` (6): none is retried automatically; « Regénérer » per row after a look at the
+  code in the tooltip. The first download of a session loads 1.3 MB of scripts. The
+  `cpu.test.mjs` budget (200 ms, Node) detects a render, not the Worker's 10 ms.
 - **Inbox (M27):** until the secret `ACCESS_SERVICE_CN` is set, every service token is refused
   (401) and n8n cannot post. Haiku's `confidence` is trusted as is; the 0.85 threshold is the
   knob. `interview_at` is not in the SQLite mirror.
@@ -1622,3 +1717,8 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
   `headline_techs` title line, bold by the template (`emphasize`: offer terms + key numbers),
   Certifications unrendered, Engagement section, fill-to-one-page layout with measured fill
   (`renderCvPdfInfo`), `docs-smoke --force`. 218 Node + 1505 Python tests.
+- 2026-11-04: fix prod 1102 (ADR 0019). The browser renders the PDF/DOCX from
+  `GET /api/documents/:key/v<n>/content.json` with the Worker's `render.js` shipped as an asset
+  (UMD vendor builds, Inter TTFs); the Worker renders nothing (routes, cron batch, fonts.js and
+  the wrangler rule removed); stuck `running` rows requeued after 15 min, `api_error` retried
+  once (migration 0008); CPU budget test per route. 287 Node + 1525 Python tests.

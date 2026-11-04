@@ -2,7 +2,18 @@
 import json
 import re
 
-from job_match.dashboard.render import embed_json, render_index, write_site
+import pytest
+
+from job_match.dashboard.render import (
+    PDF_FONTS,
+    VENDOR,
+    browser_renderer,
+    embed_json,
+    render_index,
+    script_hash,
+    write_renderer,
+    write_site,
+)
 
 _DATA_BLOCK = re.compile(
     r'<script type="application/json" id="data">(.*?)</script>', re.S
@@ -46,14 +57,23 @@ def test_index_is_self_contained_with_no_external_resources(dashboard_data):
     assert "default-src 'none'" in html
     # the one network call allowed: the tracking API on the same origin
     assert "connect-src 'self'" in html
+    # scripts: the eight inline ones by their hash, or same-origin files (the document
+    # renderer, ADR 0019); never 'unsafe-inline', never a CDN
+    script_src = re.search(r"script-src ([^;]*);", html).group(1)
+    assert "'unsafe-inline'" not in script_src
+    assert "style-src 'unsafe-inline';" in html  # the inlined stylesheets, unchanged
+    hashes = script_src.split(" ")
+    assert hashes[0] == "'self'" and len(hashes) == 9
+    inline = re.findall(r"<script>(.*?)</script>", html, re.S)
+    assert len(inline) == 8
+    assert hashes[1:] == [script_hash(body) for body in inline]
     assert 'rel="stylesheet"' not in html
     assert "<script src=" not in html
     assert re.findall(r'fetchImpl\("([^"]*)"', html) == ["/api/"]
     assert "fetch(" not in html.replace("window.fetch.bind", "")
     assert "innerHTML" not in html
     assert '<meta name="robots" content="noindex, nofollow">' in html
-    for marker in ("__CSS__", "__JS__", "__TRACKING_JS__", "__TRIAGE_JS__", "__ICONS_JS__",
-                   "__SCORE_JS__", "__UI_JS__", "__PALETTE_JS__", "__DATA__"):
+    for marker in ("__CSS__", "__SCRIPTS__", "__SCRIPT_HASHES__", "__DATA__"):
         assert marker not in html
 
 
@@ -275,3 +295,48 @@ def test_candidatures_render_is_isolated_per_card():
         assert needle in html, needle
     # The Offres status filter and the board's status menu must not share a name (prod bug, M26).
     assert "function statusSelect(" not in html
+
+
+def test_the_site_ships_the_renderer_its_libraries_and_the_pdf_fonts(tmp_path, dashboard_data):
+    """ADR 0019: the browser renders the CV and the letter from the Worker's own render.js."""
+    data, _ = dashboard_data
+    site = tmp_path / "site"
+    write_site(data, site)
+    renderer = (site / "assets" / "render.js").read_text(encoding="utf-8")
+    assert not re.search(r"^import\b", renderer, re.M)
+    for line in ("const fontkit = globalThis.fontkit;",
+                 "const { strToU8, zipSync } = globalThis.fflate;",
+                 "const { PDFDocument, rgb } = globalThis.PDFLib;"):
+        assert line in renderer
+    assert "export function fileName" in renderer
+    assert "export async function renderCvPdf" in renderer
+    for name in VENDOR:
+        assert (site / "vendor" / name).stat().st_size > 10_000
+    for name in PDF_FONTS:
+        assert (site / "fonts" / name).is_file()
+    assert (site / "fonts" / "Inter-Regular.ttf").read_bytes()[:4] == b"\x00\x01\x00\x00"
+    licences = (site / "LICENSES.md").read_text(encoding="utf-8")
+    for name in ("pdf-lib", "fontkit", "fflate", "pako"):
+        assert name in licences
+    html = (site / "index.html").read_text(encoding="utf-8")
+    for src in ("vendor/pdf-lib.min.js", "vendor/fontkit.umd.min.js", "vendor/fflate.js",
+                "./assets/render.js", "fonts/Inter-Regular.ttf", "fonts/Inter-Bold.ttf"):
+        assert src in html  # fetched on the first download, same origin
+
+
+def test_the_renderer_rewrite_refuses_an_import_it_does_not_know():
+    src = ('import fontkit from "@pdf-lib/fontkit";\nimport { strToU8, zipSync } from "fflate";\n'
+           'import { PDFDocument, rgb } from "pdf-lib";\nexport const X = 1;\n')
+    assert "import" not in browser_renderer(src)
+    with pytest.raises(ValueError):
+        browser_renderer(src + 'import x from "other";\n')
+    with pytest.raises(ValueError):
+        browser_renderer(src.replace('import { PDFDocument, rgb } from "pdf-lib";\n', ""))
+
+
+def test_write_renderer_names_the_missing_npm_install(tmp_path):
+    worker = tmp_path / "worker"
+    (worker / "src").mkdir(parents=True)
+    (worker / "src" / "render.js").write_text("", encoding="utf-8")
+    with pytest.raises(FileNotFoundError, match="npm ci --prefix worker"):
+        write_renderer(tmp_path / "site", worker)

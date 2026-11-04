@@ -2,7 +2,7 @@
 // the validator refuses what the master does not hold, the cron takes five pending rows,
 // respects the budget and the credit, and the routes follow the Access rules.
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { before, beforeEach, describe, test } from "node:test";
 
 import { resetJwksCache } from "../src/auth.js";
@@ -12,6 +12,8 @@ import {
   buildSystem,
   availabilityText,
   buildTargetedRetry,
+  buildUser,
+  headlineCandidates,
   costMicroUsd,
   errorTarget,
   DEFAULT_ESTIMATE_PER_DOCUMENT_USD,
@@ -26,6 +28,7 @@ import {
   listDocuments,
   runDocuments,
   spentThisMonth,
+  STUCK_MINUTES,
   validateDocument,
 } from "../src/documents.js";
 import worker, { runDocumentsScheduled } from "../src/index.js";
@@ -189,6 +192,14 @@ describe("prompt and schema", () => {
     assert.ok(!JSON.stringify(DOCUMENT_SCHEMA).includes("maxLength"), "lengths are checked in code");
   });
 
+  test("the user message names the master skills the offer cites, for headline_techs", () => {
+    const ctx = { today: NOW, availability: "Disponible à partir de janvier 2027", finished: [], candidates: headlineCandidates(MASTER, OFFER) };
+    const text = buildUser(OFFER, "fr", ctx);
+    assert.ok(text.includes("Technologies du maître que l'offre cite (pour headline_techs) : Kubernetes (GKE), Google Cloud Platform."), text);
+    const bare = buildUser({ ...OFFER, description_excerpt: "Rien de technique." }, "fr", { ...ctx, candidates: [] });
+    assert.ok(bare.includes("(pour headline_techs) : aucune."), bare);
+  });
+
   test("the system block is cached, stable and carries the master only", () => {
     const a = buildSystem(MASTER);
     const b = buildSystem(JSON.parse(JSON.stringify({ ...MASTER, headline: MASTER.headline })));
@@ -304,13 +315,50 @@ describe("validateDocument", () => {
     assert.deepEqual(v(good({ skill_groups: [{ group: "Conteneurs", items: ["Kubernetes (GKE)"] }, { group: "Développement", items: ["JavaScript / TypeScript"] }] }), MASTER, jsOffer), []);
   });
 
-  test("the title line: 5 to 6 technologies the offer asks for and the master holds", () => {
-    let errs = v(good({ headline_techs: ["Kubernetes", "GKE"] }));
-    assert.ok(errs.includes("headline_techs: 2 technologies (5 to 6)"), errs);
+  test("the title line: up to 6 technologies the offer names, 5 at least when it names 5", () => {
+    // OFFER names two master skills (Kubernetes (GKE), Google Cloud Platform); their forms count too
+    assert.deepEqual(headlineCandidates(MASTER, OFFER), ["Kubernetes (GKE)", "Google Cloud Platform"]);
+    let errs = v(good({ headline_techs: ["Kubernetes"] }));
+    assert.ok(errs.includes("headline_techs: 1 technologies (2 to 6, the offer names 2)"), errs);
+    assert.deepEqual(v(good({ headline_techs: ["Kubernetes", "GKE"] })), []);
     errs = v(good({ headline_techs: ["Kubernetes", "GKE", "GCP", "Helm", "Azure"] }));
     assert.ok(errs.includes("headline_techs: Azure is not in the master"), errs);
     errs = v(good({ headline_techs: ["Kubernetes", "GKE", "GCP", "Helm", "Terraform"] }));
     assert.ok(errs.includes("headline_techs: Terraform is not in the offer"), errs);
+    errs = v(good({ headline_techs: ["Kubernetes", "GKE", "GCP", "Helm", "kubernetes"] }));
+    assert.ok(errs.includes("headline_techs: kubernetes twice"), errs);
+    errs = v(good({ headline_techs: ["Kubernetes", "GKE", "GCP", "Helm", "Google Cloud Platform", "kubernetes", "gke"] }));
+    assert.ok(errs.includes("headline_techs: 7 technologies (2 to 6, the offer names 2)"), errs);
+  });
+
+  // Prod 2026-11-02 (7 rows failed on headline_techs, 14 carried the code): France Travail
+  // offers name few master skills. 7766868 named three (Kubernetes, Infrastructure as Code,
+  // AWS), 7990644 one (Ansible): five techs were impossible without one absent from the offer.
+  test("an offer naming three master skills accepts three headline techs, not two", () => {
+    const three = { ...OFFER, description_excerpt: "Ingénieur DevOps AWS confirmé : Kubernetes, infrastructure as code, AWS. Équipe de 6." };
+    assert.deepEqual(headlineCandidates(MASTER, three), ["Kubernetes (GKE)", "AWS"]);
+    const master = { ...MASTER, skills: [...MASTER.skills, { id: "infrastructure as code", label: "Infrastructure as Code" }] };
+    assert.deepEqual(headlineCandidates(master, three), ["Kubernetes (GKE)", "AWS", "Infrastructure as Code"]);
+    assert.deepEqual(v(good({ headline_techs: ["Kubernetes", "AWS", "Infrastructure as Code"] }), master, three), []);
+    let errs = v(good({ headline_techs: ["Kubernetes", "AWS"] }), master, three);
+    assert.ok(errs.includes("headline_techs: 2 technologies (3 to 6, the offer names 3)"), errs);
+    errs = v(good({ headline_techs: ["Kubernetes", "AWS", "Infrastructure as Code", "Terraform"] }), master, three);
+    assert.ok(errs.includes("headline_techs: Terraform is not in the offer"), errs);
+    errs = v(good({ headline_techs: ["Kubernetes", "AWS", "Infrastructure as Code", "GKE", "GKE", "GKE", "GKE"] }), master, three);
+    assert.ok(errs.includes("headline_techs: 7 technologies (3 to 6, the offer names 3)"), errs);
+  });
+
+  test("an offer naming one master skill accepts that one alone, never none", () => {
+    const one = { ...OFFER, title: "Ingénieur(e) DevOps - Toulon (H/F)", description_excerpt: "Vous automatisez les déploiements avec Ansible au sein d'une équipe agile." };
+    const master = { ...MASTER, skills: [...MASTER.skills, { id: "ansible", label: "Ansible" }] };
+    const headline = (doc, offer) => v(doc, master, offer).filter((e) => e.startsWith("headline_techs"));
+    assert.deepEqual(headlineCandidates(master, one), ["Ansible"]);
+    assert.deepEqual(headline(good({ headline_techs: ["Ansible"] }), one), []);
+    const errs = headline(good({ headline_techs: [] }), one);
+    assert.deepEqual(errs, ["headline_techs: 0 technologies (1 to 6, the offer names 1)"]);
+    const none = { ...OFFER, title: "Responsable d'exploitation", description_excerpt: "Responsable d'exploitation logistique." };
+    assert.deepEqual(headlineCandidates(master, none), []);
+    assert.deepEqual(headline(good({ headline_techs: [] }), none), []);
   });
 
   test("every experience with four bullets or more keeps at least four", () => {
@@ -389,6 +437,19 @@ describe("validateDocument", () => {
     assert.ok(errs.some((e) => e.startsWith("profile_chronology: the profile names exp1 then exp2")), errs);
     assert.deepEqual(v(good({ profile: "Ingénieur DevOps formé chez Globex puis chez Acme Cloud. Je cherche un CDI. Disponible à partir de janvier 2027." })), []);
     assert.deepEqual(v(good({ profile: "Ingénieur DevOps formé chez Acme Cloud et chez Globex. Je cherche un CDI. Disponible à partir de janvier 2027." })), []);
+  });
+
+  // Prod 2026-11-02 (7 rows failed on profile_chronology): the real master has an "alternance"
+  // after a "projet de fin d'études" and two "Stagiaire" experiences. "Y, après X" with Y the
+  // most recent is true; one shared word cannot order two experiences.
+  test("« après » and « avant » are read with their sense, and a shared context word orders nothing", () => {
+    assert.deepEqual(v(good({ profile: "Ingénieur DevOps en alternance chez Acme Cloud, après un stage chez Globex. Je cherche un CDI. Disponible à partir de janvier 2027." })), []);
+    assert.deepEqual(v(good({ profile: "Ingénieur DevOps formé chez Globex avant Acme Cloud. Je cherche un CDI. Disponible à partir de janvier 2027." })), []);
+    const twoInterns = JSON.parse(JSON.stringify(MASTER));
+    twoInterns.experiences.push({ id: "exp3", employer: "Hooli", title: "Stagiaire DevOps", start: "2023-06", end: "2023-08", location: "Lyon", bullets: [{ id: "exp3.b1", text: "Scripts Bash.", tools: ["Bash"] }] });
+    assert.deepEqual(v(good({ profile: "Ingénieur DevOps : deux stages, puis une alternance chez Acme Cloud. Je cherche un CDI. Disponible à partir de janvier 2027." }), twoInterns), []);
+    const errs = v(good({ profile: "Ingénieur DevOps formé chez Acme Cloud, puis stagiaire chez Globex. Je cherche un CDI. Disponible à partir de janvier 2027." }), twoInterns);
+    assert.ok(errs.some((e) => e.startsWith("profile_chronology: the profile names exp1 then exp2")), errs);
   });
 
   test("the last paragraph is the conclusion alone", () => {
@@ -475,7 +536,7 @@ describe("runDocuments", () => {
     assert.equal(content.offer.company, "Initech");
     assert.equal(content.selected_bullets.length, 2);
     assert.deepEqual(content.cv.experiences.map((e) => e.id), ["exp1", "exp2"]);
-    assert.equal(content.prompt_version, "4");
+    assert.equal(content.prompt_version, "5");
     assert.deepEqual(content.skill_groups[0].group, "Conteneurs");
     assert.deepEqual(content.headline_techs.length, 5);
     assert.ok(content.highlights.includes("kubernetes") && content.highlights.includes("gke"), content.highlights);
@@ -842,113 +903,101 @@ describe("API", () => {
   });
 });
 
-describe("files (part 3)", () => {
-  const FONTS = {
-    regular: readFileSync(new URL("../fonts/Inter-Regular.ttf", import.meta.url)),
-    bold: readFileSync(new URL("../fonts/Inter-Bold.ttf", import.meta.url)),
-  };
+describe("content (ADR 0019: the browser renders)", () => {
   let token;
   beforeEach(async () => {
     token = await idp.sign();
   });
   const call = (path, opts = {}, envOverrides = {}) => worker.fetch(request(path, { token, ...opts }), docEnv(envOverrides));
 
-  test("a ready version gets its four files once, and the route serves them as attachments", async () => {
+  test("a ready version serves its content, the master and the contact sheet; nothing else is rendered or stored", async () => {
     keep();
     pending();
     const api = anthropic([good()]);
     idp.hosts["api.anthropic.com"] = api.handler;
-    const r = await runDocumentsScheduled(docEnv(), { fetch: globalThis.fetch, now: NOW, fonts: FONTS });
-    assert.deepEqual([r.outcome, r.counters.ready, r.counters.rendered, r.counters.render_errors], ["ok", 1, 1, 0]);
-    const d = row();
-    assert.deepEqual([d.cv_pdf_key, d.letter_docx_key], [`docs/${KEY}/v1/cv.pdf`, `docs/${KEY}/v1/letter.docx`]);
-    assert.ok(docs.store.has(`docs/${KEY}/v1/cv.docx`) && docs.store.has(`docs/${KEY}/v1/letter.pdf`));
-    assert.deepEqual((await listDocuments(db)).map((x) => x.files), [true]);
-    const again = await runDocumentsScheduled(docEnv(), { fetch: globalThis.fetch, now: NOW, fonts: FONTS });
-    assert.equal(again.outcome, "idle"); // nothing pending, nothing left to render
+    const r = await runDocumentsScheduled(docEnv(), { fetch: globalThis.fetch, now: NOW });
+    assert.deepEqual([r.outcome, r.counters.ready, "rendered" in r.counters], ["ok", 1, false]);
+    assert.deepEqual([...docs.store.keys()].sort(), ["docs/" + KEY + "/v1/content.json", "master/contact.json", "master/cv_master.json"]);
+    assert.equal((await runDocumentsScheduled(docEnv(), { fetch: globalThis.fetch, now: NOW })).outcome, "idle");
 
-    let res = await call(`/api/documents/${KEY}/v1/cv.pdf`);
+    const res = await call(`/api/documents/${KEY}/v1/content.json`);
     assert.equal(res.status, 200);
-    assert.equal(res.headers.get("Content-Type"), "application/pdf");
-    assert.equal(res.headers.get("Content-Disposition"), 'attachment; filename="CV_Jean_Trapmarker_Initech.pdf"');
+    assert.equal(res.headers.get("Content-Type"), "application/json");
     assert.equal(res.headers.get("Cache-Control"), "no-store");
-    const bytes = new Uint8Array(await res.arrayBuffer());
-    assert.equal(new TextDecoder().decode(bytes.slice(0, 5)), "%PDF-");
-    res = await call(`/api/documents/${KEY}/v1/letter.docx`);
-    assert.equal(res.status, 200);
-    assert.ok(res.headers.get("Content-Type").endsWith("wordprocessingml.document"));
-    assert.equal(res.headers.get("Content-Disposition"), 'attachment; filename="Lettre_Jean_Trapmarker_Initech.docx"');
-    assert.equal((await call(`/api/documents/${KEY}/v2/cv.pdf`)).status, 404);
-    assert.equal((await call(`/api/documents/${KEY}/v1/cv.exe`)).status, 400); // not a file route: the whole rest is an invalid key
-    assert.equal((await call(`/api/documents/${KEY}/v1/cv.pdf`, { method: "POST" })).status, 405);
-    assert.equal((await call(`/api/documents/${KEY}/v1/cv.pdf`, { token: null })).status, 401);
+    const body = await res.json();
+    assert.deepEqual(Object.keys(body).sort(), ["contact", "content", "master"]);
+    assert.deepEqual([body.content.job_key, body.content.version, body.content.offer.company], [KEY, 1, "Initech"]);
+    assert.deepEqual(body.contact, CONTACT);
+    assert.equal(body.master.headline, MASTER.headline);
+    assert.equal(docs.store.size, 3); // the route stores nothing
+    assert.equal((await call(`/api/documents/${KEY}/v2/content.json`)).status, 404);
+    assert.equal((await call(`/api/documents/${KEY}/v1/cv.pdf`)).status, 400); // no file route any more: an invalid key
+    assert.equal((await call(`/api/documents/${KEY}/v1/content.json`, { method: "POST" })).status, 405);
+    assert.equal((await call(`/api/documents/${KEY}/v1/content.json`, { token: null })).status, 401);
     const versions = (await (await call(`/api/documents/${KEY}`)).json()).documents;
-    assert.deepEqual([versions[0].files, "cv_pdf_key" in versions[0]], [true, false]);
+    assert.ok(!("files" in versions[0]) && !("cv_pdf_key" in versions[0]));
+    assert.ok(!JSON.stringify(await (await call("/api/applications")).json()).includes("files"));
   });
 
-  test("a ready version without files is rendered on first download, once, and stored", async () => {
-    keep();
+  test("a pending version, or a missing sheet, is 404; the master never leaves without the contact sheet", async () => {
     pending();
+    assert.equal((await call(`/api/documents/${KEY}/v1/content.json`)).status, 404);
+    keep();
     const api = anthropic([good()]);
     idp.hosts["api.anthropic.com"] = api.handler;
-    await runDocumentsScheduled(docEnv(), { fetch: globalThis.fetch, now: NOW, fonts: null }); // generated, not rendered
-    assert.equal(row().cv_pdf_key, null);
-    // the route loads the bundled fonts, which Node cannot import: hand them over as the module would
-    const res = await call(`/api/documents/${KEY}/v1/letter.pdf`, {}, { fonts: FONTS });
-    assert.equal(res.status, 200);
-    assert.equal(res.headers.get("Content-Disposition"), 'attachment; filename="Lettre_Jean_Trapmarker_Initech.pdf"');
-    assert.equal(new TextDecoder().decode(new Uint8Array(await res.arrayBuffer()).slice(0, 5)), "%PDF-");
-    const d = row();
-    assert.deepEqual([d.cv_pdf_key, d.cv_docx_key, d.letter_pdf_key, d.letter_docx_key].map(Boolean), [true, true, true, true]);
-    assert.ok(docs.store.has(`docs/${KEY}/v1/cv.docx`));
-    const puts = docs.store.size;
-    assert.equal((await call(`/api/documents/${KEY}/v1/cv.pdf`, {}, { fonts: FONTS })).status, 200);
-    assert.equal(docs.store.size, puts); // the second download reads R2, renders nothing
-    const again = await runDocumentsScheduled(docEnv(), { fetch: globalThis.fetch, now: NOW, fonts: FONTS });
-    assert.equal(again.outcome, "idle");
-  });
-
-  test("a download whose render fails answers 503 and leaves render_error and the content", async () => {
-    keep();
-    pending();
-    const api = anthropic([good()]);
-    idp.hosts["api.anthropic.com"] = api.handler;
-    await runDocumentsScheduled(docEnv(), { fetch: globalThis.fetch, now: NOW, fonts: null });
+    await runDocumentsScheduled(docEnv(), { fetch: globalThis.fetch, now: NOW });
     docs.store.delete("master/contact.json");
-    const res = await call(`/api/documents/${KEY}/v1/cv.pdf`, {}, { fonts: FONTS });
-    assert.equal(res.status, 503);
-    assert.deepEqual([row().status, row().error_code, row().cv_pdf_key], ["ready", "render_error", null]);
-    assert.ok(docs.store.has(row().content_key));
+    assert.equal((await call(`/api/documents/${KEY}/v1/content.json`)).status, 404);
+    assert.equal(row().status, "ready"); // the content stays, nothing is marked
   });
 
-  test("the render batch takes the fresh rows before the ones that failed once", async () => {
-    const insert = db.raw.prepare(
-      "INSERT INTO documents (job_key, version, status, content_key, error_code, created_at, updated_at) VALUES (?, 1, 'ready', ?, 'render_error', ?, ?)",
-    );
-    for (let i = 0; i < BATCH_SIZE; i++) insert.run(`france_travail:STUCK${i}`, "docs/none/content.json", NOW.toISOString(), NOW.toISOString());
+  test("a row left running for more than STUCK_MINUTES goes back to pending and is taken; a fresh one is left", async () => {
     keep();
     pending();
+    const fresh = new Date(NOW.getTime() - 5 * 60_000).toISOString();
+    const stale = new Date(NOW.getTime() - (STUCK_MINUTES + 1) * 60_000).toISOString();
+    db.raw.prepare("UPDATE documents SET status = 'running', updated_at = ?").run(fresh);
     const api = anthropic([good()]);
     idp.hosts["api.anthropic.com"] = api.handler;
-    await runDocumentsScheduled(docEnv(), { fetch: globalThis.fetch, now: NOW, fonts: null }); // the fresh row, highest id
-    const r = await runDocumentsScheduled(docEnv(), { fetch: globalThis.fetch, now: NOW, fonts: FONTS });
-    assert.deepEqual([r.counters.rendered, r.counters.render_errors], [1, BATCH_SIZE - 1]);
-    assert.ok(row().cv_pdf_key);
+    let r = await run();
+    assert.deepEqual([r.outcome, r.counters.requeued, row().status], ["idle", 0, "running"]);
+    db.raw.prepare("UPDATE documents SET updated_at = ?").run(stale);
+    r = await run();
+    assert.deepEqual([r.outcome, r.counters.requeued, r.counters.ready, row().status], ["ok", 1, 1, "ready"]);
   });
 
-  test("without font bytes nothing is rendered; a missing contact sheet is a render_error that keeps the content", async () => {
+  test("an api_error row is retried once by the cron, never twice; a validator code never is", async () => {
     keep();
     pending();
-    const api = anthropic([good()]);
+    const api = anthropic([{ status: 500 }, { status: 500 }, good()]);
     idp.hosts["api.anthropic.com"] = api.handler;
-    let r = await runDocumentsScheduled(docEnv(), { fetch: globalThis.fetch, now: NOW, fonts: null });
-    assert.deepEqual([r.counters.ready, r.counters.rendered], [1, undefined]);
-    assert.equal(row().cv_pdf_key, null);
-    assert.deepEqual((await listDocuments(db)).map((x) => x.files), [false]);
-    docs.store.delete("master/contact.json");
-    r = await runDocumentsScheduled(docEnv(), { fetch: globalThis.fetch, now: NOW, fonts: FONTS });
-    assert.deepEqual([r.outcome, r.counters.render_errors], ["ok", 1]);
-    assert.deepEqual([row().status, row().error_code], ["ready", "render_error"]);
-    assert.ok(docs.store.has(row().content_key));
+    let r = await run();
+    assert.deepEqual([row().status, row().error_code, row().auto_retried], ["failed", "api_error", 0]);
+    r = await run(); // the retry: pending again, taken, ready
+    assert.deepEqual([r.counters.auto_retried, r.counters.ready, row().status, row().auto_retried], [1, 1, "ready", 1]);
+    db.raw.prepare("UPDATE documents SET status = 'failed', error_code = 'api_error'").run();
+    r = await run();
+    assert.deepEqual([r.outcome, r.counters.auto_retried, row().status], ["idle", 0, "failed"]);
+    db.raw.prepare("UPDATE documents SET error_code = 'headline_techs', auto_retried = 0").run();
+    r = await run();
+    assert.deepEqual([r.outcome, r.counters.auto_retried, row().status], ["idle", 0, "failed"]);
+  });
+
+  test("the Worker bundle imports no renderer, no PDF library and no font", () => {
+    const src = new URL("../src/", import.meta.url);
+    const seen = new Set();
+    const queue = ["index.js"];
+    while (queue.length) {
+      const name = queue.shift();
+      if (seen.has(name)) continue;
+      seen.add(name);
+      const text = readFileSync(new URL(name, src), "utf8");
+      for (const lib of ["render.js", "fonts.js", "pdf-lib", "fflate", "fontkit", ".ttf"]) {
+        assert.ok(!text.includes(lib), `${name} mentions ${lib}`);
+      }
+      for (const m of text.matchAll(/from "\.\/([a-z]+\.js)"/g)) queue.push(m[1]);
+    }
+    assert.ok(seen.has("documents.js") && seen.has("ai.js") && seen.has("inbox.js"));
+    assert.ok(!existsSync(new URL("fonts.js", src)));
   });
 });

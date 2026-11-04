@@ -5,15 +5,8 @@
 	// dashboard. Cloudflare Access protects both. CF_ACCESS_AUD and CF_ACCESS_TEAM_DOMAIN are
 	// Worker secrets (`wrangler secret put`), never vars: vars missing here are wiped on deploy.
 	"main": "worker/src/index.js",
-	// The PDF font (ADR 0017 part 3) is bundled as bytes; worker/package.json lists the PDF and
-	// zip libraries, installed by `npm ci --prefix worker` before deploy.
-	"rules": [
-		{
-			"type": "Data",
-			"globs": ["**/*.ttf"],
-			"fallthrough": true
-		}
-	],
+	// No PDF library nor font in the Worker (ADR 0019): the browser renders the documents from
+	// the vendor scripts and the Inter TTF that `job-match dashboard` copies into ./site.
 	// The AI rerank (ADR 0016): 30 minutes after the daily run (07:00 UTC), and once more at
 	// 09:30 to catch a late run (the content cache makes the second pass free when nothing is
 	// new). ANTHROPIC_API_KEY is a Worker secret. AI_DAILY_LIMIT is the cap on calls per day
