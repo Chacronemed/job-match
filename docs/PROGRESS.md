@@ -3,7 +3,13 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**Fix prod 1102 : le rendu PDF/DOCX quitte le Worker** (branch `fix/m26-client-render` from
+**Download speed: the first CV in under 1.5 s** (same branch `fix/m26-client-render`,
+2026-11-04, ADR 0019 amendment). **Done locally, deploys with the branch.** Before: 5.4–6.2 s
+of CPU for one CV PDF (18 complete PDFs built by the layout search to keep one). After:
+~125 ms for the first click once Candidatures has preloaded, ~37 ms for the second
+(`tests/unit/browser/test_download_speed.py`, budgets 1 500 / 300 ms). See Done.
+
+Before it: **Fix prod 1102 : le rendu PDF/DOCX quitte le Worker** (branch `fix/m26-client-render` from
 `fix/m26-downloads`, 2026-11-04, ADR 0019 accepted). **Done locally, to deploy by the Daily run
 only** (Next step). Prod: `GET /api/documents/<clé>/v1/cv.pdf` → Cloudflare 1102 (the Free
 plan's 10 ms of CPU; a CV layout costs seconds). The browser now renders from
@@ -94,6 +100,30 @@ production rows. Still pending: the M21 Cloudflare setup, the data-repo cleanup 
 two Cloudflare secrets, M9 manual GitHub setup, `PROFILE_YAML` re-encoding, `SMTP_PORT` variable.
 
 ## Done
+- **Download speed** (2026-11-04, ADR 0019 amendment, branch `fix/m26-client-render`):
+  - **Measured** (Node, full-size CV): 5.4–6.2 s, 18 layouts × ~300 ms (font parse, per-word
+    widths, `save()` re-subsetting); DOCX 20 ms; 1.3 MB of scripts + 830 KB of fonts.
+  - `render.js`: the layout search measures without drawing (`Writer` with no document, widths
+    memoized); only the winner is drawn: two `PDFDocument`s a CV. `pdfText` folds characters
+    outside the subsets (accent dropped, else « ? », soft hyphen removed).
+  - `scripts/build_pdf_fonts.py` (fontTools, run once, outputs committed):
+    `worker/fonts/Inter-{Regular,Bold}-latin.ttf`, ~40 KB each, kerning only, **no GSUB**
+    (with `subset: false` Inter's `calt` made « +33 » extract as « Ň33 »), embedded with
+    `subset: false`. The site, the tests and `docs-smoke.mjs` use them.
+  - `dashboard.js`: libraries (parallel) + module + fonts preloaded in `requestIdleCallback`
+    when Candidatures opens; `content.json` on pointerenter / focus of a ⬇ link; bundle and
+    rendered file kept per key + version (+ kind, format, day for the letter); failures not
+    kept; the DOCX does not wait for the fonts; User Timing `jm:*` measures.
+  - Tests: render (one drawn PDF, folding, font coverage = supported set, no GSUB, < 60 KB),
+    Playwright speed test (budgets, same bytes on the 2nd click, one render, ToUnicode +
+    FontFile2 ×2), browser conftest `page.file_calls` for the renderer files. 1527 passed.
+  - **Coverage checked** (same day): the CV typography (’ ‘ “ ” « » – — … € œ Œ æ ç é è ê ë
+    à â ä î ï ô ö ù û ü ÿ É È À Ç ° • · ×), the master, the contact sheet and the 375 companies /
+    1 447 titles of data/jobs.sqlite: nothing missing, the subset unchanged.
+    `tests/unit/documents/test_pdf_fonts.py`: the typography and the committed fonts = a fresh
+    build, byte for byte (always); the private master, contact and offers (local only, skipped
+    in CI: they are gitignored), failing with the characters and code points, never the text.
+    `fonttools>=4.68` in the dev extra. 1532 passed.
 - **Fix prod 1102: the browser renders the documents** (2026-11-04, ADR 0019, branch
   `fix/m26-client-render`):
   - **Cause:** `renderAll` in the Worker (every CV layout variant × 3 sizes × pdf-lib) needs
@@ -1584,6 +1614,9 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
   use fixtures.
 
 ## Session log
+- 2026-11-04: download speed (ADR 0019 amendment): measure-only layout search, Latin Inter
+  subsets without GSUB embedded whole, preload on Candidatures, hover prefetch, session cache.
+  First CV PDF ~125 ms after preload, second ~37 ms (was 5.4–6.2 s). 1527 Python passed.
 - 2026-10-25: M25 AI rerank (ADR 0016 accepted). Worker cron → Claude Haiku 5.5 (strict JSON,
   cached system block) → Workers AI fallback → D1 verdicts/usage/disagreements/runs, anonymous
   profile summary as a separate site file, SQLite mirror + `ai-report`, Tri ordered by the AI

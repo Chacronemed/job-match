@@ -68,12 +68,14 @@ def open_dashboard(browser, dashboard_data, tmp_path):
         """`api`: the `GET /api/applications` payload, or a callable returning it per call
         (a polling test answers differently the second time). `routes`: {(method, path):
         (status, headers, body)} answered before the 404; every call to one of them, and every
-        applications call, is appended to `page.api_calls` as (method, path)."""
+        applications call, is appended to `page.api_calls` as (method, path); the renderer's
+        files (`.js`, `.ttf`) to `page.file_calls`, by path."""
         ctx = browser.new_context(viewport={"width": viewport[0], "height": viewport[1]},
                                   accept_downloads=True)
         page = ctx.new_page()
         errors = []
         page.api_calls = []
+        page.file_calls = []
         page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
         page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
         if init_script:
@@ -97,8 +99,8 @@ def open_dashboard(browser, dashboard_data, tmp_path):
                               body='{"error":"not found"}')
             elif (site / path.lstrip("/")).is_file():
                 file = site / path.lstrip("/")
-                if file.suffix in (".js", ".ttf"):  # what a download fetches, not the page font
-                    page.api_calls.append((request.method, path))
+                if file.suffix in (".js", ".ttf"):  # the renderer, preloaded with Candidatures
+                    page.file_calls.append(path)
                 kind = STATIC_TYPES.get(file.suffix, "application/octet-stream")
                 route.fulfill(status=200, content_type=kind, body=file.read_bytes())
             else:  # manifest, icons, the woff2 font: present in a deployed site, empty here

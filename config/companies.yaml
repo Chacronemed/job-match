@@ -1,0 +1,1315 @@
+# Liste d'entreprises cibles (M28) — dédoublonnée.
+# ats_guess vient d'une recherche IA NON vérifiée : `job-match companies detect`
+# doit confirmer l'ATS et l'identifiant réel avant toute collecte.
+companies:
+- name: Airbus
+  careers_url: https://ag.wd3.myworkdayjobs.com/Airbus
+  ats_guess: workday
+  ats_verified: false
+  priority: 1
+  sector: Aéronautique / Défense / Spatial
+  france_sites:
+  - Toulouse
+  - Marignane
+  - Élancourt
+  - Nantes
+  - Saint-Nazaire
+  junior_program: oui (Airbus Global Graduate Programme)
+  why: Grands projets souverains, Kubernetes on-prem/cloud, convention métallurgie avantageuse, intéressement/participation
+    très élevés.
+- name: Thales
+  careers_url: https://thales.wd3.myworkdayjobs.com/Careers
+  ats_guess: workday
+  ats_verified: false
+  priority: 2
+  sector: Aéronautique / Défense / Cybersécurité
+  france_sites:
+  - Meudon
+  - Vélizy-Villacoublay
+  - Toulouse
+  - Bordeaux
+  - Brest
+  - Sophia Antipolis
+  junior_program: oui (Thales Graduate Programme)
+  why: Plateformes souveraines et cloud de défense, RTT (jusqu'à 20+ jours), accord télétravail structuré, forte culture Linux/sécurité.
+- name: Dassault Systèmes
+  careers_url: https://careers.3ds.com/jobs
+  ats_guess: smartrecruiters
+  ats_verified: false
+  priority: 3
+  sector: Éditeur de logiciels / Cloud 3D
+  france_sites:
+  - Vélizy-Villacoublay
+  - Aix-en-Provence
+  junior_program: oui (Early Careers / Graduate Track)
+  why: Éditeur mondial propriétaire d'Outscale (IaaS SecNumCloud), forte culture d'ingénierie interne et participation/actionnariat
+    attractifs.
+- name: OVHcloud
+  careers_url: https://careers.ovhcloud.com/fr/jobs
+  ats_guess: smartrecruiters
+  ats_verified: false
+  priority: 4
+  sector: Cloud Provider & Hébergement
+  france_sites:
+  - Roubaix
+  - Paris
+  - Brest
+  - Nantes
+  - Rennes
+  - Lyon
+  - Toulouse
+  junior_program: non
+  why: Conception de briques IaaS/PaaS bare-metal et Kubernetes managé, immersion Linux/Go/Python à très grande échelle.
+- name: Scaleway
+  careers_url: https://careers.scaleway.com
+  ats_guess: lever
+  ats_verified: false
+  priority: 5
+  sector: Cloud Provider
+  france_sites:
+  - Paris
+  - Lille
+  junior_program: non
+  why: Acteur cloud alternatif européen majeur (groupe Iliad), full remote flexible, forte culture Open Source et Kubernetes.
+- name: Doctolib
+  careers_url: https://careers.doctolib.fr/jobs
+  ats_guess: greenhouse
+  ats_verified: false
+  priority: 6
+  sector: Santé / Scale-up & Tech
+  france_sites:
+  - Levallois-Perret
+  - Nantes
+  junior_program: non
+  why: Infra critique à très fort trafic (AWS, Kubernetes, Terraform), rémunération au-dessus du marché et politique télétravail
+    souple.
+- name: TotalEnergies
+  careers_url: https://totalenergies.wd3.myworkdayjobs.com/TotalEnergies
+  ats_guess: workday
+  ats_verified: false
+  priority: 7
+  sector: Énergie
+  france_sites:
+  - Paris La Défense
+  - Pau
+  - Lyon
+  junior_program: oui (TotalEnergies Graduate Program & VIE)
+  why: Intéressement et participation parmi les plus hauts de France, budgets massifs sur GCP et AWS, nombreuses passerelles
+    VIE.
+- name: BNP Paribas
+  careers_url: https://group.bnpparibas/emploi-carriere
+  ats_guess: taleo
+  ats_verified: false
+  priority: 8
+  sector: Banque & Finance
+  france_sites:
+  - Montreuil
+  - Paris
+  - Nantes
+  junior_program: oui (Graduate Program IT & Cybersecurity)
+  why: Immenses plateformes hybrides internes (OpenShift, Kubernetes, AWS), prime d'intéressement, CE généreux et forte stabilité.
+- name: Société Générale
+  careers_url: https://careers.societegenerale.com
+  ats_guess: custom
+  ats_verified: false
+  priority: 9
+  sector: Banque & Finance
+  france_sites:
+  - Fontenay-sous-Bois (Val-de-Fontenay)
+  - Paris La Défense
+  - Nantes
+  junior_program: oui (IT Graduate Program & VIE)
+  why: Gros pôle tech interne aux Dunes à Val-de-Fontenay, adoption massive d'AWS, GCP, OpenShift et Terraform.
+- name: Crédit Agricole CIB / GIE
+  careers_url: https://www.groupecreditagricole.jobs
+  ats_guess: taleo
+  ats_verified: false
+  priority: 10
+  sector: Banque & Finance
+  france_sites:
+  - Montrouge
+  - Saint-Quentin-en-Yvelines
+  - Lyon
+  junior_program: oui (Graduate Programme IT Hub)
+  why: Campus moderne à Montrouge, solide accord d'épargne salariale et gros chantiers d'industrialisation CI/CD GitOps.
+- name: BPCE (Banque Populaire Caisse d'Épargne)
+  careers_url: https://rejoindrebpce.fr/offres
+  ats_guess: successfactors
+  ats_verified: false
+  priority: 11
+  sector: Banque & Finance
+  france_sites:
+  - Paris
+  - Toulouse
+  - Nantes
+  - Lyon
+  - Bordeaux
+  junior_program: non
+  why: Entités IT dédiées (BPCE-IT, BPCE SI-Solutions) avec de vastes clusters Kubernetes, forte culture RTT et stabilité.
+- name: Criteo
+  careers_url: https://careers.criteo.com
+  ats_guess: greenhouse
+  ats_verified: false
+  priority: 12
+  sector: AdTech / Éditeur de logiciels
+  france_sites:
+  - Paris
+  - Grenoble
+  junior_program: non
+  why: Parmi les plus grands parcs bare-metal privés et clusters Hadoop/Kubernetes d'Europe, packages salariaux avec RSU très
+    attractifs.
+- name: Datadog
+  careers_url: https://careers.datadoghq.com
+  ats_guess: greenhouse
+  ats_verified: false
+  priority: 13
+  sector: Observabilité & Cloud Monitoring
+  france_sites:
+  - Paris
+  junior_program: non
+  why: Pionnier mondial du monitoring cloud, rémunérations de premier plan (actions US / RSU), ingénierie de pointe en Go/Linux/K8s.
+- name: Amadeus
+  careers_url: https://jobs.amadeus.com
+  ats_guess: successfactors
+  ats_verified: false
+  priority: 14
+  sector: Voyage / Travel Tech
+  france_sites:
+  - Sophia Antipolis
+  - Paris
+  junior_program: oui (Amadeus Graduate Track)
+  why: Immense centre R&D sur la Côte d'Azur, traitement de milliards de transactions, migration stratégique massive sur Microsoft
+    Azure.
+- name: Safran
+  careers_url: https://safran.wd3.myworkdayjobs.com/Safran_Careers
+  ats_guess: workday
+  ats_verified: false
+  priority: 15
+  sector: Aéronautique / Défense
+  france_sites:
+  - Vélizy-Villacoublay
+  - Toulouse
+  - Bordeaux
+  - Gennevilliers
+  junior_program: oui (Safran Graduate Programme)
+  why: Leader mondial de la propulsion, accords d'entreprise protecteurs (RTT, intéressement, mutuelle haut de gamme).
+- name: EDF
+  careers_url: https://www.edf.fr/edf-recrute/rejoignez-nous/nos-offres
+  ats_guess: successfactors
+  ats_verified: false
+  priority: 16
+  sector: Énergie
+  france_sites:
+  - Paris La Défense
+  - Lyon
+  - Toulouse
+  junior_program: oui (Parcours Nouveaux Embauchés Cadres)
+  why: Statut des Industries Électriques et Gazières (IEG) ou conventions très protectrices, fort équilibre de vie, cloud
+    d'entreprise sécurisé.
+- name: Schneider Electric
+  careers_url: https://schneiderelectric.wd3.myworkdayjobs.com/SchneiderPositions
+  ats_guess: workday
+  ats_verified: false
+  priority: 17
+  sector: Gestion de l'énergie & Automatismes
+  france_sites:
+  - Grenoble
+  - Rueil-Malmaison
+  junior_program: oui (Schneider Graduate Program)
+  why: Investissements majeurs dans les plateformes IoT/Edge industrielles et le cloud public (AWS/Azure), nombreuses mobilités
+    internes.
+- name: Renault Group
+  careers_url: https://renault.wd3.myworkdayjobs.com/Renault_Group_Careers
+  ats_guess: workday
+  ats_verified: false
+  priority: 18
+  sector: Automobile & Mobilité connectée
+  france_sites:
+  - Guyancourt (Technocentre)
+  - Boulogne-Billancourt
+  - Toulouse
+  junior_program: oui (Graduate Program Tech)
+  why: Chantiers majeurs autour du Software-Defined Vehicle, déploiements massifs sur GCP et AWS, politiques d'intéressement
+    attractives.
+- name: Stellantis
+  careers_url: https://stellantis.wd3.myworkdayjobs.com/Stellantis_Careers
+  ats_guess: workday
+  ats_verified: false
+  priority: 19
+  sector: Automobile
+  france_sites:
+  - Poissy
+  - Vélizy-Villacoublay
+  junior_program: non
+  why: Plateformes de véhicules connectés à l'échelle internationale, travail avec AWS et Azure, forte culture d'optimisation.
+- name: Air Liquide
+  careers_url: https://airliquide.wd3.myworkdayjobs.com/AirLiquideCareers
+  ats_guess: workday
+  ats_verified: false
+  priority: 20
+  sector: Gaz industriels & Santé
+  france_sites:
+  - Paris
+  - Les Loges-en-Josas
+  junior_program: oui (Air Liquide European Graduate Programme)
+  why: Groupe très solide du CAC 40, participation et actionnariat salarié avantageux, infrastructures IoT et cloud hybride.
+- name: Sanofi
+  careers_url: https://sanofi.wd3.myworkdayjobs.com/SanofiCareers
+  ats_guess: workday
+  ats_verified: false
+  priority: 21
+  sector: Santé & Pharmaceutique
+  france_sites:
+  - Gentilly
+  - Paris
+  - Lyon
+  junior_program: oui (Sanofi Future Leaders / VIE)
+  why: Massive accélération digitale et data science sur AWS, rémunération fixe + variable et avantages sociaux très confortables.
+- name: L'Oréal
+  careers_url: https://careers.loreal.com/fr_FR/jobs
+  ats_guess: workday
+  ats_verified: false
+  priority: 22
+  sector: Cosmétique & Luxe
+  france_sites:
+  - Clichy
+  - Levallois-Perret
+  - Saint-Ouen
+  junior_program: oui (Management Trainee Program)
+  why: Environnement Beauty Tech de pointe, forte utilisation de GCP, intéressement/participation historiques très élevés.
+- name: Orange
+  careers_url: https://orange.jobs/jobs/v2/search
+  ats_guess: custom
+  ats_verified: false
+  priority: 23
+  sector: Télécommunications
+  france_sites:
+  - Châtillon (Orange Gardens)
+  - Rennes
+  - Toulouse
+  - Lyon
+  junior_program: oui (Graduate Programme IT/Réseaux)
+  why: Pionnier des réseaux virtualisés et du cloud d'entreprise, accord télétravail généreux (jusqu'à 3 jours/semaine), 20+
+    RTT.
+- name: Bouygues Telecom
+  careers_url: https://bouyguestelecom-recrute.talent-soft.com
+  ats_guess: talentsoft
+  ats_verified: false
+  priority: 24
+  sector: Télécommunications
+  france_sites:
+  - Meudon (Technopôle)
+  - Toulouse
+  junior_program: oui (Graduate Program Bouygues)
+  why: Excellente ambiance de travail, adoption pionnière de GCP et Kubernetes, avantages groupe Bouygues (actionnariat très
+    rentable).
+- name: SNCF Connect & Tech
+  careers_url: https://sncf-connect-tech.jobs.net/fr-FR
+  ats_guess: custom
+  ats_verified: false
+  priority: 25
+  sector: Transport & Mobilité
+  france_sites:
+  - Nantes
+  - Lille
+  - Paris
+  junior_program: non
+  why: Filiale tech 100% cloud public (AWS), trafic colossal lors des ouvertures de ventes, forte culture DevOps/FinOps interne.
+- name: Air France-KLM
+  careers_url: https://recrutement.airfrance.com
+  ats_guess: custom
+  ats_verified: false
+  priority: 26
+  sector: Aérien / Transport
+  france_sites:
+  - Toulouse
+  - Valbonne (Sophia Antipolis)
+  - Roissy CDG
+  junior_program: non
+  why: Centre informatique stratégique à Sophia Antipolis, billets d'avion à tarif réduit, grands programmes de modernisation
+    cloud hybride.
+- name: CMA CGM
+  careers_url: https://cgm.wd3.myworkdayjobs.com/cgm
+  ats_guess: workday
+  ats_verified: false
+  priority: 27
+  sector: Transport maritime & Logistique
+  france_sites:
+  - Marseille (Tour CMA CGM)
+  - Paris
+  junior_program: oui (CMA CGM Graduate Program)
+  why: Siège spectaculaire à Marseille, acquisitions massives dans la tech/médias, gros investissements cloud et data.
+- name: Axa
+  careers_url: https://careers.axa.com
+  ats_guess: taleo
+  ats_verified: false
+  priority: 28
+  sector: Assurance & Gestion d'actifs
+  france_sites:
+  - Paris
+  - Nanterre
+  junior_program: oui (Axa Graduate Program)
+  why: Axa Group Operations gère l'infra mondiale, politique de télétravail poussée, bonus annuel et participation stables.
+- name: Alan
+  careers_url: https://jobs.lever.co/alan
+  ats_guess: lever
+  ats_verified: false
+  priority: 29
+  sector: Insurtech / Scale-up
+  france_sites:
+  - Paris
+  - Full-remote France
+  junior_program: non
+  why: Transparence totale des salaires (grille publique avec equity), culture écrite exigeante, télétravail sans restriction.
+- name: Qonto
+  careers_url: https://qonto.com/fr/careers
+  ats_guess: lever
+  ats_verified: false
+  priority: 30
+  sector: Fintech / B2B Banking
+  france_sites:
+  - Paris
+  junior_program: non
+  why: Licorne rentable, stack ultra moderne (AWS, Kubernetes, Terraform, Datadog), forte culture d'amélioration continue
+    (The Qonto Way).
+- name: Mirakl
+  careers_url: https://jobs.lever.co/mirakl
+  ats_guess: lever
+  ats_verified: false
+  priority: 31
+  sector: E-commerce & SaaS Marketplace
+  france_sites:
+  - Paris
+  - Bordeaux
+  junior_program: non
+  why: Un des plus grands succès SaaS B2B français, multi-cloud et microservices haut débit, salaires compétitifs.
+- name: Deezer
+  careers_url: https://jobs.lever.co/deezer
+  ats_guess: lever
+  ats_verified: false
+  priority: 32
+  sector: Streaming musical / Médias
+  france_sites:
+  - Paris
+  junior_program: non
+  why: Infrastructures hybrides à fort volume de streaming temps réel, environnement tech décontracté au cœur de Paris.
+- name: Back Market
+  careers_url: https://jobs.lever.co/backmarket
+  ats_guess: lever
+  ats_verified: false
+  priority: 33
+  sector: E-commerce / Reconditionné
+  france_sites:
+  - Paris
+  - Bordeaux
+  junior_program: non
+  why: Licorne internationale à impact, stack AWS et Kubernetes moderne, politique télétravail flexible.
+- name: Contentsquare
+  careers_url: https://careers.contentsquare.com
+  ats_guess: lever
+  ats_verified: false
+  priority: 34
+  sector: SaaS / Digital Experience Analytics
+  france_sites:
+  - Paris
+  - Lyon
+  junior_program: non
+  why: Ingestion de pétaoctets de télémétrie utilisateur, expertise poussée sur AWS, Kubernetes et Kafka.
+- name: Swile
+  careers_url: https://jobs.lever.co/swile
+  ats_guess: lever
+  ats_verified: false
+  priority: 35
+  sector: Fintech / B2B Benefits
+  france_sites:
+  - Montpellier
+  - Paris
+  junior_program: non
+  why: Pôle d'ingénierie dynamique à Montpellier, infrastructure AWS/Kubernetes moderne, ambiance startup agile.
+- name: Spendesk
+  careers_url: https://jobs.lever.co/spendesk
+  ats_guess: lever
+  ats_verified: false
+  priority: 36
+  sector: Fintech / Spend Management
+  france_sites:
+  - Paris
+  junior_program: non
+  why: Excellente culture d'ingénierie produit, pipelines CI/CD automatisés, politique 'work from anywhere' encadrée.
+- name: Ledger
+  careers_url: https://jobs.lever.co/ledger
+  ats_guess: lever
+  ats_verified: false
+  priority: 37
+  sector: Cybersécurité / Crypto & Hardware
+  france_sites:
+  - Paris
+  - Vierzon
+  junior_program: non
+  why: Exigences de sécurité maximales, hardware security modules reliés au cloud, packages attractifs.
+- name: PayFit
+  careers_url: https://jobs.lever.co/payfit
+  ats_guess: lever
+  ats_verified: false
+  priority: 38
+  sector: SaaS / Paie & RH
+  france_sites:
+  - Paris
+  junior_program: non
+  why: Pionnier du télétravail flexible en France (Work from Anywhere), culture humaine et stack AWS/Kubernetes.
+- name: ManoMano
+  careers_url: https://jobs.lever.co/manomano
+  ats_guess: lever
+  ats_verified: false
+  priority: 39
+  sector: E-commerce / Bricolage & Jardin
+  france_sites:
+  - Paris
+  - Bordeaux
+  junior_program: non
+  why: Architecture microservices mature sur AWS/EKS avec Terraform et ArgoCD, solide équilibre de travail.
+- name: Veepee
+  careers_url: https://careers.veepee.com
+  ats_guess: smartrecruiters
+  ats_verified: false
+  priority: 40
+  sector: E-commerce / Ventes événementielles
+  france_sites:
+  - Saint-Denis
+  - Paris
+  junior_program: non
+  why: Pionnier de l'Open Source en interne, plateformes conteneurisées à très fort pic de charge le matin.
+- name: LVMH
+  careers_url: https://www.lvmh.com/fr/talents/rejoignez-nous/nos-offres
+  ats_guess: custom
+  ats_verified: false
+  priority: 41
+  sector: Luxe
+  france_sites:
+  - Paris
+  junior_program: oui (Spring Program / Talents)
+  why: Première capitalisation du CAC 40, investissements massifs dans les plateformes data/cloud, intéressement haut de gamme.
+- name: Kering
+  careers_url: https://kering.wd3.myworkdayjobs.com/kering
+  ats_guess: workday
+  ats_verified: false
+  priority: 42
+  sector: Luxe
+  france_sites:
+  - Paris
+  junior_program: non
+  why: Transformation e-commerce et supply chain unifiée sur le cloud public, package global très attractif.
+- name: Hermès
+  careers_url: https://talents.hermes.com/fr
+  ats_guess: custom
+  ats_verified: false
+  priority: 43
+  sector: Luxe
+  france_sites:
+  - Pantin
+  - Paris
+  junior_program: non
+  why: Politique de partage des bénéfices exceptionnelle (primes historiques pour tous les salariés), stabilité remarquable.
+- name: Carrefour
+  careers_url: https://recrute.carrefour.fr
+  ats_guess: custom
+  ats_verified: false
+  priority: 44
+  sector: Grande distribution / Retail Tech
+  france_sites:
+  - Massy
+  junior_program: oui (Carrefour Graduate Tech)
+  why: Partenariat stratégique mondial avec Google Cloud Platform (GCP), gros volumes data/retail, présence syndicale et accords
+    solides.
+- name: Leroy Merlin / Adeo
+  careers_url: https://recrutement.adeo.com
+  ats_guess: smartrecruiters
+  ats_verified: false
+  priority: 45
+  sector: Retail / Habitat
+  france_sites:
+  - Ronchin (Lille)
+  - Paris
+  junior_program: non
+  why: Pôle tech de premier plan dans le Nord, actionnariat salarié groupe Mulliez réputé très rémunérateur, culture produit
+    forte.
+- name: Decathlon Technology
+  careers_url: https://recrutement.decathlon.fr
+  ats_guess: smartrecruiters
+  ats_verified: false
+  priority: 46
+  sector: Retail / Sport Tech
+  france_sites:
+  - Villeneuve-d'Ascq (Lille)
+  - Croix
+  - Paris
+  junior_program: non
+  why: Equipes tech internes autonomes, très fortes compétences Kubernetes/Terraform, cadre de travail axé sport et bien-être.
+- name: Capgemini
+  careers_url: https://capgemini.wd3.myworkdayjobs.com/careers
+  ats_guess: workday
+  ats_verified: false
+  priority: 47
+  sector: Conseil & Services IT
+  france_sites:
+  - Paris
+  - Issy-les-Moulineaux
+  - Toulouse
+  - Lyon
+  - Nantes
+  - Lille
+  - Bordeaux
+  junior_program: oui (Graduate Program / Young Talents)
+  why: Leader mondial du conseil IT, volume d'embauches junior massif, accès prioritaire aux certifications cloud.
+- name: Worldline
+  careers_url: https://worldline.wd3.myworkdayjobs.com/Worldline
+  ats_guess: workday
+  ats_verified: false
+  priority: 48
+  sector: Paiements électroniques / Fintech
+  france_sites:
+  - Bezons
+  - Seclin (Lille)
+  - Blois
+  - Lyon
+  - Tours
+  junior_program: non
+  why: Traitement critique de flux bancaires à haute disponibilité (99.999%), bonne couverture conventionnelle.
+- name: Ubisoft
+  careers_url: https://jobs.smartrecruiters.com/Ubisoft2
+  ats_guess: smartrecruiters
+  ats_verified: false
+  priority: 49
+  sector: Jeux vidéo / Divertissement
+  france_sites:
+  - Saint-Mandé
+  - Montreuil
+  - Montpellier
+  - Bordeaux
+  junior_program: oui (Ubisoft Graduate Program)
+  why: Infrastructures en ligne mondiales supportant des millions de joueurs simultanés, environnement de passionnés.
+- name: Mistral AI
+  careers_url: https://jobs.ashbyhq.com/mistral
+  ats_guess: ashby
+  ats_verified: false
+  priority: 50
+  sector: Intelligence Artificielle
+  france_sites:
+  - Paris
+  junior_program: non
+  why: Pépite mondiale de la GenAI, clusters de GPU massifs, rémunération de premier ordre et exposition aux modèles les plus
+    avancés.
+- name: Shift Technology
+  careers_url: https://jobs.lever.co/shift-technology
+  ats_guess: lever
+  ats_verified: false
+  priority: 51
+  sector: Insurtech / IA anti-fraude
+  france_sites:
+  - Paris
+  junior_program: non
+  why: Licorne SaaS B2B mature, pipelines de données complexes et exigences élevées en intégrité des données.
+- name: Contentsquare
+  careers_url: https://jobs.lever.co/contentsquare
+  ats_guess: lever
+  ats_verified: false
+  priority: 52
+  sector: Data Analytics SaaS
+  france_sites:
+  - Paris
+  - Lyon
+  junior_program: non
+  why: Traitement de volumétries web mondiales sur AWS, forte présence d'architectures conteneurisées et monitoring avancé.
+- name: Pigment
+  careers_url: https://jobs.ashbyhq.com/pigment
+  ats_guess: ashby
+  ats_verified: false
+  priority: 53
+  sector: SaaS / Planification d'entreprise
+  france_sites:
+  - Paris
+  junior_program: non
+  why: Une des croissances SaaS les plus rapides d'Europe, stack moderne sous GCP et AWS, forte composante equity.
+- name: Pennylane
+  careers_url: https://jobs.ashbyhq.com/pennylane
+  ats_guess: ashby
+  ats_verified: false
+  priority: 54
+  sector: Fintech / Comptabilité & Trésorerie
+  france_sites:
+  - Paris
+  - Full-remote France
+  junior_program: non
+  why: Licorne française rentable, télétravail intégral natif, environnement technique propre et outillage moderne.
+- name: Ankorstore
+  careers_url: https://jobs.lever.co/ankorstore
+  ats_guess: lever
+  ats_verified: false
+  priority: 55
+  sector: E-commerce B2B
+  france_sites:
+  - Paris
+  - Lille
+  junior_program: non
+  why: Culture 'remote-first' pionnière en France, clusters EKS managés via Terraform et ArgoCD.
+- name: Vestiaire Collective
+  careers_url: https://careers.vestiairecollective.com
+  ats_guess: greenhouse
+  ats_verified: false
+  priority: 56
+  sector: E-commerce / Mode de seconde main
+  france_sites:
+  - Paris
+  - Tourcoing (Lille)
+  junior_program: non
+  why: Plateforme internationale B-Corp, stack AWS/Kubernetes moderne, environnement multiculturel.
+- name: Algolia
+  careers_url: https://jobs.lever.co/algolia
+  ats_guess: lever
+  ats_verified: false
+  priority: 57
+  sector: Search API / SaaS
+  france_sites:
+  - Paris
+  junior_program: non
+  why: Recherche en temps réel à latence milliseconde, infrastructure hybride planétaire, culture d'ingénierie mondialement
+    reconnue.
+- name: Clever Cloud
+  careers_url: https://www.clever-cloud.com/fr/jobs
+  ats_guess: custom
+  ats_verified: false
+  priority: 58
+  sector: PaaS / Cloud Provider souverain
+  france_sites:
+  - Nantes
+  - Paris
+  junior_program: non
+  why: Créateurs d'un PaaS souverain français, experts Linux de bas niveau, immersion technique totale.
+- name: Iliad (Free)
+  careers_url: https://recrutement.iliad.fr
+  ats_guess: custom
+  ats_verified: false
+  priority: 59
+  sector: Télécommunications
+  france_sites:
+  - Paris
+  junior_program: non
+  why: ADN d'ingénieurs 'hackers', conception interne des matériels et des systèmes réseau/cloud, autonomie technique élevée.
+- name: SFR (Altice France)
+  careers_url: https://sfr-recrute.talent-soft.com
+  ats_guess: talentsoft
+  ats_verified: false
+  priority: 60
+  sector: Télécommunications
+  france_sites:
+  - Paris (Campus Altice)
+  - Lyon
+  junior_program: non
+  why: Infrastructures télécoms massives, pipelines de déploiement d'applications TV et data à fort volume.
+- name: Engie
+  careers_url: https://engie.wd3.myworkdayjobs.com/ENGIE_Careers
+  ats_guess: workday
+  ats_verified: false
+  priority: 61
+  sector: Énergie
+  france_sites:
+  - Courbevoie (La Défense)
+  - Lyon
+  junior_program: oui (Engie Graduate Programme)
+  why: Transition énergétique et IoT industriel, gestion de multiples clouds sécurisés, CE et intéressement solides.
+- name: Vinci Énergies (Axians)
+  careers_url: https://vinci.wd3.myworkdayjobs.com/Vinci_Careers
+  ats_guess: workday
+  ats_verified: false
+  priority: 62
+  sector: Infrastructures IT & Énergie
+  france_sites:
+  - Nanterre
+  - Lyon
+  - Toulouse
+  - Lille
+  junior_program: oui (Pépinière Jeunes Ingénieurs)
+  why: Plan d'épargne groupe Castor (abondement exceptionnel), solidité financière du groupe Vinci.
+- name: Saint-Gobain
+  careers_url: https://saintgobain.wd3.myworkdayjobs.com/Saint-Gobain_Careers
+  ats_guess: workday
+  ats_verified: false
+  priority: 63
+  sector: Matériaux de construction & Industrie
+  france_sites:
+  - Courbevoie (Tour Saint-Gobain)
+  junior_program: oui (Saint-Gobain Graduate Program)
+  why: Siège moderne à La Défense, grande stabilité de l'emploi et chantiers de digitalisation d'usines 4.0.
+- name: Michelin
+  careers_url: https://michelin.wd3.myworkdayjobs.com/Michelin_Careers
+  ats_guess: workday
+  ats_verified: false
+  priority: 64
+  sector: Industrie / Mobilité
+  france_sites:
+  - Clermont-Ferrand
+  - Lyon
+  junior_program: oui (Michelin Graduate Program)
+  why: Politique RH reconnue pour son accompagnement, siège connecté à Clermont-Ferrand, parcs Azure et AWS importants.
+- name: Alstom
+  careers_url: https://alstom.wd3.myworkdayjobs.com/Careers
+  ats_guess: workday
+  ats_verified: false
+  priority: 65
+  sector: Transport ferroviaire
+  france_sites:
+  - Saint-Ouen
+  - Villeurbanne
+  - Tarbes
+  junior_program: oui (Alstom Graduate Track)
+  why: Leader ferroviaire mondial, systèmes critiques embarqués et cloud IoT, missions internationales possibles.
+- name: Naval Group
+  careers_url: https://naval-group.talent-soft.com
+  ats_guess: talentsoft
+  ats_verified: false
+  priority: 66
+  sector: Défense navale
+  france_sites:
+  - Ollioules (Toulon)
+  - Brest
+  - Lorient
+  - Cherbourg
+  - Paris
+  junior_program: non
+  why: Systèmes critiques ultra-sécurisés, conventions protectrices de la défense, cadre de vie côtier privilégié (Bretagne/Var).
+- name: MBDA
+  careers_url: https://mbda.recrutement.fr
+  ats_guess: custom
+  ats_verified: false
+  priority: 67
+  sector: Défense / Missiles
+  france_sites:
+  - Le Plessis-Robinson
+  - Bourges
+  junior_program: non
+  why: Intéressement et participation parmi les plus élevés de la défense, cloud privé souverain (OpenStack/K8s).
+- name: Sopra Steria
+  careers_url: https://soprasteria.wd3.myworkdayjobs.com/Careers
+  ats_guess: workday
+  ats_verified: false
+  priority: 68
+  sector: Conseil & Services IT
+  france_sites:
+  - Paris
+  - Toulouse
+  - Lyon
+  - Colomiers
+  - Nantes
+  - Rennes
+  junior_program: oui (Graduate Program Conseil & Tech)
+  why: Embauches massives de jeunes diplômés chaque année, formation structurée et missions diversifiées.
+- name: Devoteam
+  careers_url: https://jobs.smartrecruiters.com/Devoteam
+  ats_guess: smartrecruiters
+  ats_verified: false
+  priority: 69
+  sector: Conseil & Cloud Transformation
+  france_sites:
+  - Levallois-Perret
+  - Lyon
+  - Nantes
+  - Toulouse
+  - Lille
+  junior_program: non
+  why: Partenaire majeur de Google Cloud, AWS et Red Hat, passage de certifications illimité et formations accélérées.
+- name: Wavestone
+  careers_url: https://www.wavestone.com/fr/carrieres/nos-offres
+  ats_guess: smartrecruiters
+  ats_verified: false
+  priority: 70
+  sector: Conseil en transformation numérique
+  france_sites:
+  - Paris La Défense
+  - Lyon
+  - Nantes
+  junior_program: oui (Graduate Program Consultant)
+  why: Culture de cabinet de conseil prestigieux, progression salariale rapide pour les profils juniors.
+- name: Accenture France
+  careers_url: https://accenture.wd3.myworkdayjobs.com/AccentureCareers
+  ats_guess: workday
+  ats_verified: false
+  priority: 71
+  sector: Conseil & Intégration de systèmes
+  france_sites:
+  - Paris
+  - Sophia Antipolis
+  - Nantes
+  - Lyon
+  junior_program: oui (Accenture Technology Graduate)
+  why: Partenariats globaux avec tous les hyperscalers, programmes de formation certifiants très poussés.
+- name: Kyndryl France
+  careers_url: https://kyndryl.wd3.myworkdayjobs.com/KyndrylCareers
+  ats_guess: workday
+  ats_verified: false
+  priority: 72
+  sector: Services d'infrastructure managée
+  france_sites:
+  - Bois-Colombes
+  - Nice
+  - Lille
+  junior_program: oui (Kyndryl Early Professionals)
+  why: Spécialiste de la transformation d'infrastructures complexes et d'infogérance cloud hybride.
+- name: Atos / Eviden
+  careers_url: https://atos.net/fr/carrieres
+  ats_guess: successfactors
+  ats_verified: false
+  priority: 73
+  sector: Services numériques & Calcul haute performance
+  france_sites:
+  - Bezons
+  - Grenoble
+  - Toulouse
+  - Lyon
+  junior_program: oui (Graduate Program Cloud & Supercomputing)
+  why: Centre mondial d'excellence en calcul intensif (HPC) et cloud de défense souverain.
+- name: Cegid
+  careers_url: https://careers.cegid.com
+  ats_guess: smartrecruiters
+  ats_verified: false
+  priority: 74
+  sector: Éditeur de logiciels SaaS (ERP / RH / Retail)
+  france_sites:
+  - Lyon
+  - Boulogne-Billancourt
+  junior_program: non
+  why: Grand champion du logiciel à Lyon, transition cloud native très active, CE et cadre de vie lyonnais.
+- name: Berger-Levrault
+  careers_url: https://carrieres.berger-levrault.com
+  ats_guess: talentsoft
+  ats_verified: false
+  priority: 75
+  sector: Éditeur de logiciels pour collectivités et santé
+  france_sites:
+  - Labège (Toulouse)
+  - Boulogne-Billancourt
+  - Lyon
+  junior_program: non
+  why: Logiciels de gestion publique en bascule SaaS / cloud souverain, ambiance saine et cadre toulousain.
+- name: Esker
+  careers_url: https://esker.jobs.net/fr-FR
+  ats_guess: custom
+  ats_verified: false
+  priority: 76
+  sector: Éditeur de logiciels / Automatisation de processus
+  france_sites:
+  - Lyon
+  junior_program: non
+  why: Pionnier lyonnais du SaaS B2B, politique RH exemplaire et adoption d'infrastructures Azure et AWS à l'international.
+- name: Octo Technology
+  careers_url: https://jobs.smartrecruiters.com/OctoTechnology
+  ats_guess: smartrecruiters
+  ats_verified: false
+  priority: 77
+  sector: Conseil en architecture et ingénierie logicielle
+  france_sites:
+  - Paris
+  - Lille
+  - Toulouse
+  junior_program: non
+  why: Référence absolue de la culture Software Craftsmanship et DevOps en France, filiale d'excellence de Capgemini.
+- name: Theodo Cloud
+  careers_url: https://jobs.lever.co/theodo
+  ats_guess: lever
+  ats_verified: false
+  priority: 78
+  sector: Conseil Cloud & SRE
+  france_sites:
+  - Paris
+  junior_program: oui (Accompagnement coaching junior dédié)
+  why: Formation technique accélérée (méthodologie Lean/DevOps), immersion directe sur AWS, GCP et Kubernetes.
+- name: Padok
+  careers_url: https://www.padok.fr/carrieres
+  ats_guess: welcometothejungle
+  ats_verified: false
+  priority: 79
+  sector: Cabinet d'ingénierie Cloud & DevOps
+  france_sites:
+  - Paris
+  junior_program: non
+  why: 100% focalisé sur le cloud, Kubernetes et le platform engineering, forte expertise technique et conférences régulières.
+- name: Wescale
+  careers_url: https://jobs.lever.co/wescale
+  ats_guess: lever
+  ats_verified: false
+  priority: 80
+  sector: Cabinet de conseil Cloud & DevOps
+  france_sites:
+  - Paris
+  junior_program: non
+  why: Très haute réputation technique dans la communauté française (meetups, livres blancs, GCP, AWS, Kubernetes).
+- name: Dailymotion
+  careers_url: https://jobs.lever.co/dailymotion
+  ats_guess: lever
+  ats_verified: false
+  priority: 81
+  sector: Plateforme vidéo / Médias
+  france_sites:
+  - Paris
+  - Sophia Antipolis
+  junior_program: non
+  why: Pionnier du streaming, gros pipelines Kubernetes sur GCP et clusters de stockage bare-metal.
+- name: BlaBlaCar
+  careers_url: https://careers.blablacar.com
+  ats_guess: greenhouse
+  ats_verified: false
+  priority: 82
+  sector: Plateforme de covoiturage & Mobilité
+  france_sites:
+  - Paris
+  junior_program: non
+  why: Plateforme mondiale sur GCP/Kubernetes, pionniers de la culture infra-as-code et remote flexible en France.
+- name: Ivalua
+  careers_url: https://careers.ivalua.com
+  ats_guess: greenhouse
+  ats_verified: false
+  priority: 83
+  sector: SaaS / Gestion des achats (Procurement)
+  france_sites:
+  - Massy
+  - Paris
+  junior_program: non
+  why: Licorne rentable, déploiements d'infrastructures d'entreprise mondiales, stabilité et salaires attractifs.
+- name: Lumapps
+  careers_url: https://jobs.lever.co/lumapps
+  ats_guess: lever
+  ats_verified: false
+  priority: 84
+  sector: SaaS / Intranet & Digital Workplace
+  france_sites:
+  - Lyon
+  - Paris
+  junior_program: non
+  why: Éditeur SaaS fondé à Lyon sur l'écosystème Google Cloud / Microsoft 365, bonne ambiance tech.
+- name: Klaxoon
+  careers_url: https://jobs.lever.co/klaxoon
+  ats_guess: lever
+  ats_verified: false
+  priority: 85
+  sector: SaaS / Collaboration & Workshop
+  france_sites:
+  - Rennes
+  - Paris
+  junior_program: non
+  why: Pôle R&D dynamique en Bretagne (Rennes), architecture cloud hybride à haute disponibilité.
+- name: Talend (Qlik)
+  careers_url: https://jobs.lever.co/talend
+  ats_guess: lever
+  ats_verified: false
+  priority: 86
+  sector: Éditeur de logiciels / Intégration de données
+  france_sites:
+  - Suresnes
+  - Nantes
+  junior_program: non
+  why: Pionnier français de l'Open Source et du Big Data intégré dans Qlik, stack cloud multi-région.
+- name: Withings
+  careers_url: https://jobs.lever.co/withings
+  ats_guess: lever
+  ats_verified: false
+  priority: 87
+  sector: IoT & Santé connectée
+  france_sites:
+  - Issy-les-Moulineaux
+  junior_program: non
+  why: Millions d'appareils de santé connectés communiquant avec le cloud en temps réel, équipe technique pointue.
+- name: Contentful France
+  careers_url: https://jobs.lever.co/contentful
+  ats_guess: lever
+  ats_verified: false
+  priority: 88
+  sector: Headless CMS & Content Platform
+  france_sites:
+  - Paris (Remote France)
+  junior_program: non
+  why: Entreprise internationale axée API, excellente culture de résilience des systèmes et forte equity.
+- name: Sendinblue (Brevo)
+  careers_url: https://jobs.lever.co/brevo
+  ats_guess: lever
+  ats_verified: false
+  priority: 89
+  sector: Marketing Automation SaaS
+  france_sites:
+  - Paris
+  junior_program: non
+  why: Envoi de milliards d'emails et messages critiques, pipelines Kafka, Kubernetes et multi-hébergement.
+- name: Shadow (OVHcloud group)
+  careers_url: https://jobs.lever.co/shadow
+  ats_guess: lever
+  ats_verified: false
+  priority: 90
+  sector: Cloud PC / Virtualisation
+  france_sites:
+  - Paris
+  junior_program: non
+  why: 'Défis d''ingénierie uniques : streaming vidéo basse latence, GPU virtualisés et hyperviseurs custom.'
+- name: Kyriba
+  careers_url: https://jobs.lever.co/kyriba
+  ats_guess: lever
+  ats_verified: false
+  priority: 91
+  sector: Fintech / Trésorerie d'entreprise
+  france_sites:
+  - Saint-Cloud
+  junior_program: non
+  why: Transactions financières interbancaires mondiales, standards de sécurité cloud maximaux (AWS, Terraform).
+- name: CGI France
+  careers_url: https://cgi.njoyn.com/corp/xweb/xweb.asp
+  ats_guess: custom
+  ats_verified: false
+  priority: 92
+  sector: Conseil & Services informatiques
+  france_sites:
+  - Paris
+  - Lyon
+  - Toulouse
+  - Bordeaux
+  - Clermont-Ferrand
+  - Lille
+  junior_program: oui (Parcours Tremplin Jeunes Diplômés)
+  why: Actionnariat salarié historique avec abondement employeur à 100%, implantation dans presque toutes les grandes villes.
+- name: Lusis
+  careers_url: https://www.lusis.fr/fr/carrieres
+  ats_guess: custom
+  ats_verified: false
+  priority: 93
+  sector: Fintech / Monétique de haute performance
+  france_sites:
+  - Paris
+  junior_program: non
+  why: Éditeur du système de paiement de banques mondiales, très haut niveau d'exigence Linux/C++/Python, primes élevées.
+- name: Veeam Software France
+  careers_url: https://careers.veeam.com
+  ats_guess: smartrecruiters
+  ats_verified: false
+  priority: 94
+  sector: Éditeur de logiciels / Sauvegarde & Cloud Data Management
+  france_sites:
+  - Courbevoie (La Défense)
+  junior_program: non
+  why: Leader mondial de la résilience des données dans le cloud hybride, environnement international dynamique.
+- name: Murex
+  careers_url: https://murex.wd3.myworkdayjobs.com/Murex
+  ats_guess: workday
+  ats_verified: false
+  priority: 95
+  sector: Fintech / Logiciels de trading & marchés de capitaux
+  france_sites:
+  - Paris
+  junior_program: oui (Fintech Graduate Trainee)
+  why: Rémunérations et primes annuelles parmi les plus élevées de la tech en France, formation d'élite sur MX.3 et le cloud.
+- name: Snyk France
+  careers_url: https://jobs.lever.co/snyk
+  ats_guess: lever
+  ats_verified: false
+  priority: 96
+  sector: Cybersécurité / DevSecOps
+  france_sites:
+  - Paris (Remote)
+  junior_program: non
+  why: Leader mondial de la sécurité du code et des conteneurs, au cœur même de l'écosystème DevSecOps.
+- name: GitLab France
+  careers_url: https://jobs.ashbyhq.com/gitlab
+  ats_guess: ashby
+  ats_verified: false
+  priority: 97
+  sector: DevOps Platform
+  france_sites:
+  - Full-remote France
+  junior_program: non
+  why: Référence mondiale du télétravail asynchrone, salaire compétitif avec equity, stack au cœur de ton profil technique.
+- name: Elastic France
+  careers_url: https://jobs.lever.co/elastic
+  ats_guess: lever
+  ats_verified: false
+  priority: 98
+  sector: Éditeur de logiciels / Moteur de recherche & Observabilité
+  france_sites:
+  - Paris (Remote France)
+  junior_program: non
+  why: Créateurs de l'ELK Stack, culture 'distributed by design', clusters cloud massifs sur GCP, AWS et Azure.
+- name: Miro France
+  careers_url: https://jobs.lever.co/miro
+  ats_guess: lever
+  ats_verified: false
+  priority: 99
+  sector: Collaboration visuelle SaaS
+  france_sites:
+  - Paris
+  junior_program: non
+  why: Plateforme SaaS en très forte expansion, architecture AWS/Kubernetes à haute scalabilité.
+- name: Hubee
+  careers_url: https://www.hubee.tv/fr/jobs
+  ats_guess: custom
+  ats_verified: false
+  priority: 100
+  sector: Médias & Traitement vidéo
+  france_sites:
+  - Paris
+  junior_program: non
+  why: Infrastructures vidéo pour les chaînes TV européennes, automatisation sous Docker et Terraform.
+- name: Adeo Services
+  careers_url: https://jobs.smartrecruiters.com/adeo
+  ats_guess: smartrecruiters
+  ats_verified: false
+  priority: 101
+  sector: Retail & E-commerce
+  france_sites:
+  - Ronchin (Lille)
+  junior_program: non
+  why: Équipe socle plateforme pour l'ensemble des enseignes du groupe (Leroy Merlin, Bricoman), forte autonomie.
+- name: Nexthink France
+  careers_url: https://jobs.lever.co/nexthink
+  ats_guess: lever
+  ats_verified: false
+  priority: 102
+  sector: Digital Employee Experience / SaaS
+  france_sites:
+  - Paris
+  junior_program: non
+  why: Licorne spécialisée dans l'analytique d'infrastructures informatiques, parcs cloud mondiaux.
+- name: Malt Community
+  careers_url: https://jobs.lever.co/malt
+  ats_guess: lever
+  ats_verified: false
+  priority: 103
+  sector: Plateforme Freelance / Marketplace
+  france_sites:
+  - Paris
+  - Lyon
+  junior_program: non
+  why: Scale-up leader du freelancing européen, infrastructure moderne sur GCP avec Terraform et GitOps.
+- name: Dataiku
+  careers_url: https://jobs.lever.co/dataiku
+  ats_guess: lever
+  ats_verified: false
+  priority: 104
+  sector: Éditeur de logiciels / Plateforme Data & IA
+  france_sites:
+  - Paris
+  junior_program: non
+  why: Licorne franco-américaine de référence en IA d'entreprise, intégration profonde avec GCP, AWS et Azure.
+- name: Teads
+  careers_url: https://jobs.lever.co/teads
+  ats_guess: lever
+  ats_verified: false
+  priority: 105
+  sector: AdTech / Vidéo programmatique
+  france_sites:
+  - Montpellier
+  - Paris
+  junior_program: non
+  why: Centre R&D majeur à Montpellier, gestion de centaines de milliards de requêtes par mois à latence sous les 50ms sur
+    AWS.
+- name: Exotec
+  careers_url: https://jobs.lever.co/exotec
+  ats_guess: lever
+  ats_verified: false
+  priority: 106
+  sector: Robotique industrielle & Logistique
+  france_sites:
+  - Croix (Lille)
+  junior_program: non
+  why: Première licorne industrielle française, systèmes robotiques temps réel connectés au cloud, forte croissance.
+- name: Scality
+  careers_url: https://jobs.lever.co/scality
+  ats_guess: lever
+  ats_verified: false
+  priority: 107
+  sector: Éditeur de logiciels / Stockage cloud & objet
+  france_sites:
+  - Paris
+  junior_program: non
+  why: Pionnier du stockage objet S3 on-premise et multi-cloud, travail de pointe sur les systèmes distribués Linux.
+- name: Vade (Hornetsecurity)
+  careers_url: https://jobs.lever.co/vade
+  ats_guess: lever
+  ats_verified: false
+  priority: 108
+  sector: Cybersécurité de la messagerie
+  france_sites:
+  - Hem (Lille)
+  junior_program: non
+  why: Protection d'un milliard de boîtes mail dans le monde, flux réseau massifs filtrés en temps réel sur Linux/K8s.
+- name: Inetum
+  careers_url: https://inetum.wd3.myworkdayjobs.com/Inetum_Careers
+  ats_guess: workday
+  ats_verified: false
+  priority: 109
+  sector: Services numériques
+  france_sites:
+  - Saint-Ouen
+  - Nantes
+  - Lyon
+  - Bordeaux
+  junior_program: oui (Programme Jeunes Talents)
+  why: Fort ancrage dans le secteur public et bancaire, volumes de recrutement junior réguliers.
+- name: Euronext
+  careers_url: https://euronext.wd3.myworkdayjobs.com/Euronext_Careers
+  ats_guess: workday
+  ats_verified: false
+  priority: 110
+  sector: Bourse & Marchés financiers
+  france_sites:
+  - Courbevoie (La Défense)
+  junior_program: oui (Euronext Graduate Programme)
+  why: Cœur financier européen, exigences de latence en microsecondes, RTT et participation très confortables.
+- name: Dassault Aviation
+  careers_url: https://carrieres.dassault-aviation.com
+  ats_guess: talentsoft
+  ats_verified: false
+  priority: 111
+  sector: Aéronautique & Défense
+  france_sites:
+  - Saint-Cloud
+  - Mérignac (Bordeaux)
+  junior_program: non
+  why: Constructeur du Rafale et des Falcon, accords d'entreprise et intéressement parmi les plus généreux de l'industrie
+    française.
+- name: Equinix France
+  careers_url: https://equinix.wd3.myworkdayjobs.com/Equinix_Careers
+  ats_guess: workday
+  ats_verified: false
+  priority: 112
+  sector: Datacenters & Interconnexion Cloud
+  france_sites:
+  - Saint-Denis
+  - Roissy-en-France
+  junior_program: oui (New Graduate Pathway)
+  why: Leader mondial des datacenters et nœuds d'interconnexion cloud (Equinix Fabric), rémunération US et RSU.
+- name: Akeneo
+  careers_url: https://jobs.lever.co/akeneo
+  ats_guess: lever
+  ats_verified: false
+  priority: 113
+  sector: SaaS / Product Information Management (PIM)
+  france_sites:
+  - Nantes
+  - Paris
+  junior_program: non
+  why: Fleuron tech nantais, culture Open Source et architectures cloud native distribuées.
+- name: Platform.sh (Upsun)
+  careers_url: https://jobs.lever.co/platform
+  ats_guess: lever
+  ats_verified: false
+  priority: 114
+  sector: PaaS / Déploiement d'applications
+  france_sites:
+  - Full-remote France
+  - Paris
+  junior_program: non
+  why: PaaS inventé en France, maîtrise absolue de Linux, des conteneurs et de l'automatisation de clusters.
+- name: Qonto Bank
+  careers_url: https://jobs.lever.co/qonto
+  ats_guess: lever
+  ats_verified: false
+  priority: 115
+  sector: Néobanque & Plateforme financière
+  france_sites:
+  - Paris
+  junior_program: non
+  why: Excellence d'exécution technique, processus de revue de code et CI/CD ultra-rigoureux sur AWS et Kubernetes.
