@@ -229,3 +229,26 @@ def test_a_national_scope_leaves_france_travail_without_departments(monkeypatch)
     _with_keys(monkeypatch, "france_travail")
     (ft,) = build_sources(_national_profile(), _settings(["france_travail"]))
     assert ft._profile.ft_search.national is True
+
+
+# ---------------------------------------------------------------------------
+# ats: no credentials, but no board means skipped
+# ---------------------------------------------------------------------------
+
+def test_ats_runs_without_credentials_when_boards_are_given():
+    from job_match.adapters.jobs.ats import AtsBoardSource
+    from job_match.config.schema import AtsBoard
+
+    settings = Settings(sources=SourcesConfig(enabled=["ats"]))
+    boards = [AtsBoard(company="Dataiku", ats="greenhouse", slug="dataiku")]
+    sources = build_sources(_profile(), settings, ats_boards=boards, limit=5)
+    assert len(sources) == 1 and isinstance(sources[0], AtsBoardSource)
+    assert sources[0].name == "ats"
+    assert missing_env("ats") == []
+
+
+def test_ats_enabled_without_boards_is_skipped_with_a_warning(caplog):
+    settings = Settings(sources=SourcesConfig(enabled=["ats"]))
+    with caplog.at_level(logging.WARNING):
+        assert build_sources(_profile(), settings, ats_boards=[]) == []
+    assert "no board" in caplog.text

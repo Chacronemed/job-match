@@ -61,6 +61,15 @@ class SourceLimits:
     radius_km: int | None = None
 
 
+@dataclass(frozen=True)
+class AtsBoard:
+    """One company career board behind a public ATS JSON endpoint (config/ats_boards.yaml)."""
+
+    company: str
+    ats: str   # greenhouse | lever | ashby
+    slug: str  # the board's identifier in the ATS URL
+
+
 @dataclass
 class SourcesConfig:
     """Which job sources run, and the geography/quota they run with.

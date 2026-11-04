@@ -1,6 +1,7 @@
 import base64
 import logging
 import os
+import re
 from dataclasses import replace
 from pathlib import Path
 
@@ -8,6 +9,7 @@ import yaml
 
 from job_match.config.schema import (
     AiConfig,
+    AtsBoard,
     Candidate,
     ConfigError,
     DigestConfig,
@@ -74,6 +76,36 @@ def load_aliases(path: Path) -> dict[str, list[str]]:
         for k, vs in raw.items()
         if isinstance(vs, list)
     }
+
+
+_ATS_NAMES = ("greenhouse", "lever", "ashby")
+_SLUG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+def load_ats_boards(path: Path) -> list[AtsBoard]:
+    """The company boards of `config/ats_boards.yaml`. Missing file: no boards.
+
+    Each entry needs `company`, `ats` (greenhouse, lever or ashby) and `slug`; the slug is
+    checked against a strict character class because it ends up in a URL path.
+    """
+    if not path.exists():
+        return []
+    with path.open(encoding="utf-8") as fh:
+        raw = yaml.safe_load(fh) or {}
+    entries = raw.get("boards") if isinstance(raw, dict) else None
+    if not isinstance(entries, list):
+        raise ConfigError(f"ATS boards file must have a `boards` list: {path}")
+    boards: list[AtsBoard] = []
+    for i, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            raise ConfigError(f"boards[{i}] must be a mapping in {path}")
+        company, ats, slug = (str(entry.get(k) or "").strip() for k in ("company", "ats", "slug"))
+        if ats not in _ATS_NAMES:
+            raise ConfigError(f"boards[{i}].ats must be one of {_ATS_NAMES}, got {ats!r} in {path}")
+        if not company or not _SLUG_RE.match(slug):
+            raise ConfigError(f"boards[{i}] needs a company and a URL-safe slug in {path}")
+        boards.append(AtsBoard(company=company, ats=ats, slug=slug))
+    return boards
 
 
 def load_skill_vocabulary(path: Path) -> tuple[str, ...]:

@@ -8,7 +8,7 @@ import logging
 import os
 
 from job_match.adapters.jobs.base import JobSource
-from job_match.config.schema import Profile, Settings
+from job_match.config.schema import AtsBoard, Profile, Settings
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +17,7 @@ REQUIRED_ENV: dict[str, tuple[str, ...]] = {
     "france_travail": ("FT_CLIENT_ID", "FT_CLIENT_SECRET"),
     "jooble": ("JOOBLE_API_KEY",),
     "adzuna": ("ADZUNA_APP_ID", "ADZUNA_APP_KEY"),
+    "ats": (),  # public JSON endpoints, no credentials (config/ats_boards.yaml)
 }
 
 KNOWN_SOURCES = tuple(REQUIRED_ENV)
@@ -32,11 +33,14 @@ def build_sources(
     settings: Settings,
     *,
     limit: int | None = None,
+    ats_boards: list[AtsBoard] | None = None,
 ) -> list[JobSource]:
     """The sources listed in `settings.sources.enabled` that have credentials.
 
     `limit` is a per-query cap, not a global one: France Travail applies it to every
-    (keyword, area) query, the quota-light sources to every region query.
+    (keyword, area) query, the quota-light sources to every region query, the ATS boards
+    to every company board. `ats_boards` (config/ats_boards.yaml) is what the `ats`
+    source reads; enabled with no board, it is skipped like a source with no key.
 
     Geography comes from the profile's `location_scope`. A national scope means France
     Travail drops its `departement` param. The quota-light sources always walk
@@ -45,6 +49,7 @@ def build_sources(
     """
     # Imported here so a missing optional source never breaks `job-match --help`.
     from job_match.adapters.jobs.adzuna import AdzunaSource
+    from job_match.adapters.jobs.ats import AtsBoardSource
     from job_match.adapters.jobs.france_travail import FranceTravailSource
     from job_match.adapters.jobs.jooble import JoobleSource
 
@@ -89,6 +94,16 @@ def build_sources(
                     regions=areas,
                     max_calls_per_run=max_calls,
                     radius_km=settings.sources.radius_km(name),
+                    **({} if limit is None else {"max_results": limit}),
+                )
+            )
+        elif name == "ats":
+            if not ats_boards:
+                logger.warning("ats: skipped, no board in config/ats_boards.yaml")
+                continue
+            sources.append(
+                AtsBoardSource(
+                    ats_boards,
                     **({} if limit is None else {"max_results": limit}),
                 )
             )

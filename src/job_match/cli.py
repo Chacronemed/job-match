@@ -2,6 +2,7 @@ import argparse
 import logging
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -79,6 +80,21 @@ def main() -> None:
                         help="Do not write ai-profile.json (the anonymous skills summary "
                              "the Worker's AI rerank reads)")
 
+    export_p = sub.add_parser(
+        "export", help="Write the day's strongest matches for a companion tool (career-ops)",
+    )
+    export_p.add_argument("--top", type=int, default=3, metavar="N",
+                          help="How many jobs, best score first (default: 3)")
+    export_p.add_argument("--days", type=int, default=1, metavar="D",
+                          help="Only jobs collected in the last D days (default: 1)")
+    export_p.add_argument("--format", choices=["career-ops"], default="career-ops",
+                          help="Target tool (default: career-ops, its data/pipeline.md format)")
+    export_p.add_argument("--out", metavar="FILE",
+                          help="File to write (default: data/export/career-ops-<date>.md)")
+    export_p.add_argument("--append", metavar="PIPELINE_MD",
+                          help="Instead of --out, add the lines under the Pending heading of "
+                               "career-ops' own data/pipeline.md, skipping URLs it already has")
+
     ai_p = sub.add_parser(
         "ai-report",
         help="Weekly AI vs Python disagreements + my Tri verdicts -> a correction prompt "
@@ -153,6 +169,8 @@ def main() -> None:
         _cmd_digest(args)
     elif args.command == "dashboard":
         _cmd_dashboard(args)
+    elif args.command == "export":
+        _cmd_export(args)
     elif args.command == "calibrate":
         _cmd_calibrate(args)
     elif args.command == "ai-report":
@@ -420,6 +438,7 @@ def _cmd_run(args: argparse.Namespace) -> None:
     from job_match.adapters.jobs.factory import build_sources, missing_env
     from job_match.config.loader import (
         load_aliases,
+        load_ats_boards,
         load_profile,
         load_settings,
         load_skill_vocabulary,
@@ -441,7 +460,10 @@ def _cmd_run(args: argparse.Namespace) -> None:
 
     # Each enabled source with credentials runs; the others are skipped with a warning
     # inside build_sources. Only an empty result is fatal.
-    sources = build_sources(profile, settings, limit=args.limit)
+    sources = build_sources(
+        profile, settings, limit=args.limit,
+        ats_boards=load_ats_boards(cfg / "ats_boards.yaml"),
+    )
     if not sources:
         print("No job source could run. Missing credentials:", file=sys.stderr)
         for name in settings.sources.enabled:
@@ -613,6 +635,37 @@ def _cmd_dashboard(args: argparse.Namespace) -> None:
         f"{by_section['eligible']} eligible, {by_section['stretch']} stretch), "
         f"{len(data['leads'])} leads, {len(data['runs'])} runs -> {args.out}"
     )
+
+
+def _cmd_export(args: argparse.Namespace, now: datetime | None = None) -> None:
+    """Top matches of the day for career-ops. Prints counts and the path only."""
+    from datetime import UTC
+
+    from job_match.config.loader import load_settings
+    from job_match.export.career_ops import append_to_inbox, select_top, write_inbox
+    from job_match.persistence.db import Database
+    from job_match.persistence.repositories import JobRepository
+
+    settings = load_settings(_config_dir() / "settings.yaml")
+    db_path = _data_dir() / "jobs.sqlite"
+    if not db_path.exists():
+        print(f"No database at {db_path}: run `job-match run` first.", file=sys.stderr)
+        sys.exit(1)
+    now = now or datetime.now(UTC)
+    with Database(path=str(db_path)) as db:
+        jobs = JobRepository(db.conn).list_canonical_scored(
+            now=now, max_age_days=settings.jobs.max_age_days
+        )
+    lines = select_top(jobs, top=args.top, now=now, days=args.days)
+    if args.append:
+        added = append_to_inbox(lines, Path(args.append))
+        print(f"career-ops: {added} new of {len(lines)} selected -> {args.append}")
+        return
+    out = Path(args.out) if args.out else _data_dir() / "export" / f"career-ops-{now.date()}.md"
+    write_inbox(lines, out)
+    print(f"career-ops: {len(lines)} jobs (top {args.top}, last {args.days} day(s)) -> {out}")
+    if not lines:
+        print("  nothing collected in that window: widen --days or run `job-match run` first")
 
 
 def _ai_profile(args: argparse.Namespace) -> dict | None:

@@ -20,7 +20,9 @@ ft_requests_per_second: 3
 # Credentials come from the environment only; a source with no key is skipped with a
 # warning and the run continues.
 sources:
-  enabled: [france_travail]   # jooble & adzuna: add here once the plan is paid
+  # ats: company boards read through Greenhouse / Lever / Ashby public JSON endpoints,
+  # listed in config/ats_boards.yaml (ADR 0020). No credentials.
+  enabled: [france_travail, ats]   # jooble & adzuna: add here once the plan is paid
   regions:                            # quota-light sources only; metropolitan regions
     - Île-de-France
     - Auvergne-Rhône-Alpes

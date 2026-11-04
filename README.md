@@ -21,7 +21,7 @@ Generic job boards fail a junior DevOps engineer in four ways:
 
 ## What it does, every day
 
-- **Fetches** offers from several job boards — France Travail (one paginated query per keyword, nationwide, newest first within a publication window), Jooble and optionally Adzuna (one combined query per French region, paginated under a hard call budget) — and rejects, before any scoring, jobs that are irrelevant, that require more experience than the candidate has, or that are not in France. A location counts as French when it names a commune (the official INSEE list ships with the package), a department, a region or a postal code; US-style "City, ST" and foreign markers are rejected. A source whose API key is missing is skipped; the run continues on the others.
+- **Fetches** offers from several job boards — France Travail (one paginated query per keyword, nationwide, newest first within a publication window), the public Greenhouse / Lever / Ashby boards of 30 French tech companies listed in `config/ats_boards.yaml` (one JSON call per company, no key, [ADR 0020](docs/adr/0020-ats-public-json-boards.md)), Jooble and optionally Adzuna (one combined query per French region, paginated under a hard call budget) — and rejects, before any scoring, jobs that are irrelevant, that require more experience than the candidate has, or that are not in France. A location counts as French when it names a commune (the official INSEE list ships with the package), a department, a region or a postal code; US-style "City, ST" and foreign markers are rejected. A source whose API key is missing is skipped; the run continues on the others.
 - **Scores** the rest with an explainable rule engine: every point is traceable to a matched or penalised skill.
 - **Deduplicates** with a stable fingerprint plus fuzzy matching, and records duplicate links instead of deleting rows.
 - **Reads funding news** (Maddyness, FrenchWeb RSS), extracts *who raised how much, in which round, from whom, and whether they plan to hire*, and turns it into leads linked to the same companies' job offers.
@@ -122,9 +122,21 @@ job-match run --dry-run --limit 50   # fetch, gate, dedup, score; prints a run s
 job-match digest --dry-run           # renders data/digest_preview.html instead of sending email
 job-match funding run --dry-run --limit 10   # RSS → extraction, nothing written
 job-match funding run                # ingest articles, funding events and leads into data/jobs.sqlite
+job-match export --top 3 --format career-ops   # the day's best matches, in career-ops' inbox format
 ```
 
 `job-match reprocess --since YYYY-MM-DD` re-applies the gate, the scorer and dedup to jobs already in the database (no API calls) and reports the duplicate links it added and removed, and `job-match funding reprocess --since YYYY-MM-DD` re-runs extraction on stored articles. The daily workflow exposes both on a manual trigger, through the `reprocess_since` date and the `reprocess_scope` choice (`jobs` / `funding` / `both`). Sending real email needs the `SMTP_*` and `DIGEST_TO` variables from `.env.example`.
+
+## Hand-off to career-ops
+
+job-match decides *which* postings deserve an evening; [career-ops](https://github.com/career-ops-hq/career-ops) (MIT) decides *how* to apply, with an LLM reading the full posting against the CV and drafting the documents. The two meet on a file ([docs/positioning.md](docs/positioning.md)):
+
+```bash
+job-match export --top 3 --format career-ops                       # data/export/career-ops-<date>.md
+job-match export --top 3 --append ../career-ops/data/pipeline.md   # straight into its inbox, known URLs skipped
+```
+
+Each line is `- [ ] {url} | {company} | {title} | {location} | note: job-match {score}/100 | posted: {date}`, the shape of career-ops' `data/pipeline.md`; `/career-ops pipeline` then processes them. Only canonical, still-online, eligible or stretch jobs collected in the last `--days` (default 1) are exported, best score first; no description, keyword or profile value leaves the database. The score rides in a `note:` so career-ops never reads it as its own 1-5 grade.
 
 ## Dashboard
 
