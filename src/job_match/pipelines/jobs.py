@@ -1,9 +1,10 @@
 import json
 import logging
+from collections.abc import Iterable
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
-from job_match.adapters.jobs.base import source_payload
+from job_match.adapters.jobs.base import JobSource, source_payload
 from job_match.config.schema import Profile, Settings
 from job_match.dedup.engine import DedupEngine
 from job_match.dedup.fingerprint import compute_fingerprint
@@ -38,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 
 def run_jobs(
-    sources,
+    sources: JobSource | Iterable[JobSource],
     profile: Profile,
     settings: Settings,
     db: Database,

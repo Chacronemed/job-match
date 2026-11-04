@@ -54,6 +54,32 @@ def test_excludes_apprenticeship_is_explained_and_does_not_change_eligibility():
     assert bd.eligible is True
 
 
+class _OtherScorer:
+    """A second engine, the only one answering: it becomes the primary score."""
+
+    name = "other"
+
+    def score(self, job, profile, settings):
+        return ScoreResult(engine=self.name, available=True, score=42, explanations=("other",))
+
+
+class _DeadNative:
+    name = "native"
+
+    def score(self, job, profile, settings):
+        raise RuntimeError("scorer down")
+
+
+def test_another_engine_is_primary_when_native_cannot_answer():
+    engine = ScoringEngine([_DeadNative(), _OtherScorer()])
+    bd = engine.score(
+        _make_job(), _make_profile(), SETTINGS, EligibilityResult(eligible=True),
+        ExperienceRequirement(ExperienceStatus.ELIGIBLE),
+    )
+    assert bd.score == 42 and bd.engines["native"].available is False
+    assert bd.divergence is None and bd.needs_review is False
+
+
 def _make_job() -> Job:
     return Job(
         source="test",

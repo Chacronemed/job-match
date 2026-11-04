@@ -1,3 +1,4 @@
+import functools
 import html
 import re
 import unicodedata
@@ -7,8 +8,12 @@ import unicodedata
 _LIGATURES = str.maketrans({"œ": "oe", "Œ": "OE", "æ": "ae", "Æ": "AE", "ß": "ss"})
 
 
+@functools.lru_cache(maxsize=4096)
 def normalize_text(text: str) -> str:
-    """NFKD accent-fold, ligatures spelled out, lowercase, no punctuation, single spaces."""
+    """NFKD accent-fold, ligatures spelled out, lowercase, no punctuation, single spaces.
+
+    Memoized: a posting's title, company and place go through here several times per run
+    (fingerprint, dedup blocks, save, scoring), and the cache key is the string itself."""
     text = unicodedata.normalize("NFKD", text.translate(_LIGATURES))
     text = "".join(c for c in text if not unicodedata.combining(c))
     text = text.lower()

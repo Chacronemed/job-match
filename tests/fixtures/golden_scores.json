@@ -1,0 +1,1127 @@
+{
+ "11-0": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": 73,
+  "contract": "UNKNOWN",
+  "positive": [
+   "ci/cd"
+  ],
+  "negative": [],
+  "explanations": [
+   "Missed preferred: kubernetes",
+   "Missed preferred: terraform",
+   "Missed preferred: python",
+   "Profile section: ci/cd (x1.5)",
+   "Matched preferred: ci/cd (+3)",
+   "Missed preferred: docker",
+   "Missed preferred: linux",
+   "Missed preferred: ansible",
+   "Title relevance: core (+20)"
+  ],
+  "duplicate_of": null
+ },
+ "11-1": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": null,
+  "contract": "UNKNOWN",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": "11-0"
+ },
+ "11-10": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "CONTRACT",
+  "score": null,
+  "contract": "ALTERNANCE",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-11": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "EXPERIENCE",
+  "score": null,
+  "contract": "CDI",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-12": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "NOT_RELEVANT, TITLE, CONTRACT, LOCATION",
+  "score": null,
+  "contract": "CDD",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-13": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "CONTRACT",
+  "score": null,
+  "contract": "STAGE",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-14": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "CONTRACT",
+  "score": null,
+  "contract": "CDD",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-15": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "EXPERIENCE, CONTRACT",
+  "score": null,
+  "contract": "ALTERNANCE",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-16": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": 70,
+  "contract": "UNKNOWN",
+  "positive": [],
+  "negative": [],
+  "explanations": [
+   "Missed preferred: kubernetes",
+   "Missed preferred: terraform",
+   "Missed preferred: python",
+   "Missed preferred: ci/cd",
+   "Missed preferred: docker",
+   "Missed preferred: linux",
+   "Missed preferred: ansible",
+   "Title relevance: core (+20)"
+  ],
+  "duplicate_of": null
+ },
+ "11-17": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "CONTRACT",
+  "score": null,
+  "contract": "FREELANCE",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-18": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": 77,
+  "contract": "UNKNOWN",
+  "positive": [
+   "kubernetes",
+   "ansible"
+  ],
+  "negative": [],
+  "explanations": [
+   "Profile section: kubernetes (x1.5)",
+   "Matched preferred: kubernetes (+5)",
+   "Missed preferred: terraform",
+   "Missed preferred: python",
+   "Missed preferred: ci/cd",
+   "Missed preferred: docker",
+   "Missed preferred: linux",
+   "Profile section: ansible (x1.5)",
+   "Matched preferred: ansible (+2)",
+   "Title relevance: core (+20)"
+  ],
+  "duplicate_of": null
+ },
+ "11-19": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "EXPERIENCE",
+  "score": null,
+  "contract": "CDI",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-2": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": 59,
+  "contract": "CDI",
+  "positive": [
+   "kubernetes",
+   "python",
+   "linux"
+  ],
+  "negative": [
+   "SAP",
+   "cobol"
+  ],
+  "explanations": [
+   "Profile section: kubernetes (x1.5)",
+   "Matched preferred: kubernetes (+5)",
+   "Missed preferred: terraform",
+   "Profile section: python (x1.5)",
+   "Matched preferred: python (+3)",
+   "Missed preferred: ci/cd",
+   "Missed preferred: docker",
+   "Matched preferred: linux (+1)",
+   "Missed preferred: ansible",
+   "Matched negative: SAP (-5)",
+   "Matched negative: cobol (-5)",
+   "Title relevance: near (+10)"
+  ],
+  "duplicate_of": null
+ },
+ "11-20": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": null,
+  "contract": "CDI",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": "11-2"
+ },
+ "11-21": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": 82,
+  "contract": "UNKNOWN",
+  "positive": [
+   "kubernetes",
+   "terraform",
+   "ansible"
+  ],
+  "negative": [],
+  "explanations": [
+   "Profile section: kubernetes (x1.5)",
+   "Matched preferred: kubernetes (+5)",
+   "Profile section: terraform (x1.5)",
+   "Matched preferred: terraform (+5)",
+   "Missed preferred: python",
+   "Missed preferred: ci/cd",
+   "Missed preferred: docker",
+   "Missed preferred: linux",
+   "Profile section: ansible (x1.5)",
+   "Matched preferred: ansible (+2)",
+   "Title relevance: core (+20)"
+  ],
+  "duplicate_of": null
+ },
+ "11-22": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": 70,
+  "contract": "CDI",
+  "positive": [
+   "kubernetes"
+  ],
+  "negative": [
+   "SAP"
+  ],
+  "explanations": [
+   "Profile section: kubernetes (x1.5)",
+   "Matched preferred: kubernetes (+5)",
+   "Missed preferred: terraform",
+   "Missed preferred: python",
+   "Missed preferred: ci/cd",
+   "Missed preferred: docker",
+   "Missed preferred: linux",
+   "Missed preferred: ansible",
+   "Matched negative: SAP (-5)",
+   "Title relevance: core (+20)"
+  ],
+  "duplicate_of": null
+ },
+ "11-23": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "CONTRACT",
+  "score": null,
+  "contract": "FREELANCE",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-24": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "NOT_RELEVANT, CONTRACT",
+  "score": null,
+  "contract": "CDD",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-25": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "CONTRACT",
+  "score": null,
+  "contract": "ALTERNANCE",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-26": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": 72,
+  "contract": "CDI",
+  "positive": [
+   "ansible"
+  ],
+  "negative": [],
+  "explanations": [
+   "Missed preferred: kubernetes",
+   "Missed preferred: terraform",
+   "Missed preferred: python",
+   "Missed preferred: ci/cd",
+   "Missed preferred: docker",
+   "Missed preferred: linux",
+   "Profile section: ansible (x1.5)",
+   "Matched preferred: ansible (+2)",
+   "Title relevance: core (+20)"
+  ],
+  "duplicate_of": null
+ },
+ "11-27": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "NOT_RELEVANT, CONTRACT",
+  "score": null,
+  "contract": "STAGE",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-28": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": 77,
+  "contract": "CDI",
+  "positive": [
+   "terraform",
+   "linux"
+  ],
+  "negative": [],
+  "explanations": [
+   "Missed preferred: kubernetes",
+   "Profile section: terraform (x1.5)",
+   "Matched preferred: terraform (+5)",
+   "Missed preferred: python",
+   "Missed preferred: ci/cd",
+   "Missed preferred: docker",
+   "Profile section: linux (x1.5)",
+   "Matched preferred: linux (+2)",
+   "Missed preferred: ansible",
+   "Title relevance: core (+20)"
+  ],
+  "duplicate_of": null
+ },
+ "11-29": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": 77,
+  "contract": "CDI",
+  "positive": [
+   "terraform",
+   "ansible"
+  ],
+  "negative": [],
+  "explanations": [
+   "Missed preferred: kubernetes",
+   "Profile section: terraform (x1.5)",
+   "Matched preferred: terraform (+5)",
+   "Missed preferred: python",
+   "Missed preferred: ci/cd",
+   "Missed preferred: docker",
+   "Missed preferred: linux",
+   "Profile section: ansible (x1.5)",
+   "Matched preferred: ansible (+2)",
+   "Title relevance: core (+20)"
+  ],
+  "duplicate_of": null
+ },
+ "11-3": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": 65,
+  "contract": "CDI",
+  "positive": [],
+  "negative": [
+   "cobol"
+  ],
+  "explanations": [
+   "Missed preferred: kubernetes",
+   "Missed preferred: terraform",
+   "Missed preferred: python",
+   "Missed preferred: ci/cd",
+   "Missed preferred: docker",
+   "Missed preferred: linux",
+   "Missed preferred: ansible",
+   "Matched negative: cobol (-5)",
+   "Title relevance: core (+20)"
+  ],
+  "duplicate_of": null
+ },
+ "11-30": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": 69,
+  "contract": "CDI",
+  "positive": [
+   "kubernetes",
+   "python",
+   "linux"
+  ],
+  "negative": [],
+  "explanations": [
+   "Profile section: kubernetes (x1.5)",
+   "Matched preferred: kubernetes (+5)",
+   "Missed preferred: terraform",
+   "Profile section: python (x1.5)",
+   "Matched preferred: python (+3)",
+   "Missed preferred: ci/cd",
+   "Missed preferred: docker",
+   "Matched preferred: linux (+1)",
+   "Missed preferred: ansible",
+   "Title relevance: near (+10)"
+  ],
+  "duplicate_of": null
+ },
+ "11-31": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "CONTRACT",
+  "score": null,
+  "contract": "ALTERNANCE",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-32": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "NOT_RELEVANT, EXPERIENCE, CONTRACT",
+  "score": null,
+  "contract": "STAGE",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-33": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "TITLE, CONTRACT",
+  "score": null,
+  "contract": "FREELANCE",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-34": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": 77,
+  "contract": "CDI",
+  "positive": [
+   "kubernetes",
+   "linux"
+  ],
+  "negative": [],
+  "explanations": [
+   "Profile section: kubernetes (x1.5)",
+   "Matched preferred: kubernetes (+5)",
+   "Missed preferred: terraform",
+   "Missed preferred: python",
+   "Missed preferred: ci/cd",
+   "Missed preferred: docker",
+   "Profile section: linux (x1.5)",
+   "Matched preferred: linux (+2)",
+   "Missed preferred: ansible",
+   "Title relevance: core (+20)"
+  ],
+  "duplicate_of": null
+ },
+ "11-35": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": 73,
+  "contract": "UNKNOWN",
+  "positive": [
+   "ci/cd"
+  ],
+  "negative": [],
+  "explanations": [
+   "Missed preferred: kubernetes",
+   "Missed preferred: terraform",
+   "Missed preferred: python",
+   "Profile section: ci/cd (x1.5)",
+   "Matched preferred: ci/cd (+3)",
+   "Missed preferred: docker",
+   "Missed preferred: linux",
+   "Missed preferred: ansible",
+   "Title relevance: core (+20)"
+  ],
+  "duplicate_of": null
+ },
+ "11-36": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": 67,
+  "contract": "UNKNOWN",
+  "positive": [
+   "ansible"
+  ],
+  "negative": [
+   "SAP"
+  ],
+  "explanations": [
+   "Missed preferred: kubernetes",
+   "Missed preferred: terraform",
+   "Missed preferred: python",
+   "Missed preferred: ci/cd",
+   "Missed preferred: docker",
+   "Missed preferred: linux",
+   "Profile section: ansible (x1.5)",
+   "Matched preferred: ansible (+2)",
+   "Matched negative: SAP (-5)",
+   "Title relevance: core (+20)"
+  ],
+  "duplicate_of": null
+ },
+ "11-37": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "NOT_RELEVANT, CONTRACT",
+  "score": null,
+  "contract": "CDD",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-38": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": 70,
+  "contract": "CDI",
+  "positive": [],
+  "negative": [],
+  "explanations": [
+   "Missed preferred: kubernetes",
+   "Missed preferred: terraform",
+   "Missed preferred: python",
+   "Missed preferred: ci/cd",
+   "Missed preferred: docker",
+   "Missed preferred: linux",
+   "Missed preferred: ansible",
+   "Title relevance: core (+20)"
+  ],
+  "duplicate_of": null
+ },
+ "11-39": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "EXPERIENCE, CONTRACT",
+  "score": null,
+  "contract": "STAGE",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-4": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": 70,
+  "contract": "CDI",
+  "positive": [],
+  "negative": [],
+  "explanations": [
+   "Missed preferred: kubernetes",
+   "Missed preferred: terraform",
+   "Missed preferred: python",
+   "Missed preferred: ci/cd",
+   "Missed preferred: docker",
+   "Missed preferred: linux",
+   "Missed preferred: ansible",
+   "Title relevance: core (+20)"
+  ],
+  "duplicate_of": null
+ },
+ "11-40": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "NOT_RELEVANT",
+  "score": null,
+  "contract": "CDI",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-41": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "EXPERIENCE, CONTRACT",
+  "score": null,
+  "contract": "FREELANCE",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-42": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "CONTRACT, LOCATION",
+  "score": null,
+  "contract": "CDD",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-43": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": 68,
+  "contract": "CDI",
+  "positive": [
+   "kubernetes"
+  ],
+  "negative": [
+   "SAP"
+  ],
+  "explanations": [
+   "Matched preferred: kubernetes (+3)",
+   "Missed preferred: terraform",
+   "Missed preferred: python",
+   "Missed preferred: ci/cd",
+   "Missed preferred: docker",
+   "Missed preferred: linux",
+   "Missed preferred: ansible",
+   "Matched negative: SAP (-5)",
+   "Title relevance: core (+20)"
+  ],
+  "duplicate_of": null
+ },
+ "11-44": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "LOCATION",
+  "score": null,
+  "contract": "CDI",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-45": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "CONTRACT",
+  "score": null,
+  "contract": "CDD",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-46": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": 37,
+  "contract": "CDI",
+  "positive": [
+   "ansible"
+  ],
+  "negative": [],
+  "explanations": [
+   "Missed preferred: kubernetes",
+   "Missed preferred: terraform",
+   "Missed preferred: python",
+   "Missed preferred: ci/cd",
+   "Missed preferred: docker",
+   "Missed preferred: linux",
+   "Profile section: ansible (x1.5)",
+   "Matched preferred: ansible (+2)",
+   "Title relevance: other (-15)"
+  ],
+  "duplicate_of": null
+ },
+ "11-47": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": null,
+  "contract": "CDI",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": "11-43"
+ },
+ "11-48": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": null,
+  "contract": "UNKNOWN",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": "11-0"
+ },
+ "11-49": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": 75,
+  "contract": "CDI",
+  "positive": [
+   "kubernetes"
+  ],
+  "negative": [],
+  "explanations": [
+   "Profile section: kubernetes (x1.5)",
+   "Matched preferred: kubernetes (+5)",
+   "Missed preferred: terraform",
+   "Missed preferred: python",
+   "Missed preferred: ci/cd",
+   "Missed preferred: docker",
+   "Missed preferred: linux",
+   "Missed preferred: ansible",
+   "Title relevance: core (+20)"
+  ],
+  "duplicate_of": null
+ },
+ "11-5": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": null,
+  "contract": "UNKNOWN",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": "11-0"
+ },
+ "11-50": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "LOCATION",
+  "score": null,
+  "contract": "CDI",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-51": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "CONTRACT",
+  "score": null,
+  "contract": "STAGE",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-52": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": null,
+  "contract": "UNKNOWN",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": "11-21"
+ },
+ "11-53": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "NOT_RELEVANT, EXPERIENCE, CONTRACT",
+  "score": null,
+  "contract": "CDD",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-54": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "CONTRACT",
+  "score": null,
+  "contract": "CDD",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-55": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": 80,
+  "contract": "CDI",
+  "positive": [
+   "terraform",
+   "ci/cd",
+   "linux"
+  ],
+  "negative": [],
+  "explanations": [
+   "Missed preferred: kubernetes",
+   "Profile section: terraform (x1.5)",
+   "Matched preferred: terraform (+5)",
+   "Missed preferred: python",
+   "Profile section: ci/cd (x1.5)",
+   "Matched preferred: ci/cd (+3)",
+   "Missed preferred: docker",
+   "Profile section: linux (x1.5)",
+   "Matched preferred: linux (+2)",
+   "Missed preferred: ansible",
+   "Title relevance: core (+20)"
+  ],
+  "duplicate_of": null
+ },
+ "11-56": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": 73,
+  "contract": "CDI",
+  "positive": [
+   "kubernetes",
+   "docker"
+  ],
+  "negative": [
+   "cobol"
+  ],
+  "explanations": [
+   "Profile section: kubernetes (x1.5)",
+   "Matched preferred: kubernetes (+5)",
+   "Missed preferred: terraform",
+   "Missed preferred: python",
+   "Missed preferred: ci/cd",
+   "Profile section: docker (x1.5)",
+   "Matched preferred: docker (+3)",
+   "Missed preferred: linux",
+   "Missed preferred: ansible",
+   "Matched negative: cobol (-5)",
+   "Title relevance: core (+20)"
+  ],
+  "duplicate_of": null
+ },
+ "11-57": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "CONTRACT, LOCATION",
+  "score": null,
+  "contract": "FREELANCE",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-58": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "LOCATION",
+  "score": null,
+  "contract": "CDI",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-59": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": null,
+  "contract": "CDI",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": "11-2"
+ },
+ "11-6": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": null,
+  "contract": "UNKNOWN",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": "11-0"
+ },
+ "11-60": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": 75,
+  "contract": "CDI",
+  "positive": [
+   "kubernetes"
+  ],
+  "negative": [],
+  "explanations": [
+   "Profile section: kubernetes (x1.5)",
+   "Matched preferred: kubernetes (+5)",
+   "Missed preferred: terraform",
+   "Missed preferred: python",
+   "Missed preferred: ci/cd",
+   "Missed preferred: docker",
+   "Missed preferred: linux",
+   "Missed preferred: ansible",
+   "Title relevance: core (+20)"
+  ],
+  "duplicate_of": null
+ },
+ "11-61": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "NOT_RELEVANT, TITLE, EXPERIENCE, CONTRACT",
+  "score": null,
+  "contract": "CDD",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-62": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "EXPERIENCE, CONTRACT",
+  "score": null,
+  "contract": "ALTERNANCE",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-63": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "CONTRACT, LOCATION",
+  "score": null,
+  "contract": "STAGE",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-64": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "CONTRACT",
+  "score": null,
+  "contract": "CDD",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-65": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "TITLE",
+  "score": null,
+  "contract": "CDI",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-66": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "EXPERIENCE, CONTRACT",
+  "score": null,
+  "contract": "CDD",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-67": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "TITLE",
+  "score": null,
+  "contract": "CDI",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-68": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "NOT_RELEVANT",
+  "score": null,
+  "contract": "UNKNOWN",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-69": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "NOT_RELEVANT, CONTRACT",
+  "score": null,
+  "contract": "STAGE",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-7": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "CONTRACT",
+  "score": null,
+  "contract": "STAGE",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-70": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "LOCATION",
+  "score": null,
+  "contract": "CDI",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-71": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "TITLE, CONTRACT",
+  "score": null,
+  "contract": "CDD",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-72": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": 70,
+  "contract": "CDI",
+  "positive": [],
+  "negative": [],
+  "explanations": [
+   "Missed preferred: kubernetes",
+   "Missed preferred: terraform",
+   "Missed preferred: python",
+   "Missed preferred: ci/cd",
+   "Missed preferred: docker",
+   "Missed preferred: linux",
+   "Missed preferred: ansible",
+   "Title relevance: core (+20)"
+  ],
+  "duplicate_of": null
+ },
+ "11-73": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "CONTRACT, LOCATION",
+  "score": null,
+  "contract": "FREELANCE",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-74": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "CONTRACT",
+  "score": null,
+  "contract": "ALTERNANCE",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-75": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "EXPERIENCE",
+  "score": null,
+  "contract": "CDI",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-76": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "EXPERIENCE",
+  "score": null,
+  "contract": "CDI",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-77": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": 73,
+  "contract": "CDI",
+  "positive": [
+   "python"
+  ],
+  "negative": [],
+  "explanations": [
+   "Missed preferred: kubernetes",
+   "Missed preferred: terraform",
+   "Profile section: python (x1.5)",
+   "Matched preferred: python (+3)",
+   "Missed preferred: ci/cd",
+   "Missed preferred: docker",
+   "Missed preferred: linux",
+   "Missed preferred: ansible",
+   "Title relevance: core (+20)"
+  ],
+  "duplicate_of": null
+ },
+ "11-78": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": 70,
+  "contract": "CDI",
+  "positive": [],
+  "negative": [],
+  "explanations": [
+   "Missed preferred: kubernetes",
+   "Missed preferred: terraform",
+   "Missed preferred: python",
+   "Missed preferred: ci/cd",
+   "Missed preferred: docker",
+   "Missed preferred: linux",
+   "Missed preferred: ansible",
+   "Title relevance: core (+20)"
+  ],
+  "duplicate_of": null
+ },
+ "11-79": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "CONTRACT",
+  "score": null,
+  "contract": "STAGE",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ },
+ "11-8": {
+  "eligibility": "ELIGIBLE",
+  "rejection_reason": null,
+  "score": null,
+  "contract": "UNKNOWN",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": "11-0"
+ },
+ "11-9": {
+  "eligibility": "REJECTED",
+  "rejection_reason": "CONTRACT",
+  "score": null,
+  "contract": "STAGE",
+  "positive": [],
+  "negative": [],
+  "explanations": [],
+  "duplicate_of": null
+ }
+}

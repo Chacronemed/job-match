@@ -7,10 +7,11 @@ or any other unclear answer changes nothing and is retried on the next run. Sour
 without `check_offer` are skipped: their jobs rely on `jobs.max_age_days` alone.
 """
 import logging
+from collections.abc import Iterable
 from datetime import datetime, timedelta
 from typing import NamedTuple
 
-from job_match.adapters.jobs.base import OfferStatus
+from job_match.adapters.jobs.base import JobSource, OfferStatus
 from job_match.config.schema import Settings
 from job_match.persistence.db import Database
 from job_match.persistence.repositories import JobRepository
@@ -27,7 +28,7 @@ class ClosureStats(NamedTuple):
 
 
 def check_closed(
-    sources,
+    sources: Iterable[JobSource],
     settings: Settings,
     db: Database,
     now: datetime,

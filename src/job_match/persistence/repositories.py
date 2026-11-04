@@ -24,7 +24,7 @@ from job_match.domain.models import (
     WorkplaceType,
 )
 from job_match.normalization.company import normalize_company
-from job_match.normalization.location import block_location, same_block_location
+from job_match.normalization.location import department_of, is_french_department
 from job_match.normalization.title import normalize_title
 from job_match.tracking.constants import ACTIVE_STATUSES, NO_FOLLOW_UP_STATUSES
 
@@ -113,11 +113,38 @@ def _breakdown_from_json(text: str) -> ScoringBreakdown:
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _ensure_source(conn: sqlite3.Connection, source_id: str, kind: str = "job") -> None:
+def _ensure_source(
+    conn: sqlite3.Connection, source_id: str, kind: str = "job", known: set[str] | None = None
+) -> None:
+    """Register `source_id` once. `known`, a set the caller keeps for its connection, turns
+    the INSERT into a set lookup after the first row (a run saved 1 936 of them for 466
+    postings). A module-level cache would outlive the connection."""
+    if known is not None and source_id in known:
+        return
     conn.execute(
         "INSERT OR IGNORE INTO sources(id, kind, name) VALUES (?, ?, ?)",
         (source_id, kind, source_id),
     )
+    if known is not None:
+        known.add(source_id)
+
+
+def backfill_blocks(conn: sqlite3.Connection) -> int:
+    """`title_normalized` and `location_dept` for rows saved before migration 0012.
+
+    Runs on every connect and costs one query when there is nothing to do; the first run
+    after the migration rewrites every row once (a few seconds for a few thousand jobs)."""
+    rows = conn.execute(
+        "SELECT id, title, location FROM jobs WHERE title_normalized IS NULL"
+    ).fetchall()
+    if not rows:
+        return 0
+    conn.executemany(
+        "UPDATE jobs SET title_normalized = ?, location_dept = ? WHERE id = ?",
+        [(normalize_title(r["title"]), department_of(r["location"]), r["id"]) for r in rows],
+    )
+    conn.commit()
+    return len(rows)
 
 
 def _visible_where(now: datetime | None, max_age_days: int | None) -> tuple[str, list]:
@@ -198,7 +225,6 @@ class CompanyRepository:
             " VALUES (?, ?, ?, ?)",
             (company.name, company.normalized_name, company.website, company.location),
         )
-        self._conn.commit()
         row = self._conn.execute(
             "SELECT id, name, normalized_name, website, location"
             " FROM companies WHERE normalized_name = ?",
@@ -232,10 +258,11 @@ class CompanyRepository:
 class RawPayloadRepository:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
+        self._known_sources: set[str] = set()
 
     def save(self, payload: RawPayload) -> bool:
         """False when the item already has a row at this fetched_at (one copy per run)."""
-        _ensure_source(self._conn, payload.source)
+        _ensure_source(self._conn, payload.source, known=self._known_sources)
         cur = self._conn.execute(
             "INSERT OR IGNORE INTO raw_payloads"
             "(source_id, source_item_id, fetched_at, payload_json)"
@@ -247,7 +274,6 @@ class RawPayloadRepository:
                 payload.payload_json,
             ),
         )
-        self._conn.commit()
         return cur.rowcount > 0
 
     def save_if_changed(self, payload: RawPayload) -> bool:
@@ -277,15 +303,16 @@ class RawPayloadRepository:
 class JobRepository:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
+        self._known_sources: set[str] = set()
 
     def save(self, job: Job) -> Job:
-        _ensure_source(self._conn, job.source, "job")
+        _ensure_source(self._conn, job.source, "job", known=self._known_sources)
 
         bd_json = _breakdown_to_json(job.scoring_breakdown) if job.scoring_breakdown else None
         needs_review = int(job.scoring_breakdown.needs_review) if job.scoring_breakdown else 0
         company_n = normalize_company(job.company)
 
-        self._conn.execute(
+        row = self._conn.execute(
             """
             INSERT INTO jobs(
                 source_id, source_job_id, title, company, company_normalized, company_id,
@@ -294,8 +321,8 @@ class JobRepository:
                 experience_min, experience_max, experience_status, experience_evidence,
                 experience_excludes_apprenticeship,
                 eligibility, rejection_reason, score, scoring_breakdown, needs_review,
-                search_query
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                search_query, title_normalized, location_dept
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(source_id, source_job_id) DO UPDATE SET
                 title              = excluded.title,
                 company            = excluded.company,
@@ -319,7 +346,10 @@ class JobRepository:
                 score              = excluded.score,
                 scoring_breakdown  = excluded.scoring_breakdown,
                 needs_review       = excluded.needs_review,
-                search_query       = COALESCE(excluded.search_query, jobs.search_query)
+                search_query       = COALESCE(excluded.search_query, jobs.search_query),
+                title_normalized   = excluded.title_normalized,
+                location_dept      = excluded.location_dept
+            RETURNING id
             """,
             (
                 job.source,
@@ -347,14 +377,11 @@ class JobRepository:
                 bd_json,
                 needs_review,
                 job.search_query,
+                normalize_title(job.title),
+                department_of(job.location),
             ),
-        )
-        self._conn.commit()
-
-        row = self._conn.execute(
-            "SELECT id FROM jobs WHERE source_id = ? AND source_job_id = ?",
-            (job.source, job.source_job_id),
         ).fetchone()
+        self._conn.commit()
         return replace(job, id=row["id"])
 
     def get(self, job_id: int) -> Job | None:
@@ -617,29 +644,35 @@ class JobRepository:
         *,
         title_normalized: str | None = None,
     ) -> list[Job]:
-        """Rows matching `where`, narrowed in Python to one place (and one title).
+        """Rows matching `where`, in one place (and under one title), all in SQL.
 
-        The place and the title are normalized by our own code, so SQL cannot filter on
-        them: this scans the SQL-selected rows on three small columns and only materializes
-        the matches. If a block ever grows enough for that to hurt, the fix is stored
-        `title_normalized` / department columns with an index, the way `company_normalized`
-        already has one.
-        """
-        ids = [
-            row["id"]
-            for row in self._conn.execute(
-                f"SELECT id, title, location FROM jobs WHERE {where}", params
-            ).fetchall()
-            if same_block_location(block_location(row["location"]), location_key)
-            and (title_normalized is None or normalize_title(row["title"]) == title_normalized)
-        ]
-        if not ids:
-            return []
-        placeholders = ",".join("?" * len(ids))
+        The place rule is `same_block_location`: a department only blocks with itself and
+        with the rows whose place names no single department (`location_dept IS NULL`); a key
+        that is no department blocks with everything. The keys are stored at save time
+        (migration 0012) and backfilled once for older rows."""
+        if is_french_department(location_key):
+            where += " AND (location_dept = ? OR location_dept IS NULL)"
+            params = [*params, location_key]
+        if title_normalized is not None:
+            where += " AND title_normalized = ?"
+            params = [*params, title_normalized]
         rows = self._conn.execute(
-            f"SELECT * FROM jobs WHERE id IN ({placeholders})", ids
+            f"SELECT {self._light_columns()} FROM jobs WHERE {where}", params
         ).fetchall()
         return [_row_to_job(r) for r in rows]
+
+    _light: str | None = None
+
+    def _light_columns(self) -> str:
+        """Every column but the scoring breakdown, read as NULL: dedup compares titles,
+        descriptions and fingerprints, never a breakdown, and parsing one JSON per candidate
+        was most of a block's cost."""
+        if self._light is None:
+            names = [r[1] for r in self._conn.execute("PRAGMA table_info(jobs)").fetchall()]
+            self._light = ", ".join(
+                "NULL AS scoring_breakdown" if n == "scoring_breakdown" else n for n in names
+            )
+        return self._light
 
 
 class JobScoreRepository:
