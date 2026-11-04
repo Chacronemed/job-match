@@ -167,17 +167,34 @@ describe("M24 explanation lines", () => {
   });
 });
 
-describe("dashboard.js scope", () => {
-  test("no name is declared twice at the top level of the IIFE (a var would replace a function)", async () => {
+describe("dashboard scope (app.js, the screens, dashboard.js)", () => {
+  const FILES = ["app.js", "why.js", "list.js", "tri.js", "board.js", "leads.js", "runs.js", "dashboard.js"];
+  test("no name is declared twice at the top level of a file's IIFE (a var would replace a function)", async () => {
     const { readFile } = await import("node:fs/promises");
-    const src = await readFile(new URL("../../src/job_match/dashboard/assets/dashboard.js", import.meta.url), "utf8");
-    const seen = new Map();
-    const dupes = [];
-    for (const m of src.matchAll(/^  (?:var ([A-Za-z_$][\w$]*)|function ([A-Za-z_$][\w$]*)\s*\()/gm)) {
-      const name = m[1] || m[2];
-      if (seen.has(name)) dupes.push(name); else seen.set(name, true);
+    let total = 0;
+    for (const file of FILES) {
+      const src = await readFile(new URL("../../src/job_match/dashboard/assets/" + file, import.meta.url), "utf8");
+      const seen = new Map();
+      const dupes = [];
+      for (const m of src.matchAll(/^  (?:var ([A-Za-z_$][\w$]*)|function ([A-Za-z_$][\w$]*)\s*\()/gm)) {
+        const name = m[1] || m[2];
+        if (seen.has(name)) dupes.push(name); else seen.set(name, true);
+      }
+      assert.deepEqual(dupes, [], file + ": declared twice in one scope");
+      total += seen.size;
     }
-    assert.deepEqual(dupes, [], "declared twice in one scope");
-    assert.ok(seen.size > 100, "the scan really saw the file");
+    assert.ok(total > 100, "the scan really saw the files");
+  });
+  test("every name a file reads from the namespace is exported by another file", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const exported = new Set(["v", "rec"]);
+    const read = [];
+    for (const file of FILES) {
+      const src = await readFile(new URL("../../src/job_match/dashboard/assets/" + file, import.meta.url), "utf8");
+      for (const m of src.matchAll(/^  JM\.([\w$]+) = /gm)) exported.add(m[1]);
+      for (const m of src.matchAll(/JM\.([\w$]+)/g)) read.push([file, m[1]]);
+    }
+    const missing = read.filter(([, name]) => !exported.has(name)).map(([f, n]) => f + ":" + n);
+    assert.deepEqual([...new Set(missing)], []);
   });
 });

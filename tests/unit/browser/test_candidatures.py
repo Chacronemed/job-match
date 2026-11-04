@@ -70,7 +70,7 @@ def test_kanban_shows_every_status_without_console_errors(open_dashboard, job_ke
     assert [m.input_value() for m in menus.all()] == STATUSES
     assert page.locator("#kb-board button", has_text="J’ai postulé").count() == 1
     assert page.locator("#kb-due").is_visible()
-    assert "Relances dues (1)" in page.locator("#kb-due").inner_text()
+    assert "1 relance en retard" in page.locator("#kb-due").inner_text()
     assert page.locator("#kb-board .kb-card", has_text="offre plus affichée").count() == 1
     assert page.locator("#kb-board .kb-card-broken").count() == 0
     assert errors == []

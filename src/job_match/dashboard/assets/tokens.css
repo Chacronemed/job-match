@@ -1,6 +1,7 @@
 /* Design tokens (docs/design/DESIGN.md). Radix Colors 3.0 dark (MIT, see LICENSES.md): slate
    for everything, violet as the single accent; status hues only on dots, score marks and the
-   few words that carry a state. Dark only for now: light mode is planned, not shipped. */
+   few words that carry a state. Light mode below: Radix slate light on the same names, with the
+   three inks darkened until every one passes AA on slate-3 (measured by the bench, 2026-11-04). */
 @font-face {
   font-family: "Inter Variable";
   src: url("fonts/InterVariable-latin.woff2") format("woff2-variations"), url("fonts/InterVariable-latin.woff2") format("woff2");
@@ -64,6 +65,29 @@
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
   --d-fast: 120ms; --d: 160ms; --d-slow: 200ms;
   --overlay-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+}
+
+/* Light: the same tokens, the page chooses with data-theme (app.js); the system setting is the
+   default. Every ink passes 4.5:1 on --raised (slate-3), the darkest surface words sit on. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --slate-1: #fcfcfd; --slate-2: #f9f9fb; --slate-3: #f0f0f3; --slate-4: #e8e8ec;
+  --slate-5: #e0e1e6; --slate-6: #d9d9e0; --slate-7: #cdced6; --slate-8: #b9bbc6;
+  --slate-9: #8b8d98; --slate-10: #80838d; --slate-11: #5c6069; --slate-12: #1c2024;
+  --violet-3: #f5f2ff; --violet-4: #ebe4ff; --violet-6: #d4cafe; --violet-8: #aa99ec;
+  --violet-9: #6e56cf; --violet-10: #654dc4; --violet-11: #5b47b0;
+  --green-3: #e9f6ee; --green-9: #30a46c; --green-11: #176e49;
+  --amber-3: #fff7c2; --amber-9: #ffc53d; --amber-11: #8a5000;
+  --red-3: #feebec; --red-9: #e5484d; --red-11: #b2161b;
+  --blue-9: #0090ff; --blue-11: #0b68b8;
+  --hover: rgba(0, 0, 0, 0.04);
+  --active: rgba(0, 0, 0, 0.07);
+  --line: rgba(0, 0, 0, 0.07);
+  --line-2: rgba(0, 0, 0, 0.09);
+  --line-3: rgba(0, 0, 0, 0.13);
+  --ink-3: #646973;
+  --accent-soft: rgba(110, 86, 207, 0.12);
+  --overlay-shadow: 0 16px 48px rgba(28, 32, 36, 0.18);
 }
 
 @media (prefers-reduced-motion: reduce) {
