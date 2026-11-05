@@ -68,6 +68,9 @@ def _mock_workday(postings: list[dict], total: int | None = None, france: bool =
 
     def jobs(request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
+        if body["searchText"]:  # the closure probe: a search on one requisition id
+            hits = [p for p in postings if p["externalPath"].endswith("_" + body["searchText"])]
+            return httpx.Response(200, json={"total": len(hits), "jobPostings": hits})
         if not body["appliedFacets"]:
             return httpx.Response(200, json={"total": 5000, "facets": _facets(france),
                                              "jobPostings": [_wd_posting("WORLD")]})
@@ -125,8 +128,21 @@ def test_workday_pagination_stops_at_the_cap_and_the_listing_is_then_incomplete(
     assert len(items) == 45 and detail.call_count == 45
     assert route.call_count == 1 + 3  # facets, then pages at offsets 0, 20, 40
     assert src.check_offer("workday:thales.Careers:R0") is OfferStatus.OPEN
-    # Not listed because of the cap, not because it closed.
-    assert src.check_offer("workday:thales.Careers:R100") is OfferStatus.UNKNOWN
+    # Not listed because of the cap: a search on its requisition id answers instead.
+    assert src.check_offer("workday:thales.Careers:R100") is OfferStatus.OPEN
+    assert src.check_offer("workday:thales.Careers:R999") is OfferStatus.CLOSED
+    assert route.call_count == 1 + 3 + 2
+
+
+@respx.mock
+def test_workday_probe_that_fails_is_unknown():
+    route, _ = _mock_workday([_wd_posting(f"R{i}") for i in range(30)])
+    board = AtsBoard(company="Thales", ats="workday", slug=WD.slug, max_postings=20)
+    src = _source(board)
+    list(src.fetch())
+    route.side_effect = None
+    route.return_value = httpx.Response(503)
+    assert src.check_offer("workday:thales.Careers:R25") is OfferStatus.UNKNOWN
 
 
 @respx.mock
@@ -240,7 +256,26 @@ def test_smartrecruiters_pages_up_to_the_cap():
     assert len(list(src.fetch())) == 150
     assert route.call_count == 2 and detail.call_count == 150
     assert src.query_stats[0].available == 250
-    assert src.check_offer("smartrecruiters:Devoteam:1249") is OfferStatus.UNKNOWN
+    # Past the cap: the posting's own detail call answers (200 = still online).
+    assert src.check_offer("smartrecruiters:Devoteam:1249") is OfferStatus.OPEN
+    assert detail.call_count == 151
+
+
+@respx.mock
+def test_smartrecruiters_capped_listing_closes_an_offer_its_detail_call_says_gone():
+    """The Devoteam case: a big French board read up to the cap, the kept offer unlisted."""
+    respx.get(SR_BASE + "/1404").mock(return_value=httpx.Response(404))  # before the catch-all
+    respx.get(SR_BASE + "/1405").mock(return_value=httpx.Response(200, json={
+        **_sr_detail("1405"), "active": False}))
+    respx.get(SR_BASE + "/1406").mock(return_value=httpx.Response(500))
+    _mock_sr([_sr_posting(str(1000 + i)) for i in range(250)])
+    board = AtsBoard(company="Devoteam", ats="smartrecruiters", slug="Devoteam",
+                     max_postings=100)
+    src = _source(board)  # fetch did not run: check_offer reads the listing itself
+    assert src.check_offer("smartrecruiters:Devoteam:1404") is OfferStatus.CLOSED
+    assert src.check_offer("smartrecruiters:Devoteam:1405") is OfferStatus.CLOSED
+    assert src.check_offer("smartrecruiters:Devoteam:1406") is OfferStatus.UNKNOWN
+    assert src.check_offer("smartrecruiters:Devoteam:1001") is OfferStatus.OPEN  # listed
 
 
 @respx.mock

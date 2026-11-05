@@ -63,6 +63,20 @@ def test_followups_due_today_or_overdue_oldest_first(save_job, rows):
     assert due[0].title is None  # the offer left the DB; the key is still listed
 
 
+def test_an_expired_application_has_no_follow_up(save_job, rows):
+    """Kept « À candidater » on an offer the source closed: « Expirée », nothing to chase."""
+    with Database(path=":memory:") as db:
+        gone = save_job(db.conn, "X")
+        save_job(db.conn, "Y")
+        JobRepository(db.conn).mark_closed([gone.id], datetime(2026, 10, 18, tzinfo=UTC))
+        _mirror(db.conn, [
+            ("france_travail:X", "to_apply", {"follow_up_at": "2026-10-19"}),
+            ("france_travail:Y", "to_apply", {"follow_up_at": "2026-10-19"}),
+        ], application=rows.application)
+        due = ApplicationRepository(db.conn).list_followups_due(TODAY)
+    assert [f.job_key for f in due] == ["france_travail:Y"]
+
+
 def test_digest_lists_followups_first_without_the_note(save_job, rows, now):
     with Database(path=":memory:") as db:
         save_job(db.conn, "A", title="Platform <b>engineer</b>")

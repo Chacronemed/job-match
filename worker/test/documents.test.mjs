@@ -653,6 +653,21 @@ describe("runDocuments", () => {
     for (const s of ["Initech", "Kubernetes", "sk-ant", "exp1"]) assert.ok(!logged[0].includes(s), s);
   });
 
+  test("an expired application (its offer closed) gets no documents, queued or pending", async () => {
+    keep("france_travail:EXP");
+    pending("france_travail:EXP");
+    keep("france_travail:EXQ"); // no documents row: the missing pass must not queue it
+    const closed = (k) => ({ ...OFFER, key: k, closed: true });
+    const api = anthropic([]);
+    idp.hosts["api.anthropic.com"] = api.handler;
+    const e = docEnv({ ASSETS: fakeAssets({ "/data.json": { jobs: [], tracked: [closed("france_travail:EXP"), closed("france_travail:EXQ")] } }) });
+    const r = await run(e);
+    assert.equal(api.calls.length, 0);
+    assert.equal(row("france_travail:EXP").error_code, "offer_gone");
+    assert.equal(db.raw.prepare("SELECT COUNT(*) AS n FROM documents WHERE job_key = 'france_travail:EXQ'").get().n, 0);
+    assert.equal(r.counters.queued, 0);
+  });
+
   test("an offer kept but no longer listed is read from tracked[]", async () => {
     keep();
     pending();

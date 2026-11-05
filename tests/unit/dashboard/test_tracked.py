@@ -1,4 +1,5 @@
 """Candidatures keeps an application whose offer closed or aged out of the job list."""
+from dataclasses import replace
 from datetime import UTC, datetime
 
 from job_match.config.schema import Settings
@@ -43,3 +44,25 @@ def test_tracked_lists_applied_offers_the_job_list_hides():
         "france_travail:GONE", "france_travail:OLD"
     ]
     assert old.id in {j["id"] for j in data["tracked"]}
+    by_key = {j["key"]: j for j in data["tracked"]}
+    # the page derives « Expirée » from `closed`: only the source's verdict, not the age
+    assert by_key["france_travail:GONE"]["closed"] is True
+    assert by_key["france_travail:OLD"]["closed"] is False
+    assert data["jobs"][0]["closed"] is False
+
+
+def test_apply_form_names_the_supported_ats_by_url():
+    with Database(path=":memory:") as db:
+        repo = JobRepository(db.conn)
+        for sid, url in (("GH", "https://job-boards.greenhouse.io/acme/jobs/1"),
+                         ("LV", "https://jobs.lever.co/beta/2"),
+                         ("SR", "https://jobs.smartrecruiters.com/Devoteam/3"),
+                         ("JS", "javascript:alert(1)")):
+            repo.save(_with_url(_job(sid, NOW), url))
+        data = build_dashboard_data(db, Settings(), NOW)
+    forms = {j["key"].split(":")[1]: j["apply_form"] for j in data["jobs"]}
+    assert forms == {"GH": "greenhouse", "LV": "lever", "SR": None, "JS": None}
+
+
+def _with_url(job: Job, url: str) -> Job:
+    return replace(job, url=url)

@@ -224,10 +224,38 @@
   /* The kept applications without any documents row: what « Générer les manquants » asks for.
      The Worker applies the same rule (KEEP_STATUSES, no row at all). */
   var KEEP_STATUSES = ["to_apply", "applied", "interview"];
-  function missingDocuments(apps, documents) {
+  /* `postings` (key → offer, optional): an expired application gets none (the Worker skips a
+     closed offer the same way). */
+  function missingDocuments(apps, documents, postings) {
     return Object.keys(apps || {}).filter(function (k) {
-      return KEEP_STATUSES.indexOf(statusOf(apps[k])) >= 0 && !(documents && documents[k]);
+      return KEEP_STATUSES.indexOf(statusOf(apps[k])) >= 0 && !(documents && documents[k]) &&
+        !isExpired(apps[k], postings && postings[k]);
     }).sort();
+  }
+
+  /* « Expirée » (ADR 0024): kept « À candidater » but the source said the offer is gone. Not a
+     stored status: D1 keeps to_apply, the page and the Worker derive it from `closed`. */
+  function isExpired(app, posting) {
+    return statusOf(app) === "to_apply" && !!posting && posting.closed === true;
+  }
+
+  /* The forms `job-match apply` fills (src/job_match/apply/forms.py, ATS_HOSTS). */
+  var APPLY_FORMS = ["greenhouse", "lever", "ashby"];
+  function canPrefill(posting) {
+    return !!posting && APPLY_FORMS.indexOf(posting.apply_form) >= 0;
+  }
+
+  /* The numbered list `job-match apply` prints without a key (src/job_match/apply/picker.py):
+     « À candidater », offer open and form supported, oldest kept first, then by key. */
+  function applyList(apps, postings) {
+    return Object.keys(apps || {}).filter(function (k) {
+      var p = postings && postings[k];
+      return statusOf(apps[k]) === "to_apply" && p && p.closed !== true && canPrefill(p);
+    }).sort(function (a, b) {
+      var ua = String(apps[a].updated_at || ""), ub = String(apps[b].updated_at || "");
+      if (ua !== ub) return ua < ub ? -1 : 1;
+      return a < b ? -1 : a > b ? 1 : 0;
+    });
   }
 
   /* « 7 documents · ≈ 0,42 $ (reste 58,10 $ ce mois) », from the Worker's documents_budget. */
@@ -363,6 +391,10 @@
     docText: docText,
     docBadge: docBadge,
     missingDocuments: missingDocuments,
+    isExpired: isExpired,
+    canPrefill: canPrefill,
+    applyList: applyList,
+    APPLY_FORMS: APPLY_FORMS,
     inProgress: inProgress,
     budgetSummary: budgetSummary,
     documentLinks: documentLinks,

@@ -195,7 +195,9 @@ def main() -> None:
         "apply",
         help="Open an offer's application form, fill it from the kit; never sends (ADR 0023)",
     )
-    apply_p.add_argument("job_key", help="The offer's key, e.g. ats:greenhouse:acme:123")
+    apply_p.add_argument("job_key", nargs="?",
+                         help="The offer's key (optional: without it, a numbered list of the"
+                              " « À candidater » offers with a supported form)")
     apply_p.add_argument("--sent", action="store_true",
                          help="I sent it: status « Envoyée », follow-up date, documents version")
     apply_p.add_argument("--follow-up-days", type=int, default=7,
@@ -338,6 +340,38 @@ def _cmd_cv_push(args: argparse.Namespace) -> None:
         print(f"  {key}: {n} bytes -> R2 {'local' if args.local else 'remote'}")
 
 
+def _pick_application() -> str | None:
+    """The numbered list of `job-match apply` without a key; the key of the number I type."""
+    from job_match.apply import picker, remote
+
+    try:
+        apps = remote.kept_applications()
+    except remote.RemoteError as exc:
+        print(f"apply: applications not reachable ({exc})", file=sys.stderr)
+        return None
+    keys = [str(a["job_key"]) for a in apps]
+    listing = picker.build(apps, picker.local_offers(_data_dir() / "jobs.sqlite", keys))
+    if not listing.choices:
+        print("Aucune candidature « À candidater » avec un formulaire pris en charge"
+              " (Greenhouse, Lever, Ashby).")
+        for line in picker.lines(listing)[len(listing.choices):]:
+            print(line)
+        return None
+    for line in picker.lines(listing):
+        print(line)
+    for _ in range(3):
+        try:
+            answer = input(f"Numéro (1-{len(listing.choices)}) : ")
+        except EOFError:
+            return None
+        choice = picker.pick(listing, answer)
+        if choice is not None:
+            print(f"→ {choice.title} · {choice.company}")
+            return choice.key
+        print("Numéro inconnu.")
+    return None
+
+
 def _cmd_apply(args: argparse.Namespace) -> None:
     """Local only (ADR 0023): fill the form, never send it. Prints labels and sources, never a
     value; nothing personal goes to a log."""
@@ -353,6 +387,10 @@ def _cmd_apply(args: argparse.Namespace) -> None:
     from job_match.tracking.constants import JOB_KEY_RE
 
     key = args.job_key
+    if key is None:
+        key = _pick_application()
+        if key is None:
+            sys.exit(1)
     if not JOB_KEY_RE.match(key):
         print(f"apply: invalid job key {key!r}", file=sys.stderr)
         sys.exit(2)

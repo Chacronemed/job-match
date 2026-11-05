@@ -80,3 +80,10 @@ def test_the_committed_vocabulary_passes_the_skill_name_rule():
     assert vocab
     for term in vocab:
         assert SKILL_RE.match(term), term
+
+
+def test_apply_forms_agree_between_the_cli_and_the_dashboard():
+    """« Pré-remplissage » and the « Postuler » number use the forms `job-match apply` fills."""
+    from job_match.apply.forms import ATS_HOSTS
+
+    assert _js_array(DASHBOARD, "APPLY_FORMS") == tuple(ATS_HOSTS)

@@ -498,6 +498,16 @@ class JobRepository:
         ).fetchall()
         return [_row_to_job(r) for r in rows]
 
+    def closed_ids(self, job_ids: list[int]) -> set[int]:
+        """The ids among `job_ids` the source said are gone."""
+        if not job_ids:
+            return set()
+        marks = ",".join("?" * len(job_ids))
+        rows = self._conn.execute(
+            f"SELECT id FROM jobs WHERE closed_at IS NOT NULL AND id IN ({marks})", job_ids
+        ).fetchall()
+        return {r["id"] for r in rows}
+
     # -- closure check (M20) ------------------------------------------------
 
     def list_to_check(
@@ -506,19 +516,30 @@ class JobRepository:
         """`(id, source, source_job_id)` of every visible job worth asking the source about.
 
         Visible means canonical, ELIGIBLE or STRETCH, not closed, and not already hidden by
-        the age cut-off (no call is spent on a job nobody will see). A job checked less
-        than `recheck_after` ago is skipped. Never-checked jobs come first, so a run that
-        stops early still reaches the ones nobody asked about yet.
+        the age cut-off (no call is spent on a job nobody will see). A job I kept « À
+        candidater » (mirrored `applications`) is asked about too, past the cut-off and
+        whatever its eligibility: its closure turns the application « Expirée ». A job
+        checked less than `recheck_after` ago is skipped. Never-checked jobs come first, so
+        a run that stops early still reaches the ones nobody asked about yet.
         """
-        where, params = _visible_where(now, max_age_days)
+        age = ""
+        params: list = []
+        if now is not None and max_age_days is not None:
+            age = " AND COALESCE(j.published_at, j.collected_at) >= ?"
+            params.append((now - timedelta(days=max_age_days)).isoformat())
         rows = self._conn.execute(
             f"""
             SELECT j.id, j.source_id, j.source_job_id
             FROM jobs j
             LEFT JOIN job_duplicates d ON d.duplicate_job_id = j.id
-            WHERE j.eligibility IN ('ELIGIBLE', 'STRETCH')
-              AND d.duplicate_job_id IS NULL
-              {where}
+            WHERE j.closed_at IS NULL
+              AND (
+                  (j.eligibility IN ('ELIGIBLE', 'STRETCH')
+                   AND d.duplicate_job_id IS NULL{age})
+                  OR EXISTS (SELECT 1 FROM applications a
+                             WHERE a.job_key = j.source_id || ':' || j.source_job_id
+                               AND a.status = 'to_apply')
+              )
               AND (j.last_checked_at IS NULL OR j.last_checked_at < ?)
             ORDER BY j.last_checked_at IS NOT NULL, j.last_checked_at, j.id
             """,
@@ -1333,7 +1354,8 @@ class ApplicationRepository:
 
     def list_followups_due(self, today: date) -> list[FollowUp]:
         """Follow-ups due today or overdue, oldest first, unless the application is closed
-        (rejected/ignored). The offer is joined when it is still stored, closed or not."""
+        (rejected/ignored) or expired (kept « À candidater », the offer closed). The offer is
+        joined when it is still stored, closed or not."""
         rows = self._conn.execute(
             f"""
             SELECT a.job_key, a.status, a.follow_up_at, j.title, j.company, j.url
@@ -1342,6 +1364,8 @@ class ApplicationRepository:
             WHERE a.follow_up_at IS NOT NULL
               AND a.follow_up_at <= ?
               AND a.status NOT IN ({_sql_list(NO_FOLLOW_UP_STATUSES)})
+              -- « Expirée »: kept, the offer closed
+              AND NOT (a.status = 'to_apply' AND j.closed_at IS NOT NULL)
             ORDER BY a.follow_up_at, a.job_key
             """,
             (today.isoformat(),),

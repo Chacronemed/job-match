@@ -119,6 +119,21 @@ def test_list_to_check_spends_no_call_on_jobs_already_hidden_by_age(repo):
     assert old.id not in rows and old_no_date.id not in rows
 
 
+def test_list_to_check_asks_about_a_kept_offer_past_the_age_cut_off(repo, db):
+    """A job kept « À candidater » is checked old or duplicate: its closure expires the
+    application. Other statuses, and a closed one, are not."""
+    kept = repo.save(_job("K", published_at=NOW - 90 * DAY))
+    applied = repo.save(_job("P", published_at=NOW - 90 * DAY))
+    gone = repo.save(_job("G", published_at=NOW - 90 * DAY))
+    repo.mark_closed([gone.id], NOW - DAY)
+    for key, status in (("K", "to_apply"), ("P", "applied"), ("G", "to_apply")):
+        db.conn.execute("INSERT INTO applications(job_key, status, updated_at)"
+                        " VALUES (?, ?, '2026-10-01')", (f"france_travail:{key}", status))
+    rows = _ids(repo.list_to_check(NOW, 45, recheck_after=RECHECK))
+    assert kept.id in rows
+    assert applied.id not in rows and gone.id not in rows
+
+
 # ---------------------------------------------------------------------------
 # marks
 # ---------------------------------------------------------------------------

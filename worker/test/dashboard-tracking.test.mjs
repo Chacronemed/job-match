@@ -355,3 +355,39 @@ describe("recruiter replies (ADR 0018)", () => {
     assert.deepEqual(T.validateRecord({ status: "interview", interview_at: "2026-11-12" }), {});
   });
 });
+
+describe("expired applications and the apply list (ADR 0024)", () => {
+  const app = (status, updated_at) => ({ status, updated_at });
+  const apps = {
+    "ats:lever:b:2": app("to_apply", "2026-11-03T08:00:00Z"),
+    "ats:greenhouse:a:1": app("to_apply", "2026-11-01T08:00:00Z"),
+    "ats:smartrecruiters:d:3": app("to_apply", "2026-11-01T08:00:00Z"),
+    "ats:greenhouse:a:9": app("to_apply", "2026-10-01T08:00:00Z"),
+    "ats:ashby:c:4": app("applied", "2026-10-01T08:00:00Z"),
+  };
+  const postings = {
+    "ats:lever:b:2": { apply_form: "lever", closed: false },
+    "ats:greenhouse:a:1": { apply_form: "greenhouse", closed: false },
+    "ats:smartrecruiters:d:3": { apply_form: null, closed: false },
+    "ats:greenhouse:a:9": { apply_form: "greenhouse", closed: true },
+    "ats:ashby:c:4": { apply_form: "ashby", closed: true },
+  };
+
+  test("a kept application on a closed offer is expired; any other status is not", () => {
+    assert.equal(T.isExpired(apps["ats:greenhouse:a:9"], postings["ats:greenhouse:a:9"]), true);
+    assert.equal(T.isExpired(apps["ats:ashby:c:4"], postings["ats:ashby:c:4"]), false);
+    assert.equal(T.isExpired(apps["ats:lever:b:2"], postings["ats:lever:b:2"]), false);
+    assert.equal(T.isExpired(apps["ats:lever:b:2"], undefined), false);
+  });
+
+  test("the apply list: kept, open, supported form, oldest first (picker.py's rule)", () => {
+    assert.deepEqual(T.applyList(apps, postings), ["ats:greenhouse:a:1", "ats:lever:b:2"]);
+    assert.equal(T.canPrefill(postings["ats:smartrecruiters:d:3"]), false);
+  });
+
+  test("an expired application needs no documents", () => {
+    assert.deepEqual(T.missingDocuments(apps, {}, postings),
+      ["ats:ashby:c:4", "ats:greenhouse:a:1", "ats:lever:b:2", "ats:smartrecruiters:d:3"]);
+    assert.ok(T.missingDocuments(apps, {}).includes("ats:greenhouse:a:9"), "without postings: unchanged");
+  });
+});

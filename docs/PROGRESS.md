@@ -3,7 +3,24 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**CI / Daily run split** (branch `ci/split-pipelines`, 2026-11-05). No business change.
+**Simpler apply + expired applications** (branch `ci/split-pipelines`, 2026-11-06, ADR 0024).
+Done locally, not committed.
+1. `job-match apply` with no key: numbered list (D1 `to_apply` × local jobs DB, open, form
+   Greenhouse / Lever / Ashby, oldest first), I type a number (`apply/picker.py`).
+2. Table: « Postuler » per « À candidater » row (supported form: copies
+   `.venv\Scripts\job-match apply` + toast « n° X » from `T.applyList`; else opens the offer),
+   « Pré-remplissage » / « Manuel » under the title; `apply_form` + `closed` in data.json.
+3. Closure: a capped Workday / SmartRecruiters listing probes the unlisted posting (SR detail
+   404 / `active:false`, Workday search on the req id); `list_to_check` adds every `to_apply`.
+4. « Expirée » = `to_apply` + offer closed, derived (D1 unchanged): grey badge, last row, out
+   of Kanban / due list / « Générer les manquants »; Worker queues nothing (`offer_gone`);
+   no digest follow-up. Tests: `test_apply_button.py` (Playwright), `test_picker.py`, SR/WD
+   probes (respx), Node `applyList`. Suite **1 714 passed**, ruff clean.
+**Next step:** commit, Daily run, check Devoteam turns « Expirée » and the `closed` count.
+**Note:** the row title already opened the record in tests (1440 and 390); an offer the page
+no longer has now shows plain text instead of a dead button.
+
+Before it: **CI / Daily run split** (branch `ci/split-pipelines`, 2026-11-05). No business change.
 1. `daily.yml`: `workflow_dispatch` input `stage` (all | jobs | funding | site; the cron = all),
    job env `RUN_JOBS/RUN_FUNDING/RUN_SITE` guard each step. jobs = D1 migrations, tracking
    export, `job-match run`, check-sources; funding = `funding run`; both → VACUUM, digest, DB

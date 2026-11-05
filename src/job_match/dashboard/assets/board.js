@@ -452,7 +452,7 @@
   /* « Générer les manquants » (table header): the count and the estimated cost in a held
      toast, then one request; the cron or « Lancer maintenant » does the generation. */
   function generateMissing(button) {
-    var missing = T.missingDocuments(track.apps, track.documents);
+    var missing = T.missingDocuments(track.apps, track.documents, postingByKey);
     var summary = T.budgetSummary(track.budget, missing.length);
     if (!summary.affordable) { showToast(summary.text); return; }
     showToast("Générer " + summary.text + " ?", [
@@ -528,7 +528,7 @@
     byId("kb-off").hidden = canTriage() || track.status === "loading";
     renderInbox();
     var keys = boardKeys();
-    var dueKeys = Object.keys(track.apps).filter(function (k) { return T.isDue(track.apps[k], today); })
+    var dueKeys = Object.keys(track.apps).filter(function (k) { return T.isDue(track.apps[k], today) && !T.isExpired(track.apps[k], postingByKey[k]); })
       .sort(function (a, b) { return track.apps[a].follow_up_at < track.apps[b].follow_up_at ? -1 : 1; });
     due.hidden = dueKeys.length === 0;
     if (dueKeys.length) {
@@ -553,7 +553,8 @@
       return;
     }
     BOARD.forEach(function (status) {
-      var inCol = keys.filter(function (k) { return T.statusOf(track.apps[k]) === status; })
+      /* an expired application (its offer closed) leaves « À candidater »: the table keeps it */
+      var inCol = keys.filter(function (k) { return T.statusOf(track.apps[k]) === status && !T.isExpired(track.apps[k], postingByKey[k]); })
         .sort(function (a, b) {
           var da = T.isDue(track.apps[a], today) ? 0 : 1, db = T.isDue(track.apps[b], today) ? 0 : 1;
           if (da !== db) return da - db;
@@ -667,6 +668,8 @@
     var wrap = byId("kb-table");
     clear(wrap);
     var rows = keys.slice().sort(function (a, b) {
+      var xa = T.isExpired(track.apps[a], postingByKey[a]) ? 1 : 0, xb = T.isExpired(track.apps[b], postingByKey[b]) ? 1 : 0;
+      if (xa !== xb) return xa - xb; // the expired ones last
       var da = T.isDue(track.apps[a], today) ? 0 : 1, db = T.isDue(track.apps[b], today) ? 0 : 1;
       if (da !== db) return da - db;
       var ra = T.STATUS_RANK[T.statusOf(track.apps[a])], rb = T.STATUS_RANK[T.statusOf(track.apps[b])];
@@ -677,7 +680,7 @@
       wrap.appendChild(el("p", { class: "kb-empty", text: "Garde des offres dans Tri pour les voir ici." }));
       return;
     }
-    var missing = T.missingDocuments(track.apps, track.documents);
+    var missing = T.missingDocuments(track.apps, track.documents, postingByKey);
     var gen = el("button", { type: "button", class: "btn", id: "apps-generate-missing", text: "Générer les manquants (" + missing.length + ")" });
     gen.disabled = !missing.length || track.status !== "ready";
     gen.addEventListener("click", function () { generateMissing(gen); });
@@ -691,34 +694,69 @@
     wrap.appendChild(el("table", { class: "data apps fixed", "aria-label": "Candidatures" }, [cols, el("thead", null, head), body]));
   }
 
+  /* « Postuler » (ADR 0024): a supported form copies the one command and says which number
+     to type in its list (T.applyList, the CLI's own order); any other form opens the offer. */
+  var APPLY_COMMAND = ".venv\\Scripts\\job-match apply";
+  function applyButton(k, j) {
+    var b = el("button", { type: "button", class: "btn btn-primary btn-small apps-apply", text: "Postuler",
+      "aria-label": "Postuler : " + (j.title || k) });
+    b.addEventListener("click", function () {
+      if (!T.canPrefill(j)) {
+        window.open(j.url, "_blank", "noopener,noreferrer");
+        return;
+      }
+      var n = T.applyList(track.apps, postingByKey).indexOf(k) + 1;
+      var say = function () { showToast("Commande copiée · Colle dans PowerShell et choisis le n° " + n); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(APPLY_COMMAND).then(say, function () {
+          showToast("Copie refusée : tape " + APPLY_COMMAND + " puis le n° " + n);
+        });
+      } else {
+        showToast("Tape " + APPLY_COMMAND + " dans PowerShell puis le n° " + n);
+      }
+    });
+    return b;
+  }
+
   function appRow(k, today) {
     {
       var app = track.apps[k];
       var j = postingByKey[k];
       var doc = track.documents[k] || null;
       var links = T.documentLinks(k, doc);
-      var tr = el("tr", { "data-key": k });
+      var expired = T.isExpired(app, j);
+      var tr = el("tr", { "data-key": k, class: expired ? "is-expired" : null });
       var titleText = j ? (j.title || k) : k;
-      var title = el("button", { type: "button", class: "link-btn", title: titleText, text: titleText });
+      /* the title opens the record; an offer the page no longer has has no record to open */
+      var title = j
+        ? el("button", { type: "button", class: "link-btn", title: titleText, text: titleText })
+        : el("span", { class: "apps-gone", title: titleText, text: titleText });
       if (j) title.addEventListener("click", function () { openRecord(j, title); });
-      tr.appendChild(el("td", { class: "apps-title", "data-label": "Offre" }, title));
+      var prefill = j ? el("span", { class: "apps-form" + (T.canPrefill(j) ? " can-prefill" : ""), text: T.canPrefill(j) ? "Pré-remplissage" : "Manuel",
+        title: T.canPrefill(j) ? "job-match apply remplit le formulaire" : "Formulaire à remplir à la main" }) : null;
+      tr.appendChild(el("td", { class: "apps-title", "data-label": "Offre" }, [title, prefill]));
       var company = j ? (j.company || null) : "offre plus affichée";
       tr.appendChild(el("td", { class: "apps-company", "data-label": "Entreprise", title: company },
         company ? company : el("span", { class: "apps-unknown", text: "Non communiquée" })));
       var ai = j ? aiOf(j) : null;
       tr.appendChild(el("td", { class: "num", "data-label": "Score IA", text: ai ? String(ai.score) : "—" }));
-      tr.appendChild(el("td", { class: "apps-status", "data-label": "Statut" }, statusMenu(k, j, T.statusOf(app))));
+      tr.appendChild(el("td", { class: "apps-status", "data-label": "Statut" }, expired
+        ? [el("span", { class: "status-badge is-expired", text: "Expirée", title: "La source a retiré l’offre" }), statusMenu(k, j, T.statusOf(app))]
+        : statusMenu(k, j, T.statusOf(app))));
       if (links) {
         tr.appendChild(el("td", { class: "doc-cell", "data-label": "CV" }, fileCell(links, "cv", doc, "CV", k)));
         tr.appendChild(el("td", { class: "doc-cell", "data-label": "Lettre" }, fileCell(links, "letter", doc, "Lettre", k)));
       } else {
         /* the Worker only generates for a kept status and a listed offer (KEEP_STATUSES) */
-        tr.appendChild(docsCell(k, doc, Boolean(j) && T.missingDocuments({ k: app }, {}).length === 1));
+        tr.appendChild(docsCell(k, doc, Boolean(j) && T.missingDocuments({ k: app }, {}, { k: j }).length === 1));
       }
-      tr.appendChild(el("td", { class: "link-col", "data-label": "Lien" }, j && j.url && HTTP.test(j.url)
+      var offerLink = j && j.url && HTTP.test(j.url)
         ? el("a", { href: j.url, target: "_blank", rel: "noopener noreferrer", "aria-label": "Voir l’offre : " + (j.title || k), text: "Offre ↗" })
-        : "—"));
-      var due = T.isDue(app, today);
+        : null;
+      var canApply = j && !expired && T.statusOf(app) === "to_apply" && (T.canPrefill(j) || offerLink);
+      tr.appendChild(el("td", { class: "link-col", "data-label": "Lien" },
+        offerLink || canApply ? [canApply ? applyButton(k, j) : null, offerLink] : "—"));
+      var due = !expired && T.isDue(app, today);
       var late = due ? T.daysBetween(app.follow_up_at, today) : 0;
       tr.appendChild(el("td", { class: (due ? "is-due " : "") + "apps-due", "data-label": "Relance", text: app.follow_up_at
         ? shortDay(app.follow_up_at) + (late > 0 ? " (" + late + " j de retard)" : due ? " (aujourd’hui)" : "")
