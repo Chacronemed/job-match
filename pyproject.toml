@@ -16,6 +16,7 @@ dev = [
     "pytest>=8",
     "ruff>=0.4",
     "respx>=0.21",
+    "pytest-xdist>=3.6",  # ci.yml: pytest -n auto
     "playwright>=1.48",
     "fonttools>=4.68",  # scripts/build_pdf_fonts.py, reproducible PDF fonts (ADR 0019)
 ]
@@ -33,6 +34,12 @@ packages = ["src/job_match"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+# ci.yml splits on these: the "fast" job runs `-m "not browser and not worker"`, the
+# "browser-worker" job the rest. Unmarked locally, `pytest -q` still runs everything.
+markers = [
+    "browser: drives the dashboard in Chromium (Playwright); set on tests/unit/browser/",
+    "worker: runs Node (the Worker's tests or its npm dependencies)",
+]
 
 [tool.ruff]
 src = ["src"]

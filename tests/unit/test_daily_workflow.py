@@ -98,14 +98,22 @@ def _dashboard_steps() -> list[dict]:
     return [_steps()[_index(n)] for n in ("Build dashboard", "Deploy dashboard")]
 
 
+_SITE_IF = ("always() && env.RUN_SITE == 'true' && steps.restore.outcome == 'success' && "
+            "(steps.wal.outcome == 'success' || env.STAGE == 'site')")
+
+
 def test_dashboard_steps_run_after_the_db_push_and_cannot_block_it():
     push = _index("Push DB to data repo")
     assert _index("Send digest") < push
-    assert _index("Set up Node") < push < _index("Build dashboard") < _index("Deploy dashboard")
-    for step in _dashboard_steps():
-        assert step.get("continue-on-error") is True
-        # same guard as the push: run even if the digest failed, never on a broken DB
-        assert step["if"] == "always() && steps.wal.outcome == 'success'"
+    assert push < _index("Set up Node") < _index("Install Worker dependencies")
+    assert _index("Install Worker dependencies") < _index("Build dashboard")
+    assert _index("Build dashboard") < _index("Deploy dashboard")
+    for name in ("Set up Node", "Install Worker dependencies", "Build dashboard",
+                 "Deploy dashboard"):
+        step = _steps()[_index(name)]
+        assert step.get("continue-on-error") is True, name
+        # run even if the digest failed, never on a broken DB; alone, on the restored one
+        assert step["if"] == _SITE_IF, name
 
 
 def test_build_step_prints_counts_only():
@@ -184,17 +192,18 @@ def test_no_step_copies_the_plain_db_into_the_data_repo_any_more():
 # Application tracking: D1 -> read-only mirror in the jobs DB, before the digest
 # ---------------------------------------------------------------------------
 
-def test_tracking_steps_order_restore_node_migrate_export_then_pipeline():
+def test_tracking_steps_order_restore_migrate_export_then_pipeline():
     # The mirror lands before the jobs pipeline: the run merges the skill overrides into the
     # profile, and the digest further down still reads today's statuses.
-    node = _index("Set up Node")
     migrate = _index("Apply D1 migrations")
     export = _index("Export tracking")
-    assert _index("Restore DB") < node < migrate < export < _index("Run pipeline")
-    # The Worker's PDF/DOCX libraries (ADR 0017) are installed before anything runs wrangler,
-    # quietly, and never block the run.
+    assert _index("Restore DB") < migrate < export < _index("Run pipeline")
+    # The Worker's PDF/DOCX libraries (ADR 0017) are only needed by the deploy: installed
+    # there, quietly, and never blocking the run.
     deps = _steps()[_index("Install Worker dependencies")]
-    assert node < _index("Install Worker dependencies") < migrate
+    assert _index("Set up Node") < _index("Install Worker dependencies") < _index(
+        "Deploy dashboard"
+    )
     assert deps["run"].strip() == "npm ci --prefix worker > /dev/null"
     assert deps.get("continue-on-error") is True
     for later in ("Reprocess jobs", "Reprocess funding articles", "WAL checkpoint and VACUUM",
@@ -207,7 +216,9 @@ def test_override_reprocess_runs_only_when_the_overrides_changed():
     assert _index("Export tracking") < _index("Reprocess for skill overrides") < _index(
         "Run pipeline"
     )
-    assert step["if"] == "${{ steps.tracking.outputs.overrides_changed == 'true' }}"
+    assert step["if"] == (
+        "${{ env.RUN_JOBS == 'true' && steps.tracking.outputs.overrides_changed == 'true' }}"
+    )
     assert step.get("continue-on-error") is True
     assert 'job-match reprocess --since "$since" --limit 0' in step["run"]
     assert "jobs.max_age_days" in step["run"]  # the cut-off comes from settings.yaml
@@ -215,10 +226,15 @@ def test_override_reprocess_runs_only_when_the_overrides_changed():
 
 
 def test_tracking_steps_cannot_block_the_digest_or_the_push():
-    for name in ("Set up Node", "Apply D1 migrations", "Export tracking"):
+    for name in ("Apply D1 migrations", "Export tracking"):
         step = _steps()[_index(name)]
         assert step.get("continue-on-error") is True, name
-        assert "if" not in step, name
+        # a stage guard only: never a condition on an earlier step's outcome
+        assert "steps." not in step["if"], name
+    assert _steps()[_index("Export tracking")]["if"] == "env.RUN_JOBS == 'true'"
+    assert _steps()[_index("Apply D1 migrations")]["if"] == (
+        "env.RUN_JOBS == 'true' || env.RUN_SITE == 'true'"
+    )
 
 
 def test_tracking_steps_use_the_cloudflare_secrets_and_print_nothing_from_d1():
@@ -271,3 +287,160 @@ def test_check_sources_runs_after_the_pipeline_with_smtp_and_cannot_block_anythi
     smtp = {"SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD", "DIGEST_TO"}
     assert set(step["env"]) == smtp
     assert step["env"]["SMTP_PORT"] == "${{ vars.SMTP_PORT }}"
+
+
+# ---------------------------------------------------------------------------
+# Stages (workflow_dispatch input `stage`): every step's `if` evaluated per stage by a tiny
+# GitHub-expression evaluator, all steps succeeding unless told otherwise.
+# ---------------------------------------------------------------------------
+
+class _NS(dict):
+    def __getattr__(self, key):
+        return self.get(key, "")
+
+
+def _value(expr: str, ctx: dict):
+    expr = expr.strip()
+    if expr.startswith("${{"):
+        expr = expr[3:-2]
+    py = expr.replace("&&", " and ").replace("||", " or ")
+    return eval(py, {"__builtins__": {}}, ctx)  # noqa: S307 - our own workflow file
+
+
+def _eval(expr: str, ctx: dict) -> bool:
+    return bool(_value(expr, ctx))
+
+
+def _simulate(stage: str | None, fail: frozenset[str] = frozenset()) -> list[str]:
+    """Names of the steps that run, in order, for `stage` (None: the cron, no inputs)."""
+    wf = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    job = wf["jobs"]["run"]
+    inputs = _NS(stage=stage or "", reprocess_since="", reprocess_scope="jobs")
+    funcs = {
+        "contains": lambda seq, x: x in seq,
+        "fromJSON": __import__("json").loads,
+        "always": lambda: True,
+    }
+    github = _NS(event_name="workflow_dispatch" if stage else "schedule")
+    env = _NS()
+    for key, value in job["env"].items():
+        raw = _value(value, {**funcs, "inputs": inputs, "github": github})
+        # GitHub turns an expression's value into a string: booleans as "true" / "false"
+        env[key] = ("true" if raw else "false") if isinstance(raw, bool) else raw
+    steps, ran, failed = _NS(), [], False
+    for step in job["steps"]:
+        cond = step.get("if")
+        ctx = {**funcs, "env": env, "steps": steps, "github": github, "inputs": inputs}
+        if cond is None:
+            go = not failed
+        else:
+            go = (_eval(cond, ctx)) and ("always()" in cond or not failed)
+        name = step.get("name") or step.get("uses")
+        outcome = "skipped"
+        if go:
+            ran.append(name)
+            outcome = "failure" if name in fail else "success"
+            if outcome == "failure" and step.get("continue-on-error") is not True:
+                failed = True
+        if "id" in step:
+            steps[step["id"]] = _NS(outcome=outcome, outputs=_NS())
+    return ran
+
+
+_COMMON = ("Install", "Restore profile", "Set up data-repo SSH", "Clone data repo", "Restore DB",
+           "Stage summary")
+_JOBS = ("Export tracking", "Run pipeline", "Check sources")
+_FUNDING = ("Run funding pipeline",)
+_SNAPSHOT_STEPS = ("WAL checkpoint and VACUUM", "Send digest", "Push DB to data repo")
+_SITE = ("Set up Node", "Install Worker dependencies", "Build dashboard", "Deploy dashboard")
+
+
+def test_stage_input_is_a_choice_defaulting_to_all():
+    wf = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    triggers = wf.get("on", wf.get(True))
+    inp = triggers["workflow_dispatch"]["inputs"]["stage"]
+    assert inp["type"] == "choice" and inp["required"] is False
+    assert inp["default"] == "all"
+    assert inp["options"] == ["all", "jobs", "funding", "site"]
+    assert triggers["schedule"]  # the cron, which runs all (below)
+
+
+def test_one_daily_run_at_a_time_and_never_cancelled():
+    wf = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    assert wf["concurrency"] == {"group": "daily", "cancel-in-progress": False}
+    assert list(wf["jobs"]) == ["run"]  # one job: the stages share the restored DB
+
+
+def test_cron_runs_the_same_steps_as_all():
+    assert _simulate(None) == _simulate("all")
+
+
+def test_all_runs_jobs_then_funding_then_site():
+    ran = _simulate("all")
+    for name in _COMMON + _JOBS + _FUNDING + _SNAPSHOT_STEPS + _SITE + ("Apply D1 migrations",):
+        assert name in ran, name
+    assert ran.index("Run pipeline") < ran.index("Run funding pipeline")
+    assert ran.index("Run funding pipeline") < ran.index("Push DB to data repo")
+    assert ran.index("Push DB to data repo") < ran.index("Set up Node")
+    assert ran.index("Deploy dashboard") < ran.index("Stage summary") == len(ran) - 1
+    # manual-only steps stay off without their inputs
+    assert "Reprocess jobs" not in ran and "Reprocess funding articles" not in ran
+
+
+def test_jobs_stage_collects_scores_and_snapshots_without_funding_or_site():
+    ran = _simulate("jobs")
+    for name in _COMMON + _JOBS + _SNAPSHOT_STEPS + ("Apply D1 migrations",):
+        assert name in ran, name
+    for name in _FUNDING + _SITE:
+        assert name not in ran, name
+
+
+def test_funding_stage_runs_funding_and_snapshots_only():
+    ran = _simulate("funding")
+    for name in _COMMON + _FUNDING + _SNAPSHOT_STEPS:
+        assert name in ran, name
+    for name in _JOBS + _SITE + ("Apply D1 migrations",):
+        assert name not in ran, name
+
+
+def test_site_stage_rebuilds_from_the_snapshot_and_writes_nothing_back():
+    ran = _simulate("site")
+    for name in _COMMON + _SITE + ("Apply D1 migrations",):
+        assert name in ran, name
+    for name in _JOBS + _FUNDING + _SNAPSHOT_STEPS:
+        assert name not in ran, name
+
+
+def test_heavy_node_setup_runs_only_with_the_site_stage():
+    for stage in ("jobs", "funding"):
+        ran = _simulate(stage)
+        assert "Set up Node" not in ran and "Install Worker dependencies" not in ran, stage
+
+
+def test_a_failed_jobs_pipeline_still_blocks_the_push_and_the_site_in_all():
+    ran = _simulate("all", fail=frozenset({"Run pipeline"}))
+    assert "WAL checkpoint and VACUUM" not in ran
+    assert "Push DB to data repo" not in ran
+    assert "Build dashboard" not in ran and "Deploy dashboard" not in ran
+    assert ran[-1] == "Stage summary"
+
+
+def test_a_failed_digest_still_pushes_and_deploys():
+    ran = _simulate("all", fail=frozenset({"Send digest"}))
+    assert "Push DB to data repo" in ran and "Deploy dashboard" in ran
+
+
+def test_a_failed_restore_skips_the_site_stage():
+    ran = _simulate("site", fail=frozenset({"Restore DB"}))
+    assert "Build dashboard" not in ran and "Deploy dashboard" not in ran
+    assert ran[-1] == "Stage summary"
+
+
+def test_stage_summary_lists_played_and_skipped_stages_without_interpolation():
+    step = _steps()[_index("Stage summary")]
+    assert step["if"] == "always()"
+    assert "${{" not in step["run"]
+    for stage in ("jobs:$RUN_JOBS", "funding:$RUN_FUNDING", "site:$RUN_SITE"):
+        assert stage in step["run"]
+    assert "played" in step["run"] and "skipped" in step["run"]
+    assert '>> "$GITHUB_STEP_SUMMARY"' in step["run"]

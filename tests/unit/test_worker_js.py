@@ -20,6 +20,7 @@ def test_node_test_files_exist():
     assert {"api.test.mjs", "dashboard-tracking.test.mjs", "triage.test.mjs"} <= names
 
 
+@pytest.mark.worker
 def test_worker_and_dashboard_tracking_node_tests_pass():
     node = shutil.which("node")
     if node is None:

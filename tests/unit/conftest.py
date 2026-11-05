@@ -7,6 +7,7 @@ every place the generator must never read from.
 """
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
@@ -35,6 +36,16 @@ from job_match.persistence.repositories import (
     LeadRepository,
     RunRepository,
 )
+
+_BROWSER_DIR = Path(__file__).parent / "browser"
+
+
+def pytest_collection_modifyitems(items):
+    """Mark every test under tests/unit/browser/ `browser` (ci.yml runs them in their own job)."""
+    for item in items:
+        if _BROWSER_DIR in item.path.parents:
+            item.add_marker(pytest.mark.browser)
+
 
 _NOW = datetime(2026, 10, 18, 7, 0, 0, tzinfo=UTC)
 _XSS_TITLE = '</script><script>alert(1)</script><img src=x onerror=alert(2)> <!-- x -->'

@@ -3,7 +3,27 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**M29: candidature assistée** (branch `feat/m29-assisted-apply`, 2026-11-05, ADR 0023).
+**CI / Daily run split** (branch `ci/split-pipelines`, 2026-11-05). No business change.
+1. `daily.yml`: `workflow_dispatch` input `stage` (all | jobs | funding | site; the cron = all),
+   job env `RUN_JOBS/RUN_FUNDING/RUN_SITE` guard each step. jobs = D1 migrations, tracking
+   export, `job-match run`, check-sources; funding = `funding run`; both → VACUUM, digest, DB
+   push. site = D1 migrations, setup-node + `npm ci --prefix worker` (only here now; the
+   export uses npx wrangler on the runner's Node), build from the restored snapshot, deploy;
+   site alone pushes nothing. Last step « Stage summary »: played / skipped per stage.
+2. `ci.yml`: jobs `fast` (every push: ruff + `pytest -n auto -m "not browser and not worker"`),
+   `changes` (PR + main: git diff on `src/job_match/dashboard/`, `worker/`,
+   `tests/unit/browser/`, `.github/workflows/`), `browser-worker` (Playwright browsers cached
+   by version, npm cache). Markers `browser` (by path, `tests/unit/conftest.py`) and `worker`
+   (2 Node tests); `pytest-xdist` in `[dev]`, all tests pass in parallel.
+3. Tests: `tests/unit/test_daily_workflow.py` evaluates every step's `if` per stage;
+   `tests/unit/test_ci_workflow.py`. Suite **1 701 passed** (serial 115 s, `-n auto` ~30 s).
+**Next step:** push, check the real durations, then ruleset of `main`: require `fast` and
+`browser-worker` instead of `test` (a skipped `browser-worker` counts as passed).
+**Known:** the Daily run is 95 % `job-match run` (1 401 s of 1 469 s on 2026-11-05, the paged
+Workday / SmartRecruiters boards at 1 req/s): staging does not shorten `all`; `max_postings`
+does. Four adapter tests sleep 7.2 s on real retry back-off (adzuna, jooble, 2× ats).
+
+Before it: **M29: candidature assistée** (branch `feat/m29-assisted-apply`, 2026-11-05, ADR 0023).
 **Done locally, not pushed** (the branch also carries M28 part 2, uncommitted, below).
 Rule: the tool never presses Send / Submit, creates no account, solves no CAPTCHA.
 1. **Answer kit** (prompt **v6**, same documents call and budget): `answers.motivation` and
