@@ -259,3 +259,15 @@ def test_export_selects_exactly_the_mirrored_columns():
             "created_at FROM disagreements") in export
     assert ("SELECT id, started_at, finished_at, outcome, http_status, provider, counters "
             "FROM ai_runs") in export
+
+
+def test_check_sources_runs_after_the_pipeline_with_smtp_and_cannot_block_anything():
+    """Item 4 (2026-11-04): the silent-source alert, between the run and the funding step."""
+    step = _steps()[_index("Check sources")]
+    assert _index("Run pipeline") < _index("Check sources") < _index("Run funding pipeline")
+    assert step["run"].strip() == "job-match ops check-sources --days 3"
+    assert step.get("continue-on-error") is True
+    assert "steps.pipeline.outcome != 'skipped'" in step["if"]
+    smtp = {"SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD", "DIGEST_TO"}
+    assert set(step["env"]) == smtp
+    assert step["env"]["SMTP_PORT"] == "${{ vars.SMTP_PORT }}"

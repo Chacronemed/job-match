@@ -165,6 +165,12 @@ Under `prefers-reduced-motion: reduce`, everything above is off. The CSS duratio
 | Tri: `1`–`4` | Reason for the drop (off topic, too senior, missing skill, location) |
 | Tri: `↵` | Open the card's record |
 | Tri: `↑` `↓`, `Page ↑` `Page ↓`, `Space` | Scroll the card |
+| Offres: `J` / `K` (or `↓` / `↑`) | Next / previous row (the focused row is the cursor) |
+| Offres: `X` / `S` / `A` | Drop (Ignorée) / keep (À candidater) / « Candidature envoyée » today, then the follow-up question in the toast |
+| Offres: `↵` | Open the posting on the source site |
+| Offres: `Space` | Expand or collapse the row (actions, why ledger, tracking) |
+| Offres: `O` | Open the record panel |
+| Offres: `/` | Focus the search |
 
 Every hint is a `kbd` chip, `aria-hidden`, and the control carries `aria-keyshortcuts`. The hints are hidden on coarse pointers.
 
@@ -249,11 +255,13 @@ Matching is word-based and accent-folded, words in any order.
 
 ## Light mode
 
-Light mode is planned, not shipped. `applyTheme` is kept but forces dark (`DARK_ONLY`), the `#theme-toggle` button stays in the page but `hidden`, and `theme-color` follows the applied theme. When light mode comes back, it needs its own measured inks: the old light accent failed AA (AUDIT P1-6).
+Shipped (2026-11-04). `tokens.css` carries a second block, `:root[data-theme="light"]`, with Radix slate light on the same token names; the three inks are darkened until every visible text node passes 4.5:1 on every surface, measured over all five screens by the bench script of the 2026-11-04 pass. `applyTheme` follows the system setting by default and the `#theme-toggle` button (sidebar foot) remembers the choice. The page declares `color-scheme: dark light`.
 
 ## Migration status (phase 3)
 
-The views move to this system one at a time. Done: the shell (sidebar, tab bar, palette, help, record panel, toast) and **Tri**. Still legacy: Candidatures, Offres, Leads and Exécutions. They keep `dashboard.css`, whose tokens are remapped onto `tokens.css` so the legacy views share the colours. That file is deleted with the last view.
+The views move to this system one at a time. Done: the shell (sidebar, tab bar, palette, help, record panel, toast), **Tri**, and the **Offres** rows (2026-11-04: one row per offer, 34 px dense / 44 px comfortable, keyboard triage). Still on `dashboard.css`: the Offres filters, Candidatures, Leads and Exécutions. That file's tokens are remapped onto `tokens.css` so the legacy views share the colours; it is deleted with the last view.
+
+The JavaScript is one file per screen since 2026-11-04 (ADR 0021): `app.js` (core), `why.js`, `list.js`, `tri.js`, `board.js`, `leads.js`, `runs.js`, then `dashboard.js` boots. The page ships them without their comment lines (`render.strip_comments`).
 
 ## Do and don't
 

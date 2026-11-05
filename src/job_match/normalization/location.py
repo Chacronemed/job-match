@@ -130,6 +130,7 @@ def _us_style(location: str) -> bool:
     return bool(match) and match.group(1) in US_STATE_CODES
 
 
+@functools.lru_cache(maxsize=4096)
 def departments_for(location: str) -> frozenset[str]:
     """Departments a location could be in. Empty means "we cannot tell", or "abroad".
 

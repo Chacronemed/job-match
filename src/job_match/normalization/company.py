@@ -1,3 +1,4 @@
+import functools
 import re
 
 from job_match.normalization.text import normalize_text
@@ -7,6 +8,7 @@ _LEGAL_SUFFIXES = re.compile(
 )
 
 
+@functools.lru_cache(maxsize=4096)
 def normalize_company(name: str) -> str:
     """Strip legal suffixes, fold accents, lowercase."""
     # Collapse dotted acronyms (S.A.S. → SAS) before normalization

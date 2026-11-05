@@ -1,0 +1,53 @@
+# ADR 0020: Company boards through public ATS JSON endpoints
+
+**Status:** accepted, 2026-11-04
+
+## Context
+
+France Travail covers the national market but lags company sites by days and carries agency
+reposts. Many French tech companies publish their postings on a hosted ATS whose board is also
+served as an unauthenticated JSON document meant for embedding: Greenhouse
+(`boards-api.greenhouse.io/v1/boards/<slug>/jobs?content=true`), Lever
+(`api.lever.co/v0/postings/<slug>`) and Ashby (`api.ashbyhq.com/posting-api/job-board/<slug>`).
+career-ops (MIT) reads the same three endpoints in its provider modules; their field mapping was
+studied and re-implemented here (`docs/positioning.md`).
+
+`config/companies.yaml` (M28) already lists 115 target companies with an unverified ATS guess;
+nothing reads it.
+
+## Decision
+
+One new source, `ats`, implementing the existing `JobSource` protocol (`fetch`, `to_job`,
+optional `query_stats`, `api_calls_count`, `check_offer`), driven by `config/ats_boards.yaml`:
+a flat list of `{company, ats, slug}`. Thirty boards ship, each verified to answer 200 with
+postings on 2026-11-04 by `scripts/ats_probe.py`; the unverified guesses in `companies.yaml`
+stay where they are and are not read.
+
+- One GET per board per run, one request per second (Lever's `robots.txt` asks for
+  `Crawl-delay: 1`), the project's User-Agent, JSON only. No HTML page is fetched.
+- A board that answers 404 or fails is logged and skipped; the others run. A run with every
+  board down yields nothing and the pipeline continues on France Travail.
+- `source_job_id` is `<ats>:<slug>:<id>`, so `check_offer` can answer from the board read in
+  the same run: an id missing from a board that answered 200 is CLOSED, a board that could not
+  be read is UNKNOWN (ADR 0010 semantics).
+- The company name comes from the config, not from the payload (Lever and Ashby send none).
+- Downstream nothing changes: the same experience gate, location gate (which keeps the French
+  offices of a company and rejects its Warsaw or Madrid ones), dedup and scoring apply.
+
+## Alternatives considered
+
+- Reading `companies.yaml` directly: 115 unverified guesses, most on Workday, SmartRecruiters
+  or custom sites that have no public JSON board. Verifying first and keeping a small clean list
+  is simpler and honest about what works.
+- One source per ATS (`greenhouse`, `lever`, `ashby`): three classes for one behaviour. The
+  ATS name is kept as the `area` of each `QueryStat`, so the run summary still breaks fetched
+  counts down per ATS.
+- An HTML crawler for the companies with no JSON board: out of scope by rule (no scraping
+  behind login, respect ToS) and by design (CareerHound's niche, not ours).
+
+## Consequences
+
+- `sources.enabled` gains `ats`; no credential needed, so it runs in CI as is.
+- Adding a company is one YAML line after `scripts/ats_probe.py <slug>` shows it answers.
+- Offers from foreign offices are fetched and rejected by the location gate; they count in
+  `fetched` and in `rejected: LOCATION`, which is visible in the run summary.

@@ -21,7 +21,7 @@ Generic job boards fail a junior DevOps engineer in four ways:
 
 ## What it does, every day
 
-- **Fetches** offers from several job boards — France Travail (one paginated query per keyword, nationwide, newest first within a publication window), Jooble and optionally Adzuna (one combined query per French region, paginated under a hard call budget) — and rejects, before any scoring, jobs that are irrelevant, that require more experience than the candidate has, or that are not in France. A location counts as French when it names a commune (the official INSEE list ships with the package), a department, a region or a postal code; US-style "City, ST" and foreign markers are rejected. A source whose API key is missing is skipped; the run continues on the others.
+- **Fetches** offers from several job boards — France Travail (one paginated query per keyword, nationwide, newest first within a publication window), the public Greenhouse / Lever / Ashby boards of 30 French tech companies listed in `config/ats_boards.yaml` (one JSON call per company, no key, [ADR 0020](docs/adr/0020-ats-public-json-boards.md)), Jooble and optionally Adzuna (one combined query per French region, paginated under a hard call budget) — and rejects, before any scoring, jobs that are irrelevant, that require more experience than the candidate has, or that are not in France. A location counts as French when it names a commune (the official INSEE list ships with the package), a department, a region or a postal code; US-style "City, ST" and foreign markers are rejected. A source whose API key is missing is skipped; the run continues on the others.
 - **Scores** the rest with an explainable rule engine: every point is traceable to a matched or penalised skill.
 - **Deduplicates** with a stable fingerprint plus fuzzy matching, and records duplicate links instead of deleting rows.
 - **Reads funding news** (Maddyness, FrenchWeb RSS), extracts *who raised how much, in which round, from whom, and whether they plan to hire*, and turns it into leads linked to the same companies' job offers.
@@ -122,17 +122,29 @@ job-match run --dry-run --limit 50   # fetch, gate, dedup, score; prints a run s
 job-match digest --dry-run           # renders data/digest_preview.html instead of sending email
 job-match funding run --dry-run --limit 10   # RSS → extraction, nothing written
 job-match funding run                # ingest articles, funding events and leads into data/jobs.sqlite
+job-match export --top 3 --format career-ops   # the day's best matches, in career-ops' inbox format
 ```
 
 `job-match reprocess --since YYYY-MM-DD` re-applies the gate, the scorer and dedup to jobs already in the database (no API calls) and reports the duplicate links it added and removed, and `job-match funding reprocess --since YYYY-MM-DD` re-runs extraction on stored articles. The daily workflow exposes both on a manual trigger, through the `reprocess_since` date and the `reprocess_scope` choice (`jobs` / `funding` / `both`). Sending real email needs the `SMTP_*` and `DIGEST_TO` variables from `.env.example`.
+
+## Hand-off to career-ops
+
+job-match decides *which* postings deserve an evening; [career-ops](https://github.com/career-ops-hq/career-ops) (MIT) decides *how* to apply, with an LLM reading the full posting against the CV and drafting the documents. The two meet on a file ([docs/positioning.md](docs/positioning.md)):
+
+```bash
+job-match export --top 3 --format career-ops                       # data/export/career-ops-<date>.md
+job-match export --top 3 --append ../career-ops/data/pipeline.md   # straight into its inbox, known URLs skipped
+```
+
+Each line is `- [ ] {url} | {company} | {title} | {location} | note: job-match {score}/100 | posted: {date}`, the shape of career-ops' `data/pipeline.md`; `/career-ops pipeline` then processes them. Only canonical, still-online, eligible or stretch jobs collected in the last `--days` (default 1) are exported, best score first; no description, keyword or profile value leaves the database. The score rides in a `note:` so career-ops never reads it as its own 1-5 grade.
 
 ## Dashboard
 
 `job-match dashboard --out site` writes a private dashboard from the database: `site/index.html` (one self-contained page, no framework, no build step, opens from the file system) and `site/data.json`. Four tabs:
 
 - **Aujourd'hui** (default): jobs still to review or to apply to ("To apply" first, then by score), plus the follow-ups due today or overdue. Everything already applied to, in interview, rejected or ignored is left out.
-- **Jobs:** every canonical strong, eligible and stretch job that is still online, with title, company, department, contract, score, required years, posting date, age in days and link; search, filters (section, department, minimum score, posting dates), sort on any column, and a details row with the scorer's explanations. Each daily run asks France Travail whether the offers it still shows exist (a withdrawn offer answers HTTP 204) and hides the closed ones; a posting older than `jobs.max_age_days` (45) is hidden whatever its check status. ADR 0010.
-- **Leads:** funding leads with amount, round, investors, hiring signal and the evidence sentence behind each field.
+- **Offres:** every canonical strong, eligible and stretch job that is still online, one row each: score as a bar and a number, title (with its status once handled), company, city, contract, age in days and the single strongest reason from the scorer. Dense by default (21 rows at 1440×900) with a comfortable toggle, both remembered. The row expands to the actions, the "why" ledger and the tracking form. Keyboard-first: `j`/`k` move, `x` drops, `s` keeps, `a` marks the application sent (and asks for the follow-up date), `Enter` opens the posting, `Space` expands, `?` lists the keys; every action shows on the row at once and rolls back with the reason if the API refuses. Filters, sort and search live in the hash and outlive a reload. Each daily run asks France Travail whether the offers it still shows exist (a withdrawn offer answers HTTP 204) and hides the closed ones; a posting older than `jobs.max_age_days` (45) is hidden whatever its check status. ADR 0010, ADR 0021.
+- **Leads:** funding leads with amount, round, investors, the hiring signal with the sentence it was read from, and a jump to that company's offers when the list has some.
 - **Runs:** the last 30 runs as a funnel, fetched → rejected by reason → eligible / strong / stretch, under « Rerank IA », the AI cron's passes (a stopped pass shows its HTTP status). « Lancer maintenant » starts the AI pass or the documents pass at once (`POST /api/ai/run`, `POST /api/documents/run`, behind Access, 202 then the pass runs in the background and writes its usual row).
 
 **AI rerank** (ADR 0016). Twice a day (07:30 and 09:30 UTC) the Worker's cron sends each new offer above the digest threshold, with an anonymous skills summary, to the Claude API (Haiku); Workers AI takes over when the API says the credit is spent, and any other 4xx stops the run. Verdicts (score, level, reasons, red flags) live in D1, order the Tri, and `job-match ai-report` turns a week of disagreements into a correction prompt that is never applied by itself. Smoke test against the real providers, from a local `wrangler dev` (the local D1, never the production one): `node scripts/ai-smoke.mjs`, then `node scripts/ai-smoke.mjs --fallback`; see the script header for the three prerequisites.
@@ -188,6 +200,10 @@ Skill aliases (`k8s` ↔ `kubernetes`, `CI/CD` ↔ `CI CD`) are centralized in `
 - **Workflow guards:** a test checks the step order of `daily.yml`, that the manual input is never interpolated into a shell script, and that the dashboard deploy never uploads or prints `site/`.
 - **Dashboard:** output shape, allow-listed fields (no description, no keyword), `javascript:` links dropped, and script tags in a job title that stay text in the rendered page.
 - **Ruff** for linting. **CI** runs lint and tests on every push.
+
+## Operations
+
+Every daily run writes a **job summary** on its Actions page (`$GITHUB_STEP_SUMMARY`): jobs fetched per source, rejected per gate, scored (eligible, strong, stretch), duplicates, re-checked and closed offers, run time; the funding run and the digest (what was emailed) append their lines. An exception in a run is announced there and as an error annotation before the step turns red. `job-match ops check-sources --days 3`, after the run, emails an alert through the digest's SMTP settings when a source ran and returned nothing three runs in a row; it never fails the workflow.
 
 ## Security & privacy
 

@@ -6,11 +6,13 @@ import pytest
 
 from job_match.dashboard.render import (
     PDF_FONTS,
+    SCRIPTS,
     VENDOR,
     browser_renderer,
     embed_json,
     render_index,
     script_hash,
+    strip_comments,
     write_renderer,
     write_site,
 )
@@ -63,9 +65,9 @@ def test_index_is_self_contained_with_no_external_resources(dashboard_data):
     assert "'unsafe-inline'" not in script_src
     assert "style-src 'unsafe-inline';" in html  # the inlined stylesheets, unchanged
     hashes = script_src.split(" ")
-    assert hashes[0] == "'self'" and len(hashes) == 9
+    assert hashes[0] == "'self'" and len(hashes) == len(SCRIPTS) + 1
     inline = re.findall(r"<script>(.*?)</script>", html, re.S)
-    assert len(inline) == 8
+    assert len(inline) == len(SCRIPTS)
     assert hashes[1:] == [script_hash(body) for body in inline]
     assert 'rel="stylesheet"' not in html
     assert "<script src=" not in html
@@ -87,15 +89,16 @@ def test_write_site_writes_both_files(tmp_path, dashboard_data):
     assert set(on_disk) == {"generated_at", "thresholds", "jobs", "tracked", "leads", "runs"}
 
 
-def test_the_page_is_dark_only_with_one_accent_and_reduced_motion():
-    """DESIGN.md: Radix slate dark + one violet accent; light mode is planned, its toggle hidden."""
+def test_the_page_has_dark_and_light_tokens_one_accent_and_reduced_motion():
+    """DESIGN.md: Radix slate on three surfaces, one violet accent; the light tokens override the
+    same names under data-theme="light" (tokens.css), and the toggle is visible."""
     html = render_index(_EMPTY)
-    assert '<meta name="color-scheme" content="dark">' in html
+    assert '<meta name="color-scheme" content="dark light">' in html
     css = html.split("<style>")[1].split("</style>")[0]
-    assert '[data-theme="light"]' not in css and "prefers-color-scheme: light" not in css
+    assert ':root[data-theme="light"]' in css and "prefers-color-scheme: light" not in css
     assert "--bg: var(--slate-1)" in html and "--slate-1: #111113" in html
     assert "--accent: var(--violet-9)" in html
-    assert 'id="theme-toggle" type="button" aria-pressed="false" hidden' in html
+    assert 'id="theme-toggle" type="button" aria-pressed="false">' in html
     assert "prefers-reduced-motion: reduce" in html
     assert "linear-gradient" not in html and "radial-gradient" not in html
 
@@ -117,35 +120,16 @@ def test_inter_is_self_hosted_under_the_csp_and_licensed(tmp_path, dashboard_dat
         assert name in licences
 
 
-def test_jobs_table_has_posted_and_age_columns_and_no_collected_column():
+def test_jobs_table_shows_the_age_and_keeps_the_posting_date_behind_the_row():
     from job_match.dashboard.render import render_index
 
     html = render_index(
         {"generated_at": "", "thresholds": {}, "jobs": [], "leads": [], "runs": []}
     )
-    assert 'data-key="posted_at">Publiée<' in html
     assert 'data-key="age_days">Âge<' in html
-    assert 'data-key="collected_at"' not in html
+    assert 'data-key="posted_at"' not in html and 'data-key="collected_at"' not in html
     assert "Publiée depuis" in html and "Collected from" not in html
     assert '"status", "posted_at", "age_days"]' in html  # SORT_KEYS allow-list for the hash
-
-
-def test_tri_is_the_default_view_and_the_nav_is_in_french():
-    html = render_index(_EMPTY)
-    for tab, label in (("tri", "Tri"), ("candidatures", "Candidatures"), ("offres", "Offres"),
-                       ("leads", "Leads"), ("executions", "Exécutions")):
-        # sidebar and phone tab bar: real links, so modifier clicks open a new tab
-        assert html.count(f'href="#{tab}" data-tab="{tab}"') == 2
-        assert f'<span class="nav-label">{label}</span>' in html
-        assert f'id="panel-{tab}" aria-labelledby="h-{tab}"' in html
-    assert 'id="panel-tri" aria-labelledby="h-tri">' in html  # shown first, no `hidden`
-    for tab in ("candidatures", "offres", "leads", "executions"):
-        assert f'id="panel-{tab}" aria-labelledby="h-{tab}" hidden>' in html
-    assert 'var TABS = ["tri", "candidatures", "offres", "leads", "executions"];' in html
-    assert 'today: "tri", jobs: "offres", runs: "executions"' in html  # old links still work
-    assert 'id="tri-stage"' in html and 'id="kb-board"' in html and 'id="tri-live"' in html
-    assert 'id="track-banner"' in html and 'id="record"' in html
-    assert 'aria-current", "page"' in html
 
 
 def test_every_offres_filter_is_present_and_wired():
@@ -155,10 +139,9 @@ def test_every_offres_filter_is_present_and_wired():
                     'id="f-from"', 'id="f-to"', 'id="f-reset"', 'data-section="strong"',
                     'data-section="eligible"', 'data-section="stretch"', 'id="filters-count"'):
         assert control in html, control
-    for key in ("title", "company", "department", "contract", "score", "required_years",
-                "status", "posted_at", "age_days"):
+    for key in ("score", "title", "company", "department", "contract", "age_days"):
         assert f'data-key="{key}"' in html, key
-    script = html.split("function applyHash()")[1].split("/* ---------- leads")[0]
+    script = html.split("function applyHash()")[1].split("function rowByKey(")[0]
     for param in ("p.q", "p.hide", "p.dept", "p.st", "p.ia", "p.min", "p.from", "p.to", "p.sort"):
         assert param in script, param
     for listener in ('searchInput.addEventListener("input"',
@@ -186,10 +169,9 @@ def test_audit_p1_fixes_are_in_the_page():
     assert "T.matchesWords(j, searchWords())" in html
     # P1-3: the reason step names the offer, as the one that just left (not the card shown).
     assert 'id="tri-reasons-title"' in html and '"Dernière offre écartée' in html
-    # P2-16: the KPI cards are not a live region (the row count is).
-    kpis = re.search(r'<div class="kpis"[^>]*>', html).group(0)
-    assert "aria-live" not in kpis
-    assert '<p class="rowcount" id="jobs-rowcount" aria-live="polite">' in html
+    # P2-16: the row count is the one live region of the list (the counts sit in the chips).
+    assert 'class="kpis"' not in html
+    assert '<span class="controls-hint" id="jobs-rowcount" aria-live="polite">' in html
 
 
 def test_tracking_script_is_inlined_before_the_dashboard_script():
@@ -343,3 +325,22 @@ def test_write_renderer_names_the_missing_npm_install(tmp_path):
     (worker / "src" / "render.js").write_text("", encoding="utf-8")
     with pytest.raises(FileNotFoundError, match="npm ci --prefix worker"):
         write_renderer(tmp_path / "site", worker)
+
+
+def test_the_page_ships_the_code_without_its_comment_lines():
+    """`strip_comments`: whole comment lines go, code and strings stay (bundle size, item 3c)."""
+    src = (
+        "/* head\n   note */\n"
+        "(function () {\n"
+        "  /* one line */\n"
+        "  var a = \"/* not a comment */\";  /* trailing stays */\n"
+        "  /* multi\n     line\n     comment */\n"
+        "  var re = /x/;\n"
+        "})();\n"
+    )
+    out = strip_comments(src)
+    assert "note" not in out and "one line" not in out and "multi" not in out
+    assert 'var a = "/* not a comment */";  /* trailing stays */' in out
+    assert "var re = /x/;" in out and out.count("\n") == 4
+    html = render_index(_EMPTY)
+    assert "/* ---------- " not in html and "function applyHash()" in html

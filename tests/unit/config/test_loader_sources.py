@@ -123,11 +123,12 @@ def test_sources_must_be_a_mapping(tmp_path):
         load_settings(_write(tmp_path, "sources: [jooble]\n"))
 
 
-def test_committed_settings_run_france_travail_alone():
+def test_committed_settings_run_france_travail_and_the_ats_boards():
     """The real config: Jooble is off since its city/region probes returned 0 (2026-10-18),
-    Adzuna stays out until the plan is paid. Their limits stay configured for a switch-on."""
+    Adzuna stays out until the plan is paid. Their limits stay configured for a switch-on.
+    The ATS boards (ADR 0020) need no key, so they are on."""
     s = load_settings(Path("config/settings.yaml"))
-    assert s.sources.enabled == ["france_travail"]
+    assert s.sources.enabled == ["france_travail", "ats"]
     assert s.sources.is_enabled("jooble") is False
     assert s.sources.is_enabled("adzuna") is False
     assert s.sources.max_calls("jooble") == 26

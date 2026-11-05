@@ -56,7 +56,14 @@ SCRIPTS = (
     "description.js",
     "ui.js",
     "palette.js",
-    "dashboard.js",
+    "app.js",        # the core: data, helpers, tracking, toast, record panel, keys
+    "why.js",        # one file per screen (ADR 0021)
+    "list.js",
+    "tri.js",
+    "board.js",
+    "leads.js",
+    "runs.js",
+    "dashboard.js",  # boot, last
 )
 
 # Installable from the browser (Chrome, Edge, iOS "Sur l'écran d'accueil"). No service worker:
@@ -88,8 +95,27 @@ def embed_json(data: dict) -> str:
     return json.dumps(data, ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c")
 
 
+def strip_comments(text: str) -> str:
+    """The lines that are only a block comment (from one starting with `/*` to the one ending
+    with `*/`) are dropped: the sources keep their notes, the page ships the code. A comment
+    sharing its line with code is left alone, and nothing inside a string is touched because
+    only whole lines are read."""
+    out: list[str] = []
+    inside = False
+    for line in text.split("\n"):
+        bare = line.strip()
+        if inside:
+            inside = not bare.endswith("*/")
+            continue
+        if bare.startswith("/*"):
+            inside = not bare.endswith("*/")
+            continue
+        out.append(line)
+    return "\n".join(out)
+
+
 def _asset(name: str) -> str:
-    return _ASSETS.joinpath(name).read_text(encoding="utf-8")
+    return strip_comments(_ASSETS.joinpath(name).read_text(encoding="utf-8"))
 
 
 def browser_renderer(source: str) -> str:

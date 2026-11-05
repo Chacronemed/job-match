@@ -47,6 +47,7 @@ h1, h2, h3, h4 { text-wrap: balance; }
 .snapshot { display: flex; align-items: center; gap: var(--s2); margin: 0; color: var(--ink-3); font-size: var(--fs-sm); min-height: 28px; }
 .foot-btn { display: flex; align-items: center; justify-content: space-between; height: 28px; padding: 0; background: none; border: 0; color: var(--ink-3); font-size: var(--fs-sm); border-radius: var(--r-sm); }
 .foot-btn:hover { color: var(--ink); }
+.theme-toggle[aria-pressed="true"] { color: var(--ink-2); }
 
 .main {
   margin: var(--s2) var(--s2) var(--s2) 0; min-width: 0; overflow: auto; outline: none;
@@ -345,7 +346,7 @@ dialog { color: var(--ink); overscroll-behavior: contain; }
 .toast.leaving { animation: toast-out var(--d) ease-out forwards; }
 .toast-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
 .toast .link-btn { min-height: 28px; }
-.toast input[type="date"] { min-height: 28px; padding: 2px 8px; color-scheme: dark; background: var(--bg); border: 1px solid var(--line-3); border-radius: var(--r-sm); }
+.toast input[type="date"] { min-height: 28px; padding: 2px 8px; color-scheme: inherit; background: var(--bg); border: 1px solid var(--line-3); border-radius: var(--r-sm); }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 12px); } }
 @keyframes toast-out { to { opacity: 0; transform: translate(-50%, 8px); } }
 @keyframes toast-in-top { from { opacity: 0; transform: translate(-50%, -12px); } }

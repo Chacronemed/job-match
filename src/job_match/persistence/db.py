@@ -43,6 +43,10 @@ class Database:
         conn.execute("PRAGMA foreign_keys=ON")
         self._conn = conn
         self._apply_migrations()
+        # Imported here: repositories import the domain, the domain never imports the DB.
+        from job_match.persistence.repositories import backfill_blocks
+
+        backfill_blocks(conn)
         return self
 
     def _apply_migrations(self) -> int:

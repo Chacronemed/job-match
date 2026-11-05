@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' __SCRIPT_HASHES__; style-src 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
-<meta name="color-scheme" content="dark">
+<meta name="color-scheme" content="dark light">
 <meta name="theme-color" id="theme-color" content="#111113">
 <meta name="robots" content="noindex, nofollow">
 <!-- Cloudflare Access needs its cookie on the manifest request too. -->
@@ -33,8 +33,7 @@ __CSS__
   </nav>
   <div class="sidebar-foot">
     <p class="snapshot" id="generated-at"></p>
-    <!-- Light mode is planned: the toggle stays wired but hidden while the page is dark only. -->
-    <button class="theme-toggle" id="theme-toggle" type="button" aria-pressed="false" hidden>Mode clair</button>
+    <button class="foot-btn theme-toggle" id="theme-toggle" type="button" aria-pressed="false">Mode clair</button>
     <button type="button" class="foot-btn" id="help-btn" aria-keyshortcuts="Shift+?">Raccourcis <kbd aria-hidden="true">?</kbd></button>
   </div>
 </aside>
@@ -87,27 +86,27 @@ __CSS__
 </section>
 
 <section class="panel legacy" id="panel-offres" aria-labelledby="h-offres" hidden>
-  <header class="view-head"><h1 id="h-offres">Offres <span class="view-n num" data-count="offres"></span></h1></header>
-  <div class="kpis">
-    <div class="kpi kpi-strong"><span class="kpi-label">Fortes</span><span class="kpi-value" id="kpi-strong">0</span></div>
-    <div class="kpi kpi-eligible"><span class="kpi-label">Éligibles</span><span class="kpi-value" id="kpi-eligible">0</span></div>
-    <div class="kpi kpi-stretch"><span class="kpi-label">À tenter</span><span class="kpi-value" id="kpi-stretch">0</span></div>
-    <div class="kpi kpi-total"><span class="kpi-label">Affichées</span><span class="kpi-value"><span id="kpi-shown">0</span><span class="kpi-of"> / <span id="kpi-total">0</span></span></span></div>
-  </div>
+  <header class="view-head"><h1 id="h-offres">Offres <span class="view-n num" data-count="offres"></span></h1>
+    <span class="fill"></span>
+    <div class="density" role="group" aria-label="Densité des lignes">
+      <button type="button" class="chip chip-plain" id="density-dense" data-density="dense" aria-pressed="true">Dense</button>
+      <button type="button" class="chip chip-plain" id="density-comfortable" data-density="comfortable" aria-pressed="false">Confortable</button>
+    </div>
+  </header>
 
-  <details class="controls" id="jobs-controls" open>
-    <summary class="controls-summary">Filtres<span id="filters-count"></span></summary>
+  <details class="controls" id="jobs-controls">
+    <summary class="controls-summary">Filtres<span id="filters-count"></span><span class="controls-hint" id="jobs-rowcount" aria-live="polite"></span></summary>
     <div class="controls-grid">
       <label class="field field-search">
-        <span class="field-label">Recherche</span>
+        <span class="field-label">Recherche <kbd aria-hidden="true">/</kbd></span>
         <input type="search" id="f-search" name="q" placeholder="ex. orbital kubernetes" autocomplete="off" spellcheck="false">
       </label>
       <div class="field field-sections" role="group" aria-label="Sections">
         <span class="field-label">Section</span>
         <div class="chips">
-          <button type="button" class="chip chip-strong" data-section="strong" aria-pressed="true">Fortes</button>
-          <button type="button" class="chip chip-eligible" data-section="eligible" aria-pressed="true">Éligibles</button>
-          <button type="button" class="chip chip-stretch" data-section="stretch" aria-pressed="true">À tenter</button>
+          <button type="button" class="chip chip-strong" data-section="strong" aria-pressed="true">Fortes <span class="num" id="kpi-strong">0</span></button>
+          <button type="button" class="chip chip-eligible" data-section="eligible" aria-pressed="true">Éligibles <span class="num" id="kpi-eligible">0</span></button>
+          <button type="button" class="chip chip-stretch" data-section="stretch" aria-pressed="true">À tenter <span class="num" id="kpi-stretch">0</span></button>
         </div>
       </div>
       <label class="field">
@@ -141,40 +140,36 @@ __CSS__
     </div>
   </details>
 
-  <p class="rowcount" id="jobs-rowcount" aria-live="polite"></p>
   <div class="table-wrap">
     <table class="data fixed jobs" id="jobs-table">
       <colgroup>
+        <col class="w-score">
         <col class="w-title">
         <col class="w-company">
-        <col class="w-dept">
+        <col class="w-city">
         <col class="w-contract">
-        <col class="w-score">
-        <col class="w-years">
-        <col class="w-status">
-        <col class="w-date">
         <col class="w-age">
-        <col class="w-actions">
-        <col class="w-link">
+        <col class="w-why">
+        <col class="w-more">
       </colgroup>
       <thead>
         <tr>
+          <th scope="col" class="num" aria-sort="descending"><button type="button" class="sort" data-key="score">Score</button></th>
           <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="title">Titre</button></th>
           <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="company">Entreprise</button></th>
-          <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="department">Dép.</button></th>
+          <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="department">Ville</button></th>
           <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="contract">Contrat</button></th>
-          <th scope="col" class="num" aria-sort="descending"><button type="button" class="sort" data-key="score">Score</button></th>
-          <th scope="col" class="num" aria-sort="none"><button type="button" class="sort" data-key="required_years">Années</button></th>
-          <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="status">Statut</button></th>
-          <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="posted_at">Publiée</button></th>
           <th scope="col" class="num" aria-sort="none"><button type="button" class="sort" data-key="age_days">Âge</button></th>
-          <th scope="col"><span class="sr-only">Actions rapides</span></th>
-          <th scope="col" class="link-col"><span class="sort-static">Lien</span></th>
+          <th scope="col"><span class="sort-static">Pourquoi</span></th>
+          <th scope="col"><span class="sr-only">Détails</span></th>
         </tr>
       </thead>
       <tbody id="jobs-body"></tbody>
     </table>
-    <p class="empty" id="jobs-empty" hidden>Aucune offre ne correspond à ces filtres.</p>
+    <div class="empty" id="jobs-empty" hidden>
+      <p id="jobs-empty-text">Le run de ce matin n’a rien trouvé pour ces filtres.</p>
+      <button type="button" class="button" id="jobs-empty-reset">Réinitialiser les filtres</button>
+    </div>
   </div>
 </section>
 
@@ -186,17 +181,19 @@ __CSS__
       <thead>
         <tr>
           <th scope="col">Entreprise</th>
-          <th scope="col">Priorité</th>
           <th scope="col">Levée</th>
           <th scope="col">Recrutement</th>
-          <th scope="col" class="num">Offres</th>
+          <th scope="col">Offres</th>
           <th scope="col">Publiée</th>
           <th scope="col" class="link-col">Article</th>
         </tr>
       </thead>
       <tbody id="leads-body"></tbody>
     </table>
-    <p class="empty" id="leads-empty" hidden>Aucun lead de financement pour l’instant.</p>
+    <div class="empty" id="leads-empty" hidden>
+      <p>Aucun lead de financement dans la fenêtre : les flux Maddyness et FrenchWeb n’ont rien donné.</p>
+      <p class="empty-hint">Les leads arrivent avec le run quotidien (<a href="#executions">Exécutions</a>) ; une entreprise qui lève apparaît ici avec ses offres.</p>
+    </div>
   </div>
 </section>
 
@@ -221,7 +218,7 @@ __CSS__
     <span class="legend-item"><i class="swatch sw-stretch"></i>À tenter</span>
   </div>
   <div class="runs" id="runs-list"></div>
-  <p class="empty" id="runs-empty" hidden>Aucune exécution enregistrée.</p>
+  <p class="empty" id="runs-empty" hidden>Aucune exécution enregistrée : la première arrive avec le run quotidien, ou `job-match run` à la main.</p>
 </section>
 </main>
 <aside class="record" id="record" aria-labelledby="record-title" hidden></aside>

@@ -9,6 +9,7 @@ Notes and URLs are private: nothing here logs a row, only counts.
 
 import json
 import re
+import sqlite3
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -243,7 +244,7 @@ class AiMirrorResult:
 
 
 def import_ai(
-    conn, verdicts_path: Path, usage_path: Path, disagreements_path: Path,
+    conn: sqlite3.Connection, verdicts_path: Path, usage_path: Path, disagreements_path: Path,
     runs_path: Path | None = None,
 ) -> AiMirrorResult:
     """Validate the AI exports, then replace the mirror tables in one transaction. Without
@@ -266,7 +267,7 @@ def import_ai(
 
 
 def import_tracking(
-    conn,
+    conn: sqlite3.Connection,
     applications_path: Path,
     decisions_path: Path,
     skill_overrides_path: Path | None = None,

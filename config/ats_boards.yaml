@@ -1,0 +1,44 @@
+# Company career boards read through their ATS's public JSON endpoint (ADR 0020).
+# Public, unauthenticated, documented endpoints only: boards-api.greenhouse.io,
+# api.lever.co/v0/postings, api.ashbyhq.com/posting-api. No HTML scraping.
+#
+# Every slug below was verified on 2026-11-04 with `scripts/ats_probe.py`: each board
+# answered 200 with at least one posting. Re-run the probe before adding a slug; a board
+# that answers 404 is skipped at run time with a warning, never a crash.
+#
+# Offers from every office of these companies are fetched; the location gate keeps the
+# French ones, like for any other source.
+boards:
+  # Greenhouse — https://boards-api.greenhouse.io/v1/boards/<slug>/jobs?content=true
+  - {company: Dataiku,          ats: greenhouse, slug: dataiku}
+  - {company: Algolia,          ats: greenhouse, slug: algolia}
+  - {company: Ivalua,           ats: greenhouse, slug: ivalua}
+  - {company: Platform.sh,      ats: greenhouse, slug: platformsh}
+  - {company: Shift Technology, ats: greenhouse, slug: shifttechnology}
+  - {company: Mirakl,           ats: greenhouse, slug: mirakl}
+  - {company: Dashlane,         ats: greenhouse, slug: dashlane}
+  # Lever — https://api.lever.co/v0/postings/<slug>
+  - {company: BlaBlaCar,            ats: lever, slug: blablacar}
+  - {company: Vestiaire Collective, ats: lever, slug: vestiairecollective}
+  - {company: Brevo,                ats: lever, slug: brevo}
+  - {company: Contentsquare,        ats: lever, slug: contentsquare}
+  - {company: Scaleway,             ats: lever, slug: scaleway}
+  - {company: Swile,                ats: lever, slug: swile}
+  - {company: Malt,                 ats: lever, slug: malt}
+  - {company: Agicap,               ats: lever, slug: agicap}
+  - {company: Theodo,               ats: lever, slug: theodo}
+  - {company: Pigment,              ats: lever, slug: pigment}
+  - {company: 360Learning,          ats: lever, slug: 360learning}
+  # Ashby — https://api.ashbyhq.com/posting-api/job-board/<slug>
+  - {company: Doctolib,    ats: ashby, slug: doctolib}
+  - {company: Back Market, ats: ashby, slug: backmarket}
+  - {company: Alan,        ats: ashby, slug: alan}
+  - {company: Ledger,      ats: ashby, slug: ledger}
+  - {company: Qonto,       ats: ashby, slug: qonto}
+  - {company: Pennylane,   ats: ashby, slug: pennylane}
+  - {company: Voodoo,      ats: ashby, slug: voodoo}
+  - {company: Dust,        ats: ashby, slug: dust}
+  - {company: Photoroom,   ats: ashby, slug: photoroom}
+  - {company: Swan,        ats: ashby, slug: swan}
+  - {company: Lifen,       ats: ashby, slug: lifen}
+  - {company: Owkin,       ats: ashby, slug: owkin}

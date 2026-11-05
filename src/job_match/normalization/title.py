@@ -1,3 +1,4 @@
+import functools
 import re
 
 from job_match.normalization.text import normalize_text
@@ -9,6 +10,7 @@ _NOISE = re.compile(
 )
 
 
+@functools.lru_cache(maxsize=4096)
 def normalize_title(title: str) -> str:
     """Remove gender markers, contract noise; fold and lowercase."""
     n = normalize_text(title)

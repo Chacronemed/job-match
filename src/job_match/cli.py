@@ -2,11 +2,20 @@ import argparse
 import logging
 import os
 import sys
+import time
+from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 from job_match.domain.models import RunSummary
+from job_match.ops.summary import (
+    append_step_summary,
+    digest_markdown,
+    failure_markdown,
+    funding_markdown,
+    jobs_markdown,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -79,6 +88,21 @@ def main() -> None:
                         help="Do not write ai-profile.json (the anonymous skills summary "
                              "the Worker's AI rerank reads)")
 
+    export_p = sub.add_parser(
+        "export", help="Write the day's strongest matches for a companion tool (career-ops)",
+    )
+    export_p.add_argument("--top", type=int, default=3, metavar="N",
+                          help="How many jobs, best score first (default: 3)")
+    export_p.add_argument("--days", type=int, default=1, metavar="D",
+                          help="Only jobs collected in the last D days (default: 1)")
+    export_p.add_argument("--format", choices=["career-ops"], default="career-ops",
+                          help="Target tool (default: career-ops, its data/pipeline.md format)")
+    export_p.add_argument("--out", metavar="FILE",
+                          help="File to write (default: data/export/career-ops-<date>.md)")
+    export_p.add_argument("--append", metavar="PIPELINE_MD",
+                          help="Instead of --out, add the lines under the Pending heading of "
+                               "career-ops' own data/pipeline.md, skipping URLs it already has")
+
     ai_p = sub.add_parser(
         "ai-report",
         help="Weekly AI vs Python disagreements + my Tri verdicts -> a correction prompt "
@@ -95,6 +119,15 @@ def main() -> None:
     )
     cal_p.add_argument("--since", metavar="YYYY-MM-DD",
                        help="Only verdicts given on/after this date")
+
+    ops_p = sub.add_parser("ops", help="Operations: the silent-source alert")
+    ops_sub = ops_p.add_subparsers(dest="ops_command", metavar="SUBCOMMAND")
+    check_p = ops_sub.add_parser(
+        "check-sources",
+        help="Email an alert when a source returned 0 results N days in a row (never fails)",
+    )
+    check_p.add_argument("--days", type=int, default=3, metavar="N",
+                         help="Consecutive runs with 0 results that trigger the alert (default: 3)")
 
     tracking_p = sub.add_parser("tracking", help="Application tracking mirror (D1 -> jobs DB)")
     tracking_sub = tracking_p.add_subparsers(dest="tracking_command", metavar="SUBCOMMAND")
@@ -153,10 +186,18 @@ def main() -> None:
         _cmd_digest(args)
     elif args.command == "dashboard":
         _cmd_dashboard(args)
+    elif args.command == "export":
+        _cmd_export(args)
     elif args.command == "calibrate":
         _cmd_calibrate(args)
     elif args.command == "ai-report":
         _cmd_ai_report(args)
+    elif args.command == "ops":
+        if args.ops_command == "check-sources":
+            _cmd_check_sources(args)
+        else:
+            ops_p.print_help()
+            sys.exit(1)
     elif args.command == "tracking":
         if args.tracking_command == "import":
             _cmd_tracking_import(args)
@@ -393,6 +434,7 @@ def _cmd_digest(args: argparse.Namespace) -> None:
 
     if batch.is_empty:
         print("  No new jobs, leads or follow-ups to send.")
+        append_step_summary(digest_markdown(jobs=0, strong=0, leads=0, followups=0, sent=False))
         return
 
     try:
@@ -411,6 +453,10 @@ def _cmd_digest(args: argparse.Namespace) -> None:
         JobRepository(db.conn).mark_notified(list(batch.job_ids), sent_at)
         LeadRepository(db.conn).mark_notified(list(batch.lead_ids), sent_at)
     print(f"  Sent. {len(batch.job_ids)} jobs and {len(batch.lead_ids)} leads marked as notified.")
+    append_step_summary(digest_markdown(
+        jobs=len(batch.job_ids), strong=len(data.strong), leads=len(batch.lead_ids),
+        followups=len(data.followups), sent=True,
+    ))
 
 
 def _cmd_run(args: argparse.Namespace) -> None:
@@ -420,6 +466,7 @@ def _cmd_run(args: argparse.Namespace) -> None:
     from job_match.adapters.jobs.factory import build_sources, missing_env
     from job_match.config.loader import (
         load_aliases,
+        load_ats_boards,
         load_profile,
         load_settings,
         load_skill_vocabulary,
@@ -441,7 +488,10 @@ def _cmd_run(args: argparse.Namespace) -> None:
 
     # Each enabled source with credentials runs; the others are skipped with a warning
     # inside build_sources. Only an empty result is fatal.
-    sources = build_sources(profile, settings, limit=args.limit)
+    sources = build_sources(
+        profile, settings, limit=args.limit,
+        ats_boards=load_ats_boards(cfg / "ats_boards.yaml"),
+    )
     if not sources:
         print("No job source could run. Missing credentials:", file=sys.stderr)
         for name in settings.sources.enabled:
@@ -454,14 +504,58 @@ def _cmd_run(args: argparse.Namespace) -> None:
     db_path = ":memory:" if args.dry_run else str(data_dir / "jobs.sqlite")
 
     # A dry run reads an empty in-memory DB, so it runs without the skill overrides.
-    with Database(path=db_path) as db:
-        profile = _with_skill_overrides(profile, settings, db)
-        summary = run_jobs(
-            sources, profile, settings, db, aliases,
-            dry_run=args.dry_run, vocabulary=vocabulary,
-        )
+    started = time.perf_counter()
+    try:
+        with Database(path=db_path) as db:
+            profile = _with_skill_overrides(profile, settings, db)
+            summary = run_jobs(
+                sources, profile, settings, db, aliases,
+                dry_run=args.dry_run, vocabulary=vocabulary,
+            )
+    except Exception as exc:
+        _fail_loudly("Jobs run", exc)
+        raise
 
     _print_summary(summary, dry_run=args.dry_run)
+    append_step_summary(jobs_markdown(summary, time.perf_counter() - started))
+
+
+def _fail_loudly(step: str, exc: BaseException) -> None:
+    """The job summary and an Actions error annotation say what failed; the exit code
+    (the re-raise) turns the step red. The traceback goes to the log as usual."""
+    append_step_summary(failure_markdown(step, exc))
+    print(f"::error title={step} failed::{type(exc).__name__}: {exc}")
+
+
+def _cmd_check_sources(args: argparse.Namespace) -> None:
+    """`job-match ops check-sources`: alert on a source silent for N runs. Exit 0 always."""
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+
+    from job_match.notification.email_notifier import EmailNotifier, SmtpConfigError
+    from job_match.ops.summary import alert_text, silent_sources
+    from job_match.persistence.db import Database
+    from job_match.persistence.repositories import RunRepository
+
+    db_path = _data_dir() / "jobs.sqlite"
+    if not db_path.exists():
+        print(f"No database at {db_path}: nothing to check.")
+        return
+    with Database(path=str(db_path)) as db:
+        runs = RunRepository(db.conn).list_recent(("jobs",), limit=args.days)
+    names = silent_sources(runs, days=args.days)
+    if not names:
+        print(f"Sources: none silent for {args.days} runs.")
+        return
+    subject, body = alert_text(names, args.days)
+    print(f"ALERT: {subject}")
+    print(f"::warning title=Silent source::{subject}")
+    append_step_summary(f"## ⚠️ Silent source\n\n{subject}")
+    try:
+        sent = EmailNotifier.from_env().send_text(subject, body)
+    except SmtpConfigError as exc:
+        print(f"  alert not emailed, SMTP not configured: {exc}", file=sys.stderr)
+        return
+    print("  alert emailed." if sent else "  alert email failed (see log).")
 
 
 def _build_funding_sources(names: list[str]) -> list:
@@ -615,6 +709,37 @@ def _cmd_dashboard(args: argparse.Namespace) -> None:
     )
 
 
+def _cmd_export(args: argparse.Namespace, now: datetime | None = None) -> None:
+    """Top matches of the day for career-ops. Prints counts and the path only."""
+    from datetime import UTC
+
+    from job_match.config.loader import load_settings
+    from job_match.export.career_ops import append_to_inbox, select_top, write_inbox
+    from job_match.persistence.db import Database
+    from job_match.persistence.repositories import JobRepository
+
+    settings = load_settings(_config_dir() / "settings.yaml")
+    db_path = _data_dir() / "jobs.sqlite"
+    if not db_path.exists():
+        print(f"No database at {db_path}: run `job-match run` first.", file=sys.stderr)
+        sys.exit(1)
+    now = now or datetime.now(UTC)
+    with Database(path=str(db_path)) as db:
+        jobs = JobRepository(db.conn).list_canonical_scored(
+            now=now, max_age_days=settings.jobs.max_age_days
+        )
+    lines = select_top(jobs, top=args.top, now=now, days=args.days)
+    if args.append:
+        added = append_to_inbox(lines, Path(args.append))
+        print(f"career-ops: {added} new of {len(lines)} selected -> {args.append}")
+        return
+    out = Path(args.out) if args.out else _data_dir() / "export" / f"career-ops-{now.date()}.md"
+    write_inbox(lines, out)
+    print(f"career-ops: {len(lines)} jobs (top {args.top}, last {args.days} day(s)) -> {out}")
+    if not lines:
+        print("  nothing collected in that window: widen --days or run `job-match run` first")
+
+
 def _ai_profile(args: argparse.Namespace) -> dict | None:
     """The anonymous skills summary for the Worker's AI rerank, when a profile is at hand
     (config/profile.yaml or PROFILE_YAML). None keeps the summary off the site."""
@@ -687,12 +812,18 @@ def _cmd_funding_run(args: argparse.Namespace) -> None:
         data_dir.mkdir(parents=True, exist_ok=True)
         db_path = str(data_dir / "jobs.sqlite")
 
-    with Database(path=db_path) as db:
-        summary = run_funding(
-            sources, settings, db, fetcher, limit=args.limit, dry_run=args.dry_run,
-        )
+    started = time.perf_counter()
+    try:
+        with Database(path=db_path) as db:
+            summary = run_funding(
+                sources, settings, db, fetcher, limit=args.limit, dry_run=args.dry_run,
+            )
+    except Exception as exc:
+        _fail_loudly("Funding run", exc)
+        raise
 
     _print_funding_summary(summary, dry_run=args.dry_run)
+    append_step_summary(funding_markdown(summary, time.perf_counter() - started))
 
 
 def _cmd_funding_reprocess(args: argparse.Namespace) -> None:
