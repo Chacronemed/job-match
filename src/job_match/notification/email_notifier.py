@@ -65,7 +65,21 @@ class EmailNotifier:
         msg["To"] = self._recipient
         msg.attach(MIMEText(render_text(data), "plain", "utf-8"))
         msg.attach(MIMEText(render_html(data), "html", "utf-8"))
+        if not self._deliver(msg):
+            return False
+        logger.info("digest sent (%d jobs, %d leads)", total, len(data.leads))
+        return True
 
+    def send_text(self, subject: str, body: str) -> bool:
+        """One plain-text message (the ops alerts), through the same transport."""
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = self._user
+        msg["To"] = self._recipient
+        msg.attach(MIMEText(body, "plain", "utf-8"))
+        return self._deliver(msg)
+
+    def _deliver(self, msg: MIMEMultipart) -> bool:
         try:
             if self._port == 465:
                 with smtplib.SMTP_SSL(self._host, self._port) as smtp:
@@ -76,8 +90,7 @@ class EmailNotifier:
                     smtp.starttls()
                     smtp.login(self._user, self._password)
                     smtp.sendmail(self._user, [self._recipient], msg.as_bytes())
-            logger.info("digest sent (%d jobs, %d leads)", total, len(data.leads))
             return True
         except Exception as exc:
-            logger.error("digest send failed: %s", exc)
+            logger.error("email send failed: %s", exc)
             return False

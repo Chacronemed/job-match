@@ -201,6 +201,10 @@ Skill aliases (`k8s` ↔ `kubernetes`, `CI/CD` ↔ `CI CD`) are centralized in `
 - **Dashboard:** output shape, allow-listed fields (no description, no keyword), `javascript:` links dropped, and script tags in a job title that stay text in the rendered page.
 - **Ruff** for linting. **CI** runs lint and tests on every push.
 
+## Operations
+
+Every daily run writes a **job summary** on its Actions page (`$GITHUB_STEP_SUMMARY`): jobs fetched per source, rejected per gate, scored (eligible, strong, stretch), duplicates, re-checked and closed offers, run time; the funding run and the digest (what was emailed) append their lines. An exception in a run is announced there and as an error annotation before the step turns red. `job-match ops check-sources --days 3`, after the run, emails an alert through the digest's SMTP settings when a source ran and returned nothing three runs in a row; it never fails the workflow.
+
 ## Security & privacy
 
 - Secrets exist only in GitHub Secrets (and in a local, gitignored `.env`). Each workflow step receives only the secrets it needs.

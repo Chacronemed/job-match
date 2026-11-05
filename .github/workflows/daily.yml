@@ -146,6 +146,23 @@ jobs:
           ADZUNA_APP_ID:    ${{ secrets.ADZUNA_APP_ID }}
           ADZUNA_APP_KEY:   ${{ secrets.ADZUNA_APP_KEY }}
 
+      # A source that ran and returned nothing three runs in a row (the API changed, the
+      # query broke) gets an email; the step writes the job summary and never fails. The
+      # job summary itself (fetched per source, rejected per gate, scored, emailed, run
+      # time) is written by `job-match run`, `funding run` and `digest` to
+      # $GITHUB_STEP_SUMMARY; an exception in a run is announced there and as an error
+      # annotation before the step turns red.
+      - name: Check sources
+        if: always() && steps.pipeline.outcome != 'skipped'
+        continue-on-error: true
+        run: job-match ops check-sources --days 3
+        env:
+          SMTP_HOST:     ${{ secrets.SMTP_HOST }}
+          SMTP_PORT:     ${{ vars.SMTP_PORT }}
+          SMTP_USER:     ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          DIGEST_TO:     ${{ secrets.DIGEST_TO }}
+
       # Funding pipeline: RSS → articles → FundingEvent → Lead. Needs no secrets.
       # Feed/article failures are counted, never fatal; continue-on-error only guards
       # unexpected crashes so the jobs digest and the DB push still happen.

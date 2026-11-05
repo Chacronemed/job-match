@@ -3,7 +3,30 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**Download speed: the first CV in under 1.5 s** (same branch `fix/m26-client-render`,
+**Four-item pass (branch `claude/intelligent-lovelace-wxyiss`, 2026-11-04, one commit per item,
+one PR).** Done locally, CI to confirm on the PR.
+1. **ATS public boards + career-ops hand-off** (ADR 0020, `docs/positioning.md`): source `ats`
+   reads the Greenhouse / Lever / Ashby JSON boards of 30 verified French tech companies
+   (`config/ats_boards.yaml`, `scripts/ats_probe.py`); live dry run 1 368 postings, 98 eligible
+   with the example profile. `job-match export --top 3 --format career-ops [--append
+   ../career-ops/data/pipeline.md]` writes the day's best matches in career-ops' inbox format.
+2. **Performance** (ADR 0022): one daily run on a 3 000-job snapshot 5.50 s → 2.00 s, 7 464 →
+   3 949 SQL statements (stored dedup blocks, migration 0012 with a one-time backfill on
+   connect; one commit per posting; memoized normalizers; digest and duplicate indexes). Golden
+   test `tests/unit/pipelines/test_golden_scores.py` keeps every score identical. Branch
+   coverage of scoring + eligibility + dedup 100 %.
+3. **Dashboard** (ADR 0021): JavaScript split by screen (`app.js` + `why/list/tri/board/leads/
+   runs.js`), one row per offer with keyboard triage (j/k/x/s/a/Enter/Space/?), why ledger,
+   light theme with AA on every text node, Candidatures and Leads touched lightly; before/after
+   numbers and screenshots in the ADR and `docs/assets/dashboard/`.
+4. **Ops**: the Daily run writes a job summary (fetched per source, rejected per gate, scored,
+   emailed, run time), announces exceptions loudly, and `job-match ops check-sources` emails an
+   alert when a source returns 0 results three runs in a row.
+**Next step:** merge the PR; on the first Daily run after it, check the job summary and the
+`ats` line (30 boards, a 404 board is a warning, `scripts/ats_probe.py` re-verifies); the
+backfill of migration 0012 rewrites every stored row once (seconds).
+
+Before it: **Download speed: the first CV in under 1.5 s** (same branch `fix/m26-client-render`,
 2026-11-04, ADR 0019 amendment). **Done locally, deploys with the branch.** Before: 5.4–6.2 s
 of CPU for one CV PDF (18 complete PDFs built by the layout search to keep one). After:
 ~125 ms for the first click once Candidatures has preloaded, ~37 ms for the second
@@ -1614,6 +1637,11 @@ Watch the logs — they show only aggregate counts (fetched/eligible/strong), ne
   use fixtures.
 
 ## Session log
+
+- **2026-11-04 — four-item pass** (ATS boards + career-ops export, dashboard redesign and split,
+  performance with a golden test, ops summary and alert). ADRs 0020–0022, `docs/positioning.md`,
+  `docs/assets/dashboard/`. Measured: run 5.50 → 2.00 s; Offres 14 → 21 rows at 1440×900,
+  dismiss 1 click → 1 key, « candidature envoyée » 3 clicks → 1 key, why 2 clicks → 1 key.
 - 2026-11-04: download speed (ADR 0019 amendment): measure-only layout search, Latin Inter
   subsets without GSUB embedded whole, preload on Candidatures, hover prefetch, session cache.
   First CV PDF ~125 ms after preload, second ~37 ms (was 5.4–6.2 s). 1527 Python passed.
