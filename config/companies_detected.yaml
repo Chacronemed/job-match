@@ -1,7 +1,8 @@
 # Written by `job-match companies detect` (M28). Do not edit: re-run the command.
 # Checked 2026-11-05 against the public ATS endpoints;
-# verified = 200 with at least one posting. Not read by any source yet.
-checked_at: '2026-11-05T11:07:01+01:00'
+# verified = 200 with at least one posting. Read by no source: a verified board
+# is copied by hand into config/ats_boards.yaml.
+checked_at: '2026-11-05T11:43:38+01:00'
 companies:
 - name: Airbus
   status: verified
@@ -77,13 +78,21 @@ companies:
   status: not_found
   ats_guess: workday
 - name: Renault Group
-  status: not_found
+  status: verified
+  ats: workday
+  id: alliancewd.wd3.myworkdayjobs.com/alliancewd/renault-group-careers
+  postings: 387
+  method: url
   ats_guess: workday
 - name: Stellantis
   status: not_found
   ats_guess: workday
 - name: Air Liquide
-  status: not_found
+  status: verified
+  ats: workday
+  id: airliquidehr.wd3.myworkdayjobs.com/airliquidehr/AirLiquideExternalCareer
+  postings: 1118
+  method: url
   ats_guess: workday
 - name: Sanofi
   status: verified
@@ -111,11 +120,7 @@ companies:
   status: custom
   ats_guess: custom
 - name: CMA CGM
-  status: verified
-  ats: workday
-  id: cgm.wd3.myworkdayjobs.com/cgm/cgm
-  postings: 241
-  method: url
+  status: not_found
   ats_guess: workday
 - name: Axa
   status: custom
@@ -157,7 +162,7 @@ companies:
   ats: lever
   id: contentsquare
   postings: 27
-  method: slug
+  method: url
   ats_guess: lever
 - name: Swile
   status: verified
@@ -238,13 +243,6 @@ companies:
   postings: 16
   method: slug
   ats_guess: lever
-- name: Contentsquare
-  status: verified
-  ats: lever
-  id: contentsquare
-  postings: 27
-  method: url
-  ats_guess: lever
 - name: Pigment
   status: verified
   ats: lever
@@ -304,7 +302,11 @@ companies:
   method: slug
   ats_guess: workday
 - name: Michelin
-  status: not_found
+  status: verified
+  ats: workday
+  id: michelinhr.wd3.myworkdayjobs.com/michelinhr/Michelin
+  postings: 704
+  method: url
   ats_guess: workday
 - name: Alstom
   status: not_found
@@ -334,10 +336,18 @@ companies:
   method: page
   ats_guess: smartrecruiters
 - name: Accenture France
-  status: not_found
+  status: verified
+  ats: workday
+  id: accenture.wd103.myworkdayjobs.com/accenture/AccentureCareers
+  postings: 2000
+  method: url
   ats_guess: workday
 - name: Kyndryl France
-  status: not_found
+  status: verified
+  ats: workday
+  id: kyndryl.wd5.myworkdayjobs.com/kyndryl/KyndrylProfessionalCareers
+  postings: 875
+  method: url
   ats_guess: workday
 - name: Atos / Eviden
   status: custom
@@ -429,13 +439,12 @@ companies:
 - name: Contentful France
   status: not_found
   ats_guess: lever
-- name: Sendinblue (Brevo)
+- name: Brevo
   status: verified
   ats: lever
   id: brevo
   postings: 27
   method: url
-  check: board id does not carry the company name
   ats_guess: lever
 - name: Shadow (OVHcloud group)
   status: verified
@@ -515,13 +524,21 @@ companies:
   status: not_found
   ats_guess: workday
 - name: Euronext
-  status: not_found
+  status: verified
+  ats: workday
+  id: hrhub.wd3.myworkdayjobs.com/hrhub/Euronext_Career_Page
+  postings: 132
+  method: url
   ats_guess: workday
 - name: Dassault Aviation
   status: not_found
   ats_guess: talentsoft
 - name: Equinix France
-  status: not_found
+  status: verified
+  ats: workday
+  id: equinix.wd1.myworkdayjobs.com/equinix/External
+  postings: 299
+  method: url
   ats_guess: workday
 - name: Akeneo
   status: not_found

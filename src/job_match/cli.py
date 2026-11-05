@@ -191,6 +191,17 @@ def main() -> None:
     cvpush_p.add_argument("--local", action="store_true",
                           help="Target the local R2 of `wrangler dev` (smoke test)")
 
+    apply_p = sub.add_parser(
+        "apply",
+        help="Open an offer's application form, fill it from the kit; never sends (ADR 0023)",
+    )
+    apply_p.add_argument("job_key", help="The offer's key, e.g. ats:greenhouse:acme:123")
+    apply_p.add_argument("--sent", action="store_true",
+                         help="I sent it: status « Envoyée », follow-up date, documents version")
+    apply_p.add_argument("--follow-up-days", type=int, default=7,
+                         help="Follow-up date after --sent, in days (default 7)")
+    apply_p.add_argument("--url", help="The application page, when the jobs DB has another one")
+
     args = parser.parse_args()
 
     if args.command == "run":
@@ -233,6 +244,8 @@ def main() -> None:
         else:
             funding_p.print_help()
             sys.exit(1)
+    elif args.command == "apply":
+        _cmd_apply(args)
     elif args.command == "cv":
         if args.cv_command == "validate":
             _cmd_cv_validate(args)
@@ -266,6 +279,9 @@ def _load_master_or_exit():
         settings = load_settings(cfg / "settings.yaml")
         master = load_master(priv / "cv_master.yaml")
         contact = load_contact(priv / "contact.yaml")
+        from job_match.apply.config import load_apply
+
+        load_apply(priv / "apply.yaml")
     except ConfigError as exc:
         print(f"cv: {exc}", file=sys.stderr)
         sys.exit(1)
@@ -298,18 +314,124 @@ def _cmd_cv_push(args: argparse.Namespace) -> None:
     """Local only, by hand: the master and the contact leave this machine for R2 and nowhere
     else. Never wired into a workflow."""
     _quiet_http_logs()
+    from job_match.apply import config as apply_config
     from job_match.documents.master import to_json
-    from job_match.documents.push import CONTACT_KEY, MASTER_KEY, PushError, push_objects
+    from job_match.documents.push import (
+        CONTACT_KEY,
+        MASTER_KEY,
+        PushError,
+        private_dir,
+        push_objects,
+    )
 
     master, contact = _load_master_or_exit()
+    objects = {MASTER_KEY: to_json(master), CONTACT_KEY: to_json(contact)}
+    apply_path = private_dir() / "apply.yaml"
+    if apply_path.exists():  # the kit's fixed answers and salary rule (ADR 0023)
+        objects[apply_config.APPLY_KEY] = apply_config.to_json(apply_config.load_apply(apply_path))
     try:
-        sizes = push_objects({MASTER_KEY: to_json(master), CONTACT_KEY: to_json(contact)},
-                             local=args.local)
+        sizes = push_objects(objects, local=args.local)
     except PushError as exc:
         print(f"cv push failed: {exc}", file=sys.stderr)
         sys.exit(1)
     for key, n in sizes.items():
         print(f"  {key}: {n} bytes -> R2 {'local' if args.local else 'remote'}")
+
+
+def _cmd_apply(args: argparse.Namespace) -> None:
+    """Local only (ADR 0023): fill the form, never send it. Prints labels and sources, never a
+    value; nothing personal goes to a log."""
+    _quiet_http_logs()
+    from datetime import UTC, date, timedelta
+
+    from job_match.apply import remote, session
+    from job_match.apply.config import load_apply
+    from job_match.apply.questions import load_questions
+    from job_match.config.schema import ConfigError
+    from job_match.documents.master import load_contact, load_master, to_json
+    from job_match.documents.push import private_dir
+    from job_match.tracking.constants import JOB_KEY_RE
+
+    key = args.job_key
+    if not JOB_KEY_RE.match(key):
+        print(f"apply: invalid job key {key!r}", file=sys.stderr)
+        sys.exit(2)
+    if args.sent:
+        today = date.today()
+        follow = today + timedelta(days=max(1, args.follow_up_days))
+        try:
+            version = remote.latest_ready_version(key)
+            stamp = datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+            remote.mark_sent(key, today, follow, version, stamp)
+        except remote.RemoteError as exc:
+            print(f"apply --sent failed: {exc}", file=sys.stderr)
+            sys.exit(1)
+        print(f"Envoyée le {today.isoformat()}, relance le {follow.isoformat()}, "
+              + (f"documents v{version}." if version else "sans version de documents prête."))
+        return
+
+    priv = private_dir()
+    try:
+        questions = load_questions(_config_dir() / "apply_questions.yaml")
+        apply_cfg = load_apply(priv / "apply.yaml")
+        contact = load_contact(priv / "contact.yaml")
+        master = load_master(priv / "cv_master.yaml")
+    except ConfigError as exc:
+        print(f"apply: {exc}", file=sys.stderr)
+        sys.exit(1)
+    offer = None
+    db_path = _data_dir() / "jobs.sqlite"
+    if db_path.exists():
+        offer = session.find_offer(db_path, key)
+    url = args.url or (offer.url if offer else None)
+    if not url:
+        print("apply: offer not in the jobs DB; pass --url", file=sys.stderr)
+        sys.exit(1)
+
+    paths = None
+    try:
+        version = remote.latest_ready_version(key)
+        content = remote.fetch_content(key, version) if version else None
+    except remote.RemoteError as exc:
+        print(f"apply: documents not reachable ({exc}): contact fields only.", file=sys.stderr)
+        content = None
+    if content:
+        import json as _json
+
+        from job_match.apply.config import to_json as apply_json
+
+        bundle = {"content": content, "master": _json.loads(to_json(master)),
+                  "contact": _json.loads(to_json(contact)),
+                  "apply": _json.loads(apply_json(apply_cfg))}
+        out_dir = priv / "out" / "apply" / session.safe_dir_name(key)
+        try:
+            paths = session.render_local(bundle, out_dir, offer.location if offer else "")
+        except RuntimeError as exc:
+            print(f"apply: {exc}: no CV nor letter attached.", file=sys.stderr)
+        else:
+            print(f"Documents v{version} rendus dans {out_dir}")
+    else:
+        print("Pas de documents prêts pour cette offre : CV, lettre et kit non joints.")
+    contact_dict = _json_contact(contact)
+    inputs = session.load_inputs(paths, contact_dict, apply_cfg)
+
+    pw, ctx, page = session.launch(priv / "browser-profile")
+    try:
+        report = session.fill_page(page, url, questions, inputs, session.wait_stdin,
+                                   session.say_stdout)
+        if report is not None:
+            print("Rien n'est envoyé : relis, complète les champs surlignés et envoie toi-même.")
+        print(f"Après l'envoi : job-match apply {key} --sent")
+        session.wait_stdin("Entrée pour fermer le navigateur… ")
+    finally:
+        ctx.close()
+        pw.stop()
+
+
+def _json_contact(contact) -> dict:
+    from dataclasses import asdict
+
+    return asdict(contact)
 
 
 def _cmd_reprocess(args: argparse.Namespace) -> None:
@@ -568,6 +690,7 @@ def _cmd_companies_detect(args: argparse.Namespace) -> None:
     except ConfigError as exc:
         print(f"companies.yaml: {exc}", file=sys.stderr)
         sys.exit(1)
+    every_name = [c.name for c in companies]
     if args.only:
         wanted = {n.lower() for n in args.only}
         companies = [c for c in companies if c.name.lower() in wanted]
@@ -589,7 +712,9 @@ def _cmd_companies_detect(args: argparse.Namespace) -> None:
     if args.report:
         args.report.write_text(report, encoding="utf-8")
     if args.out:
-        write_record(results, args.out, datetime.now().astimezone())
+        # `--only` re-checks a few companies: their entries are replaced, the rest kept.
+        write_record(results, args.out, datetime.now().astimezone(),
+                     merge_into=every_name if args.only else None)
         print(f"Written: {args.out}", file=sys.stderr)
 
 

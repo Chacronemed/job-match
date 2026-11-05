@@ -79,15 +79,21 @@ def load_aliases(path: Path) -> dict[str, list[str]]:
     }
 
 
-_ATS_NAMES = ("greenhouse", "lever", "ashby")
+_ATS_NAMES = ("greenhouse", "lever", "ashby", "smartrecruiters", "workday")
 _SLUG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+# Workday: <tenant>.<wdN>.myworkdayjobs.com/<tenant>/<site>; the host is pinned to Workday's
+# domain because it is called as is.
+_WORKDAY_RE = re.compile(
+    r"^([a-z0-9-]+)\.wd\d{1,3}\.myworkdayjobs\.com/([A-Za-z0-9_-]+)/([A-Za-z0-9_-]+)$")
 
 
 def load_ats_boards(path: Path) -> list[AtsBoard]:
     """The company boards of `config/ats_boards.yaml`. Missing file: no boards.
 
-    Each entry needs `company`, `ats` (greenhouse, lever or ashby) and `slug`; the slug is
-    checked against a strict character class because it ends up in a URL path.
+    Each entry needs `company`, `ats` (one of `_ATS_NAMES`) and `slug`; the slug is
+    checked against a strict character class because it ends up in a URL path (Workday's
+    is `<host>/<tenant>/<site>`, host on myworkdayjobs.com). `max_postings` (optional,
+    Workday / SmartRecruiters) caps the listing.
     """
     if not path.exists():
         return []
@@ -103,9 +109,13 @@ def load_ats_boards(path: Path) -> list[AtsBoard]:
         company, ats, slug = (str(entry.get(k) or "").strip() for k in ("company", "ats", "slug"))
         if ats not in _ATS_NAMES:
             raise ConfigError(f"boards[{i}].ats must be one of {_ATS_NAMES}, got {ats!r} in {path}")
-        if not company or not _SLUG_RE.match(slug):
+        pattern = _WORKDAY_RE if ats == "workday" else _SLUG_RE
+        if not company or not pattern.match(slug):
             raise ConfigError(f"boards[{i}] needs a company and a URL-safe slug in {path}")
-        boards.append(AtsBoard(company=company, ats=ats, slug=slug))
+        cap = entry.get("max_postings")
+        if cap is not None and (not isinstance(cap, int) or isinstance(cap, bool) or cap < 1):
+            raise ConfigError(f"boards[{i}].max_postings must be a positive integer in {path}")
+        boards.append(AtsBoard(company=company, ats=ats, slug=slug, max_postings=cap))
     return boards
 
 

@@ -1,0 +1,132 @@
+# How `job-match apply` recognizes a form field (ADR 0023). Matched against the field's label,
+# name, id, placeholder and autocomplete, accent-folded and lowercased, as whole words or
+# phrases. The first category that matches wins, in this order: sensitive and consent first
+# (never filled), then salary, then the contact fields, the files, and the answer kit.
+# A field nothing matches is "unknown": left empty, highlighted, listed in the terminal.
+# Personal values never live here: they are in private/contact.yaml and private/apply.yaml.
+
+# Never filled, highlighted (EEO / diversity / health questions).
+sensitive:
+  - gender
+  - genre
+  - sexe
+  - race
+  - ethnicity
+  - ethnic
+  - ethnie
+  - hispanic
+  - latino
+  - veteran
+  - disability
+  - disabled
+  - handicap
+  - rqth
+  - diversity
+  - diversite
+  - sexual orientation
+  - orientation sexuelle
+  - pronouns
+  - pronoms
+  - religion
+  - date of birth
+  - date de naissance
+  - birthdate
+  - age
+  - nationality
+  - nationalite
+  - eeo
+
+# Checkboxes and statements I accept myself.
+consent:
+  - consent
+  - consentement
+  - i agree
+  - j accepte
+  - accept
+  - privacy
+  - confidentialite
+  - rgpd
+  - gdpr
+  - acknowledge
+  - terms
+  - conditions
+  - politique
+
+salary:
+  - salary
+  - salaire
+  - remuneration
+  - pretentions
+  - pretention salariale
+  - compensation
+  - pay expectations
+  - expected pay
+  - package
+  - tjm
+  - desired pay
+
+first_name: [first name, firstname, first_name, given name, prenom, given-name]
+last_name: [last name, lastname, last_name, family name, surname, nom de famille, family-name]
+full_name: [full name, fullname, full_name, nom complet, name, nom]
+email: [email, e mail, courriel, adresse email]
+phone: [phone, telephone, mobile, portable, tel]
+linkedin: [linkedin]
+github: [github]
+
+resume: [resume, cv, curriculum]
+cover_letter: [cover letter, coverletter, cover_letter, lettre de motivation, lettre]
+
+# The answer kit.
+why_company:
+  - why us
+  - why do you want to work at
+  - why do you want to join
+  - why this company
+  - what attracts you to
+  - pourquoi notre entreprise
+  - pourquoi nous
+  - pourquoi rejoindre
+  - pourquoi cette entreprise
+motivation:
+  - motivation
+  - why are you interested
+  - why do you want this
+  - why this role
+  - why this position
+  - pourquoi ce poste
+  - why are you applying
+  - tell us why
+  - additional information
+availability:
+  - start date
+  - earliest start
+  - when can you start
+  - availability
+  - available to start
+  - disponibilite
+  - date de disponibilite
+  - date de debut
+notice:
+  - notice period
+  - preavis
+mobility:
+  - relocate
+  - relocation
+  - mobilite
+  - demenager
+
+# A fixed answer (private/apply.yaml) on a select or a radio: the option may read the answer,
+# its `label_en`, or any member of a group below that holds one of them. Accent- and
+# case-insensitive. Group texts only, never a personal value. Quoted: YAML reads a bare
+# yes / no as a boolean.
+option_equivalents:
+  - ["oui", "yes"]
+  - ["non", "no"]
+  - ["permis b", "driving licence b", "driving license b", "driver s license b", "category b", "b licence"]
+  - ["cdi", "permanent", "permanent contract", "permanent position", "contrat a duree indeterminee"]
+  - ["cdd", "fixed term", "fixed term contract", "temporary contract", "contrat a duree determinee"]
+  - ["temps plein", "full time", "full-time"]
+  - ["temps partiel", "part time", "part-time"]
+  - ["teletravail", "remote", "full remote"]
+  - ["hybride", "hybrid"]
+  - ["sur site", "on site", "onsite", "on-site"]

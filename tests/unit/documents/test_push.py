@@ -121,3 +121,37 @@ def test_cv_without_subcommand_exits_1(capsys):
         with pytest.raises(SystemExit) as exc:
             main()
     assert exc.value.code == 1
+
+
+def test_cv_push_adds_apply_json_when_apply_yaml_exists_and_manuel_drops_the_range(project, capsys):
+    (project / "private" / "apply.yaml").write_text(
+        "remuneration:\n  mode: manuel\n  fourchette: {min: 41000, max: 47000}\n"
+        "  reperes: [{zone: IDF, match: [paris], texte: '42-48 k'}]\npreavis: Aucun\n",
+        encoding="utf-8",
+    )
+    calls = []
+
+    def run(cmd, **kwargs):
+        calls.append((cmd, Path(cmd[cmd.index("--file") + 1]).read_text(encoding="utf-8")))
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    with (
+        patch("job_match.documents.push.subprocess.run", run),
+        patch("sys.argv", ["job-match", "cv", "push"]),
+    ):
+        main()
+    by_key = {c[6]: text for c, text in calls}
+    apply_text = by_key[f"{BUCKET}/master/apply.json"]
+    assert '"mode": "manuel"' in apply_text and '"fourchette": null' in apply_text
+    assert "41000" not in apply_text  # no salary value leaves the machine in manuel
+    assert "41000" not in capsys.readouterr().out
+
+
+def test_cv_validate_refuses_a_broken_apply_yaml(project, capsys):
+    (project / "private" / "apply.yaml").write_text("remuneration: {mode: fourchette}\n",
+                                                    encoding="utf-8")
+    with patch("sys.argv", ["job-match", "cv", "validate"]):
+        with pytest.raises(SystemExit) as exc:
+            main()
+    assert exc.value.code == 1
+    assert "fourchette needs remuneration.fourchette" in capsys.readouterr().err

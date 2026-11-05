@@ -87,6 +87,14 @@ const OFFER = {
   score: 88, description_excerpt: "Nous cherchons un ingénieur DevOps pour nos clusters Kubernetes (GKE) et Helm sur notre plateforme GCP (Google Cloud Platform). Vous rejoindrez une équipe de 8 personnes.",
 };
 
+const GOOD_ANSWERS = () => ({
+  motivation: { sentences: [
+    { text: "Ce poste DevOps sur Kubernetes prolonge mon alternance chez Acme Cloud.", sources: ["exp1.b1"] },
+    { text: "J'y apporterais mon goût de l'automatisation.", sources: [] },
+  ] },
+  why_company: { sentences: [{ text: "Initech construit une plateforme cloud, le cadre que je cherche.", sources: [] }] },
+});
+
 function good(overrides = {}) {
   return {
     language: "fr",
@@ -110,6 +118,7 @@ function good(overrides = {}) {
         { sentences: [{ text: "Disponible à partir de janvier 2027, je serais heureux d'en discuter avec vous.", sources: [] }] },
       ],
     },
+    answers: GOOD_ANSWERS(),
     ...overrides,
   };
 }
@@ -188,7 +197,7 @@ const run = (e = docEnv(), opts = {}) => runDocuments(e, { fetch: globalThis.fet
 describe("prompt and schema", () => {
   test("the schema is strict and asks for the five fields", () => {
     assert.equal(DOCUMENT_SCHEMA.additionalProperties, false);
-    assert.deepEqual(DOCUMENT_SCHEMA.required, ["language", "profile", "selected_bullets", "skill_groups", "headline_techs", "letter"]);
+    assert.deepEqual(DOCUMENT_SCHEMA.required, ["language", "profile", "selected_bullets", "skill_groups", "headline_techs", "letter", "answers"]);
     assert.ok(!JSON.stringify(DOCUMENT_SCHEMA).includes("maxLength"), "lengths are checked in code");
   });
 
@@ -536,7 +545,7 @@ describe("runDocuments", () => {
     assert.equal(content.offer.company, "Initech");
     assert.equal(content.selected_bullets.length, 2);
     assert.deepEqual(content.cv.experiences.map((e) => e.id), ["exp1", "exp2"]);
-    assert.equal(content.prompt_version, "5");
+    assert.equal(content.prompt_version, "6");
     assert.deepEqual(content.skill_groups[0].group, "Conteneurs");
     assert.deepEqual(content.headline_techs.length, 5);
     assert.ok(content.highlights.includes("kubernetes") && content.highlights.includes("gke"), content.highlights);
@@ -925,7 +934,8 @@ describe("content (ADR 0019: the browser renders)", () => {
     assert.equal(res.headers.get("Content-Type"), "application/json");
     assert.equal(res.headers.get("Cache-Control"), "no-store");
     const body = await res.json();
-    assert.deepEqual(Object.keys(body).sort(), ["contact", "content", "master"]);
+    assert.deepEqual(Object.keys(body).sort(), ["apply", "contact", "content", "master"]);
+    assert.equal(body.apply, null); // no apply.json pushed: the kit shows its notes
     assert.deepEqual([body.content.job_key, body.content.version, body.content.offer.company], [KEY, 1, "Initech"]);
     assert.deepEqual(body.contact, CONTACT);
     assert.equal(body.master.headline, MASTER.headline);

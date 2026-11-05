@@ -831,6 +831,15 @@ body.is-dragging-card { user-select: none; -webkit-user-select: none; }
 .doc-links a { white-space: nowrap; }
 .doc-links .alt { font-size: 11px; color: var(--ink-muted); }
 .doc-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 6px 0 0; }
+/* The answer kit (ADR 0023) */
+.kit { margin: 14px 0 0; }
+.kit h4 { margin: 0 0 6px; font-size: 0.95em; }
+.kit-list { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px 0; }
+.kit-list dt { font-weight: 600; margin-top: 8px; }
+.kit-list dd { margin: 0; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; }
+.kit-text { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; flex: 1 1 18em; }
+.kit-note { color: var(--ink-3); font-size: 0.9em; overflow-wrap: anywhere; }
+.kit-actions { margin: 10px 0 0; }
 .view-head .view-toggle { margin-left: auto; display: inline-flex; gap: 6px; }
 
 /* The table view (part 4): the same statuses, one row per application. Fixed layout: Offre

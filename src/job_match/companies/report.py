@@ -55,8 +55,16 @@ def render_report(results: Sequence[Detection], requests: int | None = None) -> 
     return "\n".join(lines) + "\n"
 
 
-def write_record(results: Sequence[Detection], path: Path, checked_at: datetime) -> None:
-    """One entry per company, for the next step (the Workday / SmartRecruiters boards)."""
+def write_record(
+    results: Sequence[Detection], path: Path, checked_at: datetime,
+    *, merge_into: Sequence[str] | None = None,
+) -> None:
+    """One entry per company, for the next step (the Workday / SmartRecruiters boards).
+
+    `merge_into` (a partial run, `--only`): the names of every company of companies.yaml,
+    in file order. The existing record keeps its other entries, the re-checked ones are
+    replaced, and an entry whose company left companies.yaml is dropped.
+    """
     entries = []
     for r in results:
         entry: dict = {"name": r.company, "status": r.status}
@@ -69,10 +77,16 @@ def write_record(results: Sequence[Detection], path: Path, checked_at: datetime)
         if r.guess:
             entry["ats_guess"] = r.guess
         entries.append(entry)
+    if merge_into is not None and path.exists():
+        old = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        by_name = {e["name"]: e for e in old.get("companies") or [] if isinstance(e, dict)}
+        by_name.update({e["name"]: e for e in entries})
+        entries = [by_name[n] for n in merge_into if n in by_name]
     header = (
         "# Written by `job-match companies detect` (M28). Do not edit: re-run the command.\n"
         f"# Checked {checked_at.date().isoformat()} against the public ATS endpoints;\n"
-        "# verified = 200 with at least one posting. Not read by any source yet.\n"
+        "# verified = 200 with at least one posting. Read by no source: a verified board\n"
+        "# is copied by hand into config/ats_boards.yaml.\n"
     )
     body = yaml.safe_dump({"checked_at": checked_at.isoformat(timespec="seconds"),
                            "companies": entries}, allow_unicode=True, sort_keys=False)

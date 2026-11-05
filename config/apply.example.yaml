@@ -1,0 +1,43 @@
+# Copy to private/apply.yaml (gitignored) and fill in. Read by `job-match apply` and pushed to
+# R2 by `job-match cv push` (the offer page shows the kit). Never sent to a model (ADR 0023).
+
+remuneration:
+  # manuel (default): a salary field is NEVER filled; it is highlighted, and the benchmark of
+  # the offer's zone below is shown. fourchette: the range below is filled, nothing else.
+  mode: manuel
+  fourchette:              # used only with mode: fourchette (and never pushed in manuel)
+    min: 40000
+    max: 46000
+    devise: "€"
+    periode: brut annuel
+  # The benchmark of a zone: the first entry one of whose words is in the offer's location;
+  # an entry without `match` is the default.
+  reperes:
+    - zone: Île-de-France
+      match: [paris, ile de france, hauts de seine, seine saint denis, val de marne, yvelines, essonne, val d oise, seine et marne]
+      texte: "à renseigner (ex. 42–48 k€ brut annuel, junior DevOps)"
+    - zone: Province
+      texte: "à renseigner"
+
+preavis: "Aucun préavis"
+# mobilite: overrides the master's `mobility` when set.
+mobilite: ""
+
+# A question whose label holds one of the words gets the answer. On a select or a radio the
+# option may read `reponse`, `label_en` (the English form, optional) or an equivalent from
+# config/apply_questions.yaml (oui/yes, non/no, permis B/driving licence B, CDI/permanent...),
+# case and accents ignored.
+reponses_fixes:
+  - label: Autorisation de travail en France
+    match: [authorized to work, authorised to work, work authorization, autorisation de travail, right to work]
+    reponse: "Oui"
+  - label: Sponsorship
+    match: [sponsorship, visa sponsorship, parrainage]
+    reponse: "Non"
+    label_en: "No, I do not need sponsorship"
+  - label: Permis B
+    match: [driving licence, driver s license, permis b, permis de conduire]
+    reponse: "Oui"
+  - label: Contrat recherché
+    match: [contract type, type de contrat, employment type]
+    reponse: "CDI"

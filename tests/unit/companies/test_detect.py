@@ -12,6 +12,7 @@ from job_match.companies.detect import (
     CUSTOM,
     NOT_FOUND,
     VERIFIED,
+    Detection,
     Detector,
     candidates_in,
     detect_all,
@@ -220,6 +221,19 @@ def test_report_groups_by_ats_and_record_is_yaml(detector, tmp_path):
         "id": "ag.wd3.myworkdayjobs.com/ag/Airbus", "postings": 3, "method": "url",
         "ats_guess": "workday"}
     assert record["companies"][2] == {"name": "Nowhere", "status": "not_found"}
+
+
+def test_a_partial_run_merges_into_the_record(tmp_path):
+    out = tmp_path / "detected.yaml"
+    when = datetime(2026, 11, 5, tzinfo=UTC)
+    write_record([Detection("A", NOT_FOUND), Detection("B", NOT_FOUND),
+                  Detection("Gone", NOT_FOUND)], out, when)
+    write_record([Detection("B", VERIFIED, "lever", "b", 3, "url")], out, when,
+                 merge_into=["A", "B", "C"])
+    record = yaml.safe_load(out.read_text(encoding="utf-8"))
+    # B replaced, A kept, Gone (left companies.yaml) dropped, C never checked: absent.
+    assert [(e["name"], e["status"]) for e in record["companies"]] == [
+        ("A", "not_found"), ("B", "verified")]
 
 
 # ---------------------------------------------------------------------- config
