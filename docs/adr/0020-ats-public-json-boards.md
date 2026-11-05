@@ -70,3 +70,46 @@ stay where they are and are not read.
   characters.
 - Offres gets a Source filter (source, or one company board) and a Source column; Exécutions
   lists fetched / eligible per company for `ats` (`by_company` in the run summary).
+
+## Amendment 2026-11-05 (M28, part 2): Workday and SmartRecruiters boards
+
+- **The same `ats` source** reads two more ATS (one class, one `by_company` counter, the
+  same gates downstream). Both list without descriptions and page, so a board costs a
+  filtered listing plus **one detail call per posting kept**:
+  - Workday: `POST <host>/wday/cxs/<tenant>/<site>/jobs`, 20 a page; the first call
+    (limit 1) returns the facets, the country facet (`locationCountry`, nested in
+    `locationMainGroup`) is found by name and its **France** value by descriptor, never
+    hard-coded; then `GET <host>/wday/cxs/<tenant>/<site><externalPath>`. No country
+    facet: board skipped (it cannot be limited to France). The slug is
+    `<host>/<tenant>/<site>`, host pinned to `*.wdN.myworkdayjobs.com` by the loader; the
+    id part of the key is `<tenant>.<site>` (no `/` in a tracking key), the posting id is
+    the requisition id ending `externalPath`.
+  - SmartRecruiters: `GET api.smartrecruiters.com/v1/companies/<id>/postings?country=fr`,
+    100 a page, then `GET .../postings/<id>`.
+- **Capped**: at most `max_postings` per board and run (default 100, per board in
+  `ats_boards.yaml`), newest first. Uncapped, Thales alone is 2 460 French postings, i.e.
+  41 minutes of detail calls at 1/s. A capped listing is not complete: `check_offer` says
+  UNKNOWN for an id it did not list, CLOSED only when the whole French listing was read.
+- **1 request/s per host** (was: per source), with an injectable clock for the tests.
+- **Site discovery** for the 16 Workday tenants answering 422: a 422 also answers for a
+  tenant that does not exist (any `wd1/wd3/wd5/wd103` × site tried), so it proves
+  nothing. The careers pages gave no Workday link (SuccessFactors, Taleo, own sites);
+  a web search restricted to `myworkdayjobs.com` found 7 real sites, each verified by
+  `companies detect` (200 with postings): Renault (`alliancewd`), Air Liquide
+  (`airliquidehr`), Michelin (`michelinhr`), Accenture (`wd103`), Kyndryl (`wd5`),
+  Euronext (`hrhub`), Equinix (`wd1/External`). Not found (9): TotalEnergies, Safran,
+  Schneider Electric, Capgemini, Worldline, Engie, Vinci Énergies, Alstom, Inetum.
+  `cgm.wd3` is **CompuGroup Medical**, not CMA CGM: removed. `companies detect --only`
+  now merges into `companies_detected.yaml` instead of overwriting it.
+- `companies.yaml`: Contentsquare listed once, « Sendinblue (Brevo) » renamed Brevo (its
+  board `brevo` was flagged as not carrying the name), corrected Workday URLs. Padok and
+  Theodo Cloud share the `theodo` Lever board: one `Theodo` entry.
+- Euronext's Workday site (`hrhub`) has no country facet, only `locations`: skipped with a
+  warning until a city filter is worth adding.
+- `ats_boards.yaml`: 30 → 57 boards (Greenhouse 10, Lever 14, Ashby 14, SmartRecruiters 9,
+  Workday 10).
+
+Alternatives: one source per ATS (rejected above, same reason); fetching the descriptions
+lazily only for offers that pass the gates (the gates need the description: experience is
+read there); no cap with a `since` filter (Workday's list gives only « Posted 3 Days Ago »,
+and the pipeline calls `fetch(since=None)`).

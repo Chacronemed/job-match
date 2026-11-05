@@ -296,6 +296,8 @@ def test_the_site_ships_the_renderer_its_libraries_and_the_pdf_fonts(tmp_path, d
         assert (site / "vendor" / name).stat().st_size > 10_000
     for name in PDF_FONTS:
         assert (site / "fonts" / name).is_file()
+    kit = (site / "assets" / "kit.js").read_text(encoding="utf-8")  # ADR 0023, served as is
+    assert "export function answerKit" in kit and "import " not in kit
     for name in ("Inter-Regular-latin.ttf", "Inter-Bold-latin.ttf"):  # TTF, Latin subsets
         font = (site / "fonts" / name).read_bytes()
         assert font[:4] == b"\x00\x01\x00\x00" and len(font) < 60_000

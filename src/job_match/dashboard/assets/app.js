@@ -415,6 +415,8 @@ window.JM = window.JM || {};
       runNowButtons();
       renderJobs();
       renderCurrent();
+      /* A record opened before the tracking (a #…?fiche= link) has no documents nor kit yet. */
+      if (R.open && R.job) openRecord(R.job, R.opener);
     }).catch(function () {
       track.status = "error";
       trackBanner();

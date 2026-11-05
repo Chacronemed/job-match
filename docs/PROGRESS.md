@@ -3,7 +3,67 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**M28: companies.yaml exploité, part 1 (source visibility + detection)** (branch
+**M29: candidature assistée** (branch `feat/m29-assisted-apply`, 2026-11-05, ADR 0023).
+**Done locally, not pushed** (the branch also carries M28 part 2, uncommitted, below).
+Rule: the tool never presses Send / Submit, creates no account, solves no CAPTCHA.
+1. **Answer kit** (prompt **v6**, same documents call and budget): `answers.motivation` and
+   `answers.why_company` (≤ 600 chars, letter's anti-invention rules, `why_company` names the
+   company, no availability / salary / notice: `answer_scope`); `max_tokens` 3 600. Computed
+   items in `worker/src/kit.js` (pure, shared Worker / page / CLI): availability from the
+   master, mobility, notice and fixed answers from **`private/apply.yaml`**
+   (`config/apply.example.yaml`), pushed as `master/apply.json` by `cv push`, in the bundle
+   as `apply`. Offer page: « Kit de réponses » with « Copier », « Candidature envoyée ».
+2. **Salary:** `remuneration.mode: manuel` (default) never fills a salary field anywhere,
+   highlights it and shows the zone's benchmark (`reperes`); the range is not even pushed.
+   `fourchette`: my range in a text field, a select option only if exactly one is inside.
+3. **`job-match apply <job_key> [--url U]`** (`src/job_match/apply/`): D1/R2 via wrangler,
+   CV + letter PDF rendered locally (`scripts/apply-render.mjs`, same render.js) into
+   `private/out/apply/`, headed Chromium on `private/browser-profile/`; Greenhouse / Lever /
+   Ashby recognized by host, fields classified by `config/apply_questions.yaml`; sensitive,
+   consent, unknown left empty + outlined + listed; CAPTCHA / sign-in: pause « à toi ».
+   **`--sent [--follow-up-days 7]`**: `applied`, dates, `sent_documents_version`.
+4. Tests: `tests/fixtures/apply/` (3 ATS forms + unsupported + CAPTCHA, `guard.js` records
+   any press or submit), `tests/unit/browser/test_apply_forms.py`, `test_answer_kit.py`,
+   `tests/unit/apply/`, `worker/test/kit.test.mjs`. Full suite: **1 682 passed**, ruff clean.
+   **CI fix:** a record opened from `#…?fiche=` before `/api/applications` answered never got
+   its documents nor kit (race with the view transition; red in CI only). `loadTracking` now
+   refills the open record; `open_dashboard(hold_api=True)` + `page.release_api()` fix the order.
+**Next step:** write `private/apply.yaml` (from the example), `job-match cv push`, merge +
+deploy, « Regénérer » one kept offer (v6) and check its kit; then a first real
+`job-match apply <key>` on a Greenhouse / Lever / Ashby offer (Chromium for the profile:
+`.venv\Scripts\python -m playwright install chromium` once). **Fixed answers are bilingual**
+(ADR 0023 amendment): `label_en` per answer in apply.yaml + `option_equivalents` in
+`config/apply_questions.yaml` (oui/yes, non/no, permis B/driving licence B, CDI/permanent…),
+case and accents ignored; tested on `tests/fixtures/apply/english.html`. **Open:** embedded
+Greenhouse iframes, Workday / SmartRecruiters forms unsupported.
+
+Before it: **M28 part 2: Workday + SmartRecruiters boards** (same branch, 2026-11-05, ADR 0020
+amendment « part 2 »). **Done locally, not pushed.**
+1. `ats_boards.yaml` 30 → **57 boards** (Greenhouse 10, Lever 14, Ashby 14, SmartRecruiters 9,
+   Workday 10): + Datadog, Decathlon Technology, Shadow, Veepee, Lumapps, Scality, Ankorstore,
+   Wescale; one `theodo` board for Theodo / Theodo Cloud / Padok. `companies.yaml`:
+   Contentsquare once, « Sendinblue (Brevo) » → Brevo, 7 Workday URLs corrected, CMA CGM
+   back to its own site (`cgm.wd3` is CompuGroup Medical).
+2. Source `ats` reads Workday (France via the country facet, found by name) and
+   SmartRecruiters (`country=fr`): capped listing (`max_postings`, default 100 per board),
+   one detail call per posting, 1 req/s **per host**; capped listing → `check_offer` UNKNOWN
+   for an unlisted id. Tests: `tests/unit/adapters/test_ats_paged.py` (respx).
+3. Workday 422 discovery: **7 found** (Renault `alliancewd`, Air Liquide `airliquidehr`,
+   Michelin `michelinhr`, Accenture `wd103`, Kyndryl `wd5`, Euronext `hrhub`, Equinix
+   `wd1/External`), **9 not found** (TotalEnergies, Safran, Schneider, Capgemini, Worldline,
+   Engie, Vinci Énergies, Alstom, Inetum: SuccessFactors / Taleo / own sites). A 422 answers
+   for any unknown tenant too. `companies detect --only` now merges into the record.
+4. Real dry run 2026-11-05 (57 boards, real profile, in-memory DB): **1 242 s, 1 169 calls**.
+   Workday 716 French postings fetched → **20 eligible** (Accenture 9, Thales 6, Sanofi 3,
+   Michelin 1, Renault 1; Airbus, Air Liquide, Equinix, Kyndryl 0); SmartRecruiters 358 →
+   **25** (Octo 9, Ubisoft 8, Devoteam 6, Wavestone 2). Seven boards hit the 100 cap
+   (Thales 2 000+ French, Airbus 976). **Known issue:** Euronext's Workday site has no
+   country facet (only `locations`): skipped with a warning.
+**Next step:** push + PR; on the first Daily run, check the run time (the paged boards add
+~20 min at 1 req/s: lower `max_postings` per board if the job gets too long) and the
+« Pages carrière par entreprise » table. Open: the 23 Lever 404 slugs of companies.yaml.
+
+Before it: **M28: companies.yaml exploité, part 1 (source visibility + detection)** (branch
 `feat/m28-companies` from `main` at PR #16, 2026-11-05, ADR 0020 amendment). **Done locally,
 stopped before the Workday / SmartRecruiters adapters** (the report is to be reviewed first).
 1. **Offres:** Source filter (`#f-source`, hash `src=`: France Travail / Adzuna / Jooble /

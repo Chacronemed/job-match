@@ -8,10 +8,13 @@
 // does no rendering. Nothing here logs: not the key, not the master, not a prompt, not a text.
 
 import { countCall, day, loadAsset } from "./ai.js";
+import { availabilityText } from "./kit.js";
+
+export { availabilityText };
 
 // config/settings.yaml `documents:` repeats these; a test keeps them equal.
 export const DOCUMENTS_MODEL = "claude-sonnet-5-5";
-export const DOCUMENTS_PROMPT_VERSION = "5";
+export const DOCUMENTS_PROMPT_VERSION = "6";
 export const MONTHLY_BUDGET_USD = 60;
 export const BATCH_SIZE = 5;
 export const MAX_BULLETS = 18;
@@ -22,6 +25,9 @@ export const MAX_SKILLS = 15;
 export const MAX_BULLET_CHARS = 220;
 export const MAX_PROFILE_CHARS = 450;
 export const MAX_LETTER_CHARS = 2200;
+// The answer kit (ADR 0023): two short texts for the form, each 600 characters at most.
+export const MAX_ANSWER_CHARS = 600;
+export const ANSWER_NAMES = ["motivation", "why_company"];
 export const FORBIDDEN_PHRASES = ["sans régression", "zéro régression", "0 régression", "63 dimensions"];
 // Published list prices, USD per million tokens (platform.claude.com, checked 2026-11-01).
 // Cache reads cost less: the estimate is an upper bound, like the rerank report's.
@@ -41,10 +47,12 @@ export const STUCK_MINUTES = 15;
 export const AUTO_RETRY_CODES = ["api_error"];
 export const ANTHROPIC_VERSION = "2026-10-21";
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
-const MAX_TOKENS = 3000;
+const MAX_TOKENS = 3600; // 3000 before the answer kit (prompt v6, ADR 0023)
 const DESCRIPTION_MAX = 5000;
 const MASTER_KEY = "master/cv_master.json";
 const CONTACT_KEY = "master/contact.json";
+// private/apply.yaml as JSON (ADR 0023): fixed answers and the salary rule. Optional.
+const APPLY_KEY = "master/apply.json";
 export const FILE_NAMES = ["cv.pdf", "cv.docx", "letter.pdf", "letter.docx"];
 export const KEEP_STATUSES = ["to_apply", "applied", "interview"];
 export const ERROR_CODES = [
@@ -69,8 +77,6 @@ const PRESENT_VERBS = [
 const PRESENT_MARKERS = /\b(actuellement|en ce moment|aujourd hui|en cours|depuis \d|currently|today|nowadays)\b/;
 const PRESENT_PRONOUN = new RegExp("\\bj(?:e |y |)(?:" + PRESENT_VERBS.join("|") + ")[a-z]*\\b|\\bi (?:am |)(?:" + PRESENT_VERBS.join("|") + ")[a-z]*\\b");
 const SECOND_PERSON = /\b(vous|votre|vos)\b/;
-const MONTHS_FR = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
-const MONTHS_EN = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 // Development languages and frameworks: on the CV only when the offer asks for them.
 export const DEV_LANGUAGES = [
   "java", "javascript", "typescript", "php", "c#", "vue.js", "laravel", "jee", "unity", "html",
@@ -81,6 +87,20 @@ export const DEV_LANGUAGES = [
 const CONTEXT_WORDS = ["alternance", "apprentissage", "stage", "stagiaire", "projet de fin d etudes", "pfe"];
 
 // Strict: the API refuses length or range constraints, `validateDocument` checks them.
+const SENTENCES = {
+  type: "array",
+  items: {
+    type: "object",
+    properties: {
+      text: { type: "string" },
+      sources: { type: "array", items: { type: "string" }, description: "Les id des bullets du maître dont la phrase tire ses faits." },
+    },
+    required: ["text", "sources"],
+    additionalProperties: false,
+  },
+};
+const ANSWER = { type: "object", properties: { sentences: SENTENCES }, required: ["sentences"], additionalProperties: false };
+
 export const DOCUMENT_SCHEMA = {
   type: "object",
   properties: {
@@ -135,8 +155,15 @@ export const DOCUMENT_SCHEMA = {
       required: ["paragraphs"],
       additionalProperties: false,
     },
+    answers: {
+      type: "object",
+      description: "Le kit de réponses du formulaire de candidature : deux textes courts.",
+      properties: { motivation: ANSWER, why_company: ANSWER },
+      required: ANSWER_NAMES,
+      additionalProperties: false,
+    },
   },
-  required: ["language", "profile", "selected_bullets", "skill_groups", "headline_techs", "letter"],
+  required: ["language", "profile", "selected_bullets", "skill_groups", "headline_techs", "letter", "answers"],
   additionalProperties: false,
 };
 
@@ -173,8 +200,17 @@ export const RETRY_SCHEMA = {
       },
     },
     headline_techs: { type: "array", items: { type: "string" } },
+    answers: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { name: { type: "string", enum: ANSWER_NAMES }, sentences: SENTENCES },
+        required: ["name", "sentences"],
+        additionalProperties: false,
+      },
+    },
   },
-  required: ["profile", "bullets", "sentences", "skill_groups", "headline_techs"],
+  required: ["profile", "bullets", "sentences", "skill_groups", "headline_techs", "answers"],
   additionalProperties: false,
 };
 
@@ -229,6 +265,13 @@ export const SYSTEM_PROMPT = [
   "  heureux d'échanger avec vous. »), jamais seule. Ni formule d'appel (« Madame, Monsieur »),",
   "  ni formule de politesse finale, ni signature : le modèle de document les ajoute. La seule",
   "  entreprise nommée est celle de l'offre.",
+  "- answers : deux réponses courtes pour le formulaire de candidature, chacune une liste de",
+  "  phrases {text, sources} avec les mêmes règles de sources que la lettre, " + MAX_ANSWER_CHARS + " caractères",
+  "  au plus en tout, à la première personne, sans formule d'appel ni de politesse :",
+  "  motivation : pourquoi ce poste, ce que le candidat y apporte (1 à 3 phrases) ;",
+  "  why_company : pourquoi cette entreprise, qu'elle nomme, à partir de ce que l'offre en dit",
+  "  (1 à 3 phrases). Ni l'une ni l'autre ne parle de disponibilité, de salaire ou de",
+  "  rémunération : le formulaire les reçoit d'ailleurs.",
   "",
   "Règles :",
   "- Temps des verbes : une expérience terminée (son champ end est passé, la liste est dans le",
@@ -257,18 +300,6 @@ function sortKeys(value) {
 export function buildSystem(master) {
   const text = SYSTEM_PROMPT + "\n" + JSON.stringify(sortKeys(master), null, 1);
   return [{ type: "text", text, cache_control: { type: "ephemeral" } }];
-}
-
-// "Disponible immédiatement" once available_from is past, else the month and the year.
-export function availabilityText(availableFrom, today, language) {
-  const from = String(availableFrom || "").slice(0, 10);
-  const now = day(today);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || from <= now) {
-    return language === "en" ? "Available immediately" : "Disponible immédiatement";
-  }
-  const month = Number(from.slice(5, 7)) - 1;
-  const year = from.slice(0, 4);
-  return language === "en" ? "Available from " + MONTHS_EN[month] + " " + year : "Disponible à partir de " + MONTHS_FR[month] + " " + year;
 }
 
 // The experiences over on `today` (end <= this month): told in the past tense.
@@ -310,7 +341,9 @@ export function buildRetry(errors) {
 // document as a whole (a paragraph count, the language...), which only a full retry can fix.
 export function errorTarget(error) {
   const text = String(error);
-  let m = /letter paragraph (\d+) sentence (\d+)/.exec(text);
+  let m = /\banswer (motivation|why_company)\b/.exec(text);
+  if (m) return { kind: "answer", name: m[1] };
+  m = /letter paragraph (\d+) sentence (\d+)/.exec(text);
   if (m) return { kind: "sentence", paragraph: Number(m[1]), index: Number(m[2]) };
   m = /: bullet ([\w.-]+)/.exec(text);
   if (m) return { kind: "bullet", id: m[1] };
@@ -343,6 +376,7 @@ export function buildTargetedRetry(doc, errors) {
       lines.push("sentence paragraph " + target.paragraph + " index " + target.index + " : « " + (sn ? sn.text : "") + " » (sources : " + (sn ? sn.sources.join(", ") : "") + ")");
     } else if (target.kind === "skills") lines.push("skill_groups : " + JSON.stringify(doc.skill_groups || []));
     else if (target.kind === "headline") lines.push("headline_techs : " + (doc.headline_techs || []).join(", "));
+    else if (target.kind === "answer") lines.push("answer " + target.name + " : " + JSON.stringify(((doc.answers || {})[target.name] || {}).sentences || []));
     for (const c of codes) lines.push("  - " + c);
   }
   return lines.join("\n");
@@ -362,6 +396,11 @@ export function mergeRetry(doc, patch) {
   }
   if (patch && Array.isArray(patch.skill_groups) && patch.skill_groups.length) out.skill_groups = patch.skill_groups;
   if (patch && Array.isArray(patch.headline_techs) && patch.headline_techs.length) out.headline_techs = patch.headline_techs;
+  for (const a of (patch && patch.answers) || []) {
+    if (a && ANSWER_NAMES.includes(a.name) && Array.isArray(a.sentences) && a.sentences.length && out.answers) {
+      out.answers[a.name] = { sentences: a.sentences.map((sn) => ({ text: sn.text, sources: Array.isArray(sn.sources) ? sn.sources : [] })) };
+    }
+  }
   return out;
 }
 
@@ -539,6 +578,8 @@ export function cvLayout(master, doc) {
   return { experiences, projects };
 }
 
+// Availability and pay have their own kit items, from the master and apply.yaml, never the model.
+const ANSWER_OFF_SCOPE = /\b(disponib\w*|available|availability|salaire\w*|remuneration\w*|pretentions?|salary|compensation|preavis|notice period)\b/;
 const SALUTATION = /^(madame|monsieur|mesdames|messieurs|bonjour|dear|hello|hi|to whom)\b/;
 const CLOSING = /\b(cordialement|salutations|sincerement|respectueusement|bien a vous|sincerely|regards|yours|best wishes)\b/;
 
@@ -552,10 +593,11 @@ export function validateDocument(doc, master, offer, expectedLanguage, ctx = {})
   const errors = [];
   if (!doc || typeof doc !== "object" || Array.isArray(doc)) return ["bad_shape: not an object"];
   const keys = Object.keys(doc).sort().join(",");
-  if (keys !== "headline_techs,language,letter,profile,selected_bullets,skill_groups") return ["bad_shape: keys " + keys];
+  if (keys !== "answers,headline_techs,language,letter,profile,selected_bullets,skill_groups") return ["bad_shape: keys " + keys];
   if (doc.language !== expectedLanguage) errors.push("wrong_language: expected " + expectedLanguage);
   if (typeof doc.profile !== "string" || !Array.isArray(doc.selected_bullets) || !Array.isArray(doc.skill_groups) ||
-      !Array.isArray(doc.headline_techs) || !doc.letter || !Array.isArray(doc.letter.paragraphs)) {
+      !Array.isArray(doc.headline_techs) || !doc.letter || !Array.isArray(doc.letter.paragraphs) ||
+      !doc.answers || typeof doc.answers !== "object" || Object.keys(doc.answers).sort().join(",") !== "motivation,why_company") {
     return ["bad_shape: field types"];
   }
   const today = ctx.today || new Date();
@@ -707,6 +749,37 @@ export function validateDocument(doc, master, offer, expectedLanguage, ctx = {})
     if (typeof t === "string") seenTechs.add(fold(t));
   }
 
+
+  // A sentence of the letter or of an answer: every fact from the bullets it cites.
+  const checkFacts = (where, sn, f) => {
+    const sources = [];
+    for (const id of sn.sources) {
+      const src = index.get(id);
+      if (!src) errors.push("unknown_bullet: " + where + " cites " + String(id).slice(0, 20));
+      else sources.push(src);
+    }
+    const sourceText = sources.map((b) => b.text + " " + (b.tools || []).join(" ")).join(" ");
+    const sourceTerms = new Set();
+    for (const t of terms) if (wholeTerm(t).test(fold(sourceText))) sourceTerms.add(t);
+    checkText(where, sn.text, new Set([...numbers(sourceText), ...headerNumbers]));
+    for (const t of terms) {
+      if (t.length < 3 || sourceTerms.has(t) || headerTerms.has(t)) continue;
+      if (wholeTerm(t).test(f)) errors.push("unsourced_tool: " + where + " names " + t + " without a bullet that holds it");
+    }
+    const cited = new Set(sources.map((b) => b.id));
+    let namedFinished = false;
+    for (const e of contexts) {
+      const named = e.terms.find((term) => wholeTerm(term).test(f));
+      if (!named) continue;
+      if (finished.has(e.id)) namedFinished = true;
+      const citesIt = [...cited].some((id) => e.bullets.has(id));
+      if (!citesIt) errors.push("wrong_context: " + where + " says « " + named + " » (" + e.id + ") but cites " + (sn.sources.join(", ") || "nothing"));
+    }
+    const citedExperiences = [...cited].map((id) => bulletExperience.get(id)).filter(Boolean);
+    const allOver = citedExperiences.length > 0 && citedExperiences.every((id) => finished.has(id));
+    if ((allOver || namedFinished) && presentTense(f)) errors.push("wrong_tense: " + where + " tells an experience that is over in the present");
+  };
+
   const paragraphs = doc.letter.paragraphs;
   if (paragraphs.length < 3 || paragraphs.length > 5) errors.push("bad_shape: letter has " + paragraphs.length + " paragraphs (3 to 5)");
   let total = 0;
@@ -737,36 +810,39 @@ export function validateDocument(doc, master, offer, expectedLanguage, ctx = {})
       if (first && SALUTATION.test(f)) errors.push("letter_formula: " + where + " is a salutation");
       first = false;
       if (CLOSING.test(f)) errors.push("letter_formula: " + where + " is a closing or a signature");
-      const sources = [];
-      for (const id of sn.sources) {
-        const src = index.get(id);
-        if (!src) errors.push("unknown_bullet: " + where + " cites " + String(id).slice(0, 20));
-        else sources.push(src);
-      }
-      const sourceText = sources.map((b) => b.text + " " + (b.tools || []).join(" ")).join(" ");
-      const sourceTerms = new Set();
-      for (const t of terms) if (wholeTerm(t).test(fold(sourceText))) sourceTerms.add(t);
-      checkText(where, sn.text, new Set([...numbers(sourceText), ...headerNumbers]));
-      for (const t of terms) {
-        if (t.length < 3 || sourceTerms.has(t) || headerTerms.has(t)) continue;
-        if (wholeTerm(t).test(f)) errors.push("unsourced_tool: " + where + " names " + t + " without a bullet that holds it");
-      }
-      const cited = new Set(sources.map((b) => b.id));
-      let namedFinished = false;
-      for (const e of contexts) {
-        const named = e.terms.find((term) => wholeTerm(term).test(f));
-        if (!named) continue;
-        if (finished.has(e.id)) namedFinished = true;
-        const citesIt = [...cited].some((id) => e.bullets.has(id));
-        if (!citesIt) errors.push("wrong_context: " + where + " says « " + named + " » (" + e.id + ") but cites " + (sn.sources.join(", ") || "nothing"));
-      }
-      const citedExperiences = [...cited].map((id) => bulletExperience.get(id)).filter(Boolean);
-      const allOver = citedExperiences.length > 0 && citedExperiences.every((id) => finished.has(id));
-      if ((allOver || namedFinished) && presentTense(f)) errors.push("wrong_tense: " + where + " tells an experience that is over in the present");
+      checkFacts(where, sn, f);
     });
   });
   if (total === 0 || total > MAX_LETTER_CHARS) errors.push("too_long: letter " + total + " characters");
   if (availabilityHits !== 1) errors.push("availability_misplaced: the letter says « " + availability + " » " + availabilityHits + " times (once, in the conclusion)");
+
+  // The answer kit (ADR 0023): the letter's rules, short, and nothing the form gets elsewhere.
+  const company = fold(offer.company || "");
+  for (const name of ANSWER_NAMES) {
+    const label = "answer " + name;
+    const a = doc.answers[name];
+    if (!a || !Array.isArray(a.sentences) || a.sentences.length === 0 || a.sentences.length > 3) {
+      errors.push("bad_shape: " + label + " has 1 to 3 sentences");
+      continue;
+    }
+    let chars = 0;
+    a.sentences.forEach((sn, si) => {
+      const where = label + " sentence " + (si + 1);
+      if (!sn || typeof sn.text !== "string" || !sn.text.trim() || !Array.isArray(sn.sources)) {
+        errors.push("bad_shape: " + where);
+        return;
+      }
+      chars += sn.text.length + 1;
+      const f = fold(sn.text);
+      if (SALUTATION.test(f) || CLOSING.test(f)) errors.push("letter_formula: " + where + " is a salutation or a closing");
+      if (ANSWER_OFF_SCOPE.test(f)) errors.push("answer_scope: " + where + " speaks of availability or pay");
+      checkFacts(where, sn, f);
+    });
+    if (chars - 1 > MAX_ANSWER_CHARS) errors.push("too_long: " + label + " " + (chars - 1) + " characters (" + MAX_ANSWER_CHARS + " at most)");
+    if (name === "why_company" && company && !wholeTerm(company).test(fold(a.sentences.map((sn) => (sn && sn.text) || "").join(" ")))) {
+      errors.push("answer_company: " + label + " does not name " + offer.company);
+    }
+  }
   return Array.from(new Set(errors));
 }
 
@@ -900,13 +976,19 @@ export async function loadBundle(env, jobKey, version) {
     "SELECT content_key FROM documents WHERE job_key = ? AND version = ? AND status = 'ready'",
   ).bind(jobKey, version).first();
   if (!row || !row.content_key) return null;
-  const [contentObj, masterObj, contactObj] = await Promise.all([
-    env.DOCS.get(row.content_key), env.DOCS.get(MASTER_KEY), env.DOCS.get(CONTACT_KEY),
+  const [contentObj, masterObj, contactObj, applyObj] = await Promise.all([
+    env.DOCS.get(row.content_key), env.DOCS.get(MASTER_KEY), env.DOCS.get(CONTACT_KEY), env.DOCS.get(APPLY_KEY),
   ]);
   if (!contentObj || !masterObj || !contactObj) return null;
   try {
     const [content, master, contact] = await Promise.all([contentObj.json(), masterObj.json(), contactObj.json()]);
-    return { content, master, contact };
+    let apply = null;
+    try {
+      apply = applyObj ? await applyObj.json() : null;
+    } catch {
+      apply = null; // a broken apply.json never hides the documents
+    }
+    return { content, master, contact, apply };
   } catch {
     return null;
   }
@@ -1044,7 +1126,7 @@ export async function runDocuments(env, opts = {}) {
         const content = {
           job_key: row.job_key, version: row.version, language, model: DOCUMENTS_MODEL,
           prompt_version: DOCUMENTS_PROMPT_VERSION, generated_at: now.toISOString(),
-          offer: { key: row.job_key, title: job.title || "", company: job.company || "" },
+          offer: { key: row.job_key, title: job.title || "", company: job.company || "", location: job.location || "" },
           ...r.doc,
           highlights: highlightTerms(master, job),
           availability: ctx.availability,

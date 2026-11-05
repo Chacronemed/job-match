@@ -1,0 +1,23 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Acme - Lever</title><script src="/guard.js"></script></head>
+<body class="application-page">
+<a href="/linkedin-apply" class="apply-linkedin">Apply with LinkedIn</a>
+<form method="post" action="/apply" id="application-form">
+  <ul>
+    <li class="application-question"><label><div class="application-label">Full name ✱</div><input type="text" name="name" required></label></li>
+    <li class="application-question"><label><div class="application-label">Email ✱</div><input type="email" name="email" required></label></li>
+    <li class="application-question"><label><div class="application-label">Phone</div><input type="text" name="phone"></label></li>
+    <li class="application-question"><label><div class="application-label">Current company</div><input type="text" name="org"></label></li>
+    <li class="application-question"><label><div class="application-label">LinkedIn URL</div><input type="text" name="urls[LinkedIn]"></label></li>
+    <li class="application-question"><label><div class="application-label">GitHub URL</div><input type="text" name="urls[GitHub]"></label></li>
+    <li class="application-question"><label><div class="application-label">Resume/CV ✱</div><input type="file" name="resume" style="opacity:0;width:1px;height:1px"></label></li>
+    <li class="application-question"><label><div class="application-label">When can you start?</div><input type="text" name="cards[a][field0]"></label></li>
+    <li class="application-question"><label><div class="application-label">Salary expectations</div>
+      <select name="cards[a][field1]"><option value="">Select</option><option>30-35k</option><option>40-45k</option><option>50-60k</option></select></label></li>
+    <li class="application-question"><label><div class="application-label">Additional information</div><textarea name="comments"></textarea></label></li>
+    <li class="application-question"><label><div class="application-label">Race / ethnicity</div><select name="eeo[race]"><option value="">Select</option><option>Prefer not to say</option></select></label></li>
+    <li class="application-question"><label><input type="checkbox" name="consent[marketing]"> I consent to Acme storing my data</label></li>
+  </ul>
+  <button type="submit" class="postings-btn">Submit application</button>
+</form>
+</body></html>

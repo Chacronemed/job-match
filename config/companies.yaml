@@ -219,7 +219,7 @@ companies:
   why: Investissements majeurs dans les plateformes IoT/Edge industrielles et le cloud public (AWS/Azure), nombreuses mobilités
     internes.
 - name: Renault Group
-  careers_url: https://renault.wd3.myworkdayjobs.com/Renault_Group_Careers
+  careers_url: https://alliancewd.wd3.myworkdayjobs.com/renault-group-careers
   ats_guess: workday
   ats_verified: false
   priority: 18
@@ -243,7 +243,7 @@ companies:
   junior_program: non
   why: Plateformes de véhicules connectés à l'échelle internationale, travail avec AWS et Azure, forte culture d'optimisation.
 - name: Air Liquide
-  careers_url: https://airliquide.wd3.myworkdayjobs.com/AirLiquideCareers
+  careers_url: https://airliquidehr.wd3.myworkdayjobs.com/AirLiquideExternalCareer
   ats_guess: workday
   ats_verified: false
   priority: 20
@@ -329,7 +329,7 @@ companies:
   why: Centre informatique stratégique à Sophia Antipolis, billets d'avion à tarif réduit, grands programmes de modernisation
     cloud hybride.
 - name: CMA CGM
-  careers_url: https://cgm.wd3.myworkdayjobs.com/cgm
+  careers_url: https://www.cma-cgm.com/careers
   ats_guess: workday
   ats_verified: false
   priority: 27
@@ -405,7 +405,7 @@ companies:
   junior_program: non
   why: Licorne internationale à impact, stack AWS et Kubernetes moderne, politique télétravail flexible.
 - name: Contentsquare
-  careers_url: https://careers.contentsquare.com
+  careers_url: https://jobs.lever.co/contentsquare
   ats_guess: lever
   ats_verified: false
   priority: 34
@@ -609,17 +609,6 @@ companies:
   - Paris
   junior_program: non
   why: Licorne SaaS B2B mature, pipelines de données complexes et exigences élevées en intégrité des données.
-- name: Contentsquare
-  careers_url: https://jobs.lever.co/contentsquare
-  ats_guess: lever
-  ats_verified: false
-  priority: 52
-  sector: Data Analytics SaaS
-  france_sites:
-  - Paris
-  - Lyon
-  junior_program: non
-  why: Traitement de volumétries web mondiales sur AWS, forte présence d'architectures conteneurisées et monitoring avancé.
 - name: Pigment
   careers_url: https://jobs.ashbyhq.com/pigment
   ats_guess: ashby
@@ -741,7 +730,7 @@ companies:
   junior_program: oui (Saint-Gobain Graduate Program)
   why: Siège moderne à La Défense, grande stabilité de l'emploi et chantiers de digitalisation d'usines 4.0.
 - name: Michelin
-  careers_url: https://michelin.wd3.myworkdayjobs.com/Michelin_Careers
+  careers_url: https://michelinhr.wd3.myworkdayjobs.com/Michelin
   ats_guess: workday
   ats_verified: false
   priority: 64
@@ -830,7 +819,7 @@ companies:
   junior_program: oui (Graduate Program Consultant)
   why: Culture de cabinet de conseil prestigieux, progression salariale rapide pour les profils juniors.
 - name: Accenture France
-  careers_url: https://accenture.wd3.myworkdayjobs.com/AccentureCareers
+  careers_url: https://accenture.wd103.myworkdayjobs.com/AccentureCareers
   ats_guess: workday
   ats_verified: false
   priority: 71
@@ -843,7 +832,7 @@ companies:
   junior_program: oui (Accenture Technology Graduate)
   why: Partenariats globaux avec tous les hyperscalers, programmes de formation certifiants très poussés.
 - name: Kyndryl France
-  careers_url: https://kyndryl.wd3.myworkdayjobs.com/KyndrylCareers
+  careers_url: https://kyndryl.wd5.myworkdayjobs.com/KyndrylProfessionalCareers
   ats_guess: workday
   ats_verified: false
   priority: 72
@@ -1027,7 +1016,7 @@ companies:
   - Paris (Remote France)
   junior_program: non
   why: Entreprise internationale axée API, excellente culture de résilience des systèmes et forte equity.
-- name: Sendinblue (Brevo)
+- name: Brevo
   careers_url: https://jobs.lever.co/brevo
   ats_guess: lever
   ats_verified: false
@@ -1249,7 +1238,7 @@ companies:
   junior_program: oui (Programme Jeunes Talents)
   why: Fort ancrage dans le secteur public et bancaire, volumes de recrutement junior réguliers.
 - name: Euronext
-  careers_url: https://euronext.wd3.myworkdayjobs.com/Euronext_Careers
+  careers_url: https://hrhub.wd3.myworkdayjobs.com/Euronext_Career_Page
   ats_guess: workday
   ats_verified: false
   priority: 110
@@ -1271,7 +1260,7 @@ companies:
   why: Constructeur du Rafale et des Falcon, accords d'entreprise et intéressement parmi les plus généreux de l'industrie
     française.
 - name: Equinix France
-  careers_url: https://equinix.wd3.myworkdayjobs.com/Equinix_Careers
+  careers_url: https://equinix.wd1.myworkdayjobs.com/External
   ats_guess: workday
   ats_verified: false
   priority: 112

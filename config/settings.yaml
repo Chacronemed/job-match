@@ -349,7 +349,7 @@ ai:
 # (`job-match cv validate`) and in every generated document.
 documents:
   model: claude-sonnet-5-5
-  prompt_version: "5"           # 5: headline_techs bounded by what the offer names, chronology checked on « puis / ensuite » only (4: availability sentence, conclusion alone, proven skills first, targeted retry)
+  prompt_version: "6"           # 6: the answer kit (motivation, why_company; ADR 0023). 5: headline_techs bounded by what the offer names, chronology checked on « puis / ensuite » only (4: availability sentence, conclusion alone, proven skills first, targeted retry)
   monthly_budget_usd: 60     # estimated from ai_usage tokens at the model's list prices
   default_estimate_per_document_usd: 0.08  # before « Générer les manquants » while no document was billed yet; then the mean of the last 20
   batch_size: 5              # pending documents per cron pass (every 10 minutes)

@@ -152,6 +152,11 @@ def write_renderer(out_dir: Path, worker: Path | None = None) -> None:
         browser_renderer((worker / "src" / "render.js").read_text(encoding="utf-8")),
         encoding="utf-8",
     )
+    # The answer kit (ADR 0023): pure, no import, served as is next to the renderer.
+    kit = (worker / "src" / "kit.js").read_text(encoding="utf-8")
+    if re.search(r"^import", kit, re.M):
+        raise ValueError("kit.js: must stay free of imports (the page loads it as is)")
+    (assets / "kit.js").write_text(kit, encoding="utf-8")
     vendor = out_dir / "vendor"
     vendor.mkdir(exist_ok=True)
     for name, src in VENDOR.items():

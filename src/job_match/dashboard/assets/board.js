@@ -215,7 +215,64 @@
       row.appendChild(el("span", { class: "doc-links" }, [el("span", { text: "CV :" }), fileCell(links, "cv", doc, "CV", j.key)]));
       row.appendChild(el("span", { class: "doc-links" }, [el("span", { text: "Lettre :" }), fileCell(links, "letter", doc, "Lettre", j.key)]));
     }
-    return el("div", { class: "documents" }, [el("h3", { text: "Documents" }), row]);
+    var parts = [el("h3", { text: "Documents" }), row];
+    if (links) parts.push(kitBlock(j, links));
+    return el("div", { class: "documents" }, parts);
+  }
+
+  /* The answer kit (ADR 0023): the model's two answers from content.json, the availability
+     from the master, the fixed answers and the salary rule from apply.json, built by the
+     Worker's own kit.js (assets/kit.js). A salary in `manuel` has no value and no « Copier »:
+     only the zone's benchmark. « Candidature envoyée » once I have sent it myself. */
+  var kitModule = null;
+  function loadKit() {
+    if (!kitModule) kitModule = import("./assets/kit.js").catch(function (err) { kitModule = null; throw err; });
+    return kitModule;
+  }
+  function copyText(text, button) {
+    var done = function () { showToast("Copié"); button.textContent = "Copié"; setTimeout(function () { button.textContent = "Copier"; }, 1500); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () { showToast("Copie refusée par le navigateur"); });
+    } else {
+      showToast("Copie impossible dans ce navigateur");
+    }
+  }
+  function kitBlock(j, links) {
+    var list = el("dl", { class: "kit-list" });
+    var state = el("p", { class: "kit-state", role: "status", text: "Kit de réponses : chargement…" });
+    var box = el("div", { class: "kit", "data-kit": j.key }, [el("h4", { text: "Kit de réponses" }), state, list]);
+    Promise.all([loadBundle(j.key, links.version), loadKit()]).then(function (r) {
+      var bundle = r[0];
+      var items = r[1].answerKit(bundle.content, bundle.master, bundle.apply || null, new Date(), j.location || "");
+      state.remove();
+      items.forEach(function (it) {
+        var dd = el("dd", { class: "kit-item", "data-kit-key": it.key });
+        if (it.text) dd.appendChild(el("span", { class: "kit-text", text: it.text }));
+        if (it.note) dd.appendChild(el("span", { class: "kit-note", text: it.note }));
+        if (it.copy && it.text) {
+          var b = el("button", { type: "button", class: "btn btn-sm kit-copy", "aria-label": "Copier : " + it.label, text: "Copier" });
+          b.addEventListener("click", function () { copyText(it.text, b); });
+          dd.appendChild(b);
+        }
+        list.appendChild(el("dt", { text: it.label + (it.key === "salary" ? (it.mode === "manuel" ? " (manuel)" : " (fourchette)") : "") }));
+        list.appendChild(dd);
+      });
+    }).catch(function (err) {
+      state.textContent = "Kit de réponses indisponible (" + failureText(err) + ")";
+    });
+    var app = track.apps[j.key];
+    if (!app || (app.status !== "applied" && app.status !== "interview")) {
+      var sent = el("button", { type: "button", class: "btn btn-primary btn-small kit-sent", text: "Candidature envoyée" });
+      sent.addEventListener("click", function () {
+        var today = T.localDay(new Date());
+        var follow = addDays(today, 7);
+        sent.disabled = true;
+        setRecord(j.key, { status: "applied", applied_at: today, follow_up_at: follow },
+          "Candidature envoyée le " + shortDay(today) + " · relance le " + shortDay(follow));
+      });
+      box.appendChild(el("p", { class: "kit-actions" }, [sent]));
+    }
+    return box;
   }
 
   /* ---------- Candidatures ---------- */

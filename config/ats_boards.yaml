@@ -1,13 +1,17 @@
 # Company career boards read through their ATS's public JSON endpoint (ADR 0020).
-# Public, unauthenticated, documented endpoints only: boards-api.greenhouse.io,
-# api.lever.co/v0/postings, api.ashbyhq.com/posting-api. No HTML scraping.
+# Public, unauthenticated endpoints only: boards-api.greenhouse.io, api.lever.co/v0/postings,
+# api.ashbyhq.com/posting-api, api.smartrecruiters.com/v1 and Workday's /wday/cxs/ JSON.
+# No HTML scraping.
 #
-# Every slug below was verified on 2026-11-04 with `scripts/ats_probe.py`: each board
-# answered 200 with at least one posting. Re-run the probe before adding a slug; a board
-# that answers 404 is skipped at run time with a warning, never a crash.
+# Every board below answered 200 with at least one posting: the first 30 on 2026-11-04
+# (`scripts/ats_probe.py`), the rest on 2026-11-05 (`job-match companies detect`, results in
+# config/companies_detected.yaml). Re-check before adding one; a board that answers 404 is
+# skipped at run time with a warning, never a crash.
 #
-# Offers from every office of these companies are fetched; the location gate keeps the
-# French ones, like for any other source.
+# Greenhouse / Lever / Ashby: offers from every office are fetched and the location gate
+# keeps the French ones. Workday / SmartRecruiters: only the French postings are listed
+# (country facet / `country=fr`), newest first, at most `max_postings` (default 100) per
+# board and run, each with one detail call for its description.
 boards:
   # Greenhouse — https://boards-api.greenhouse.io/v1/boards/<slug>/jobs?content=true
   - {company: Dataiku,          ats: greenhouse, slug: dataiku}
@@ -17,6 +21,9 @@ boards:
   - {company: Shift Technology, ats: greenhouse, slug: shifttechnology}
   - {company: Mirakl,           ats: greenhouse, slug: mirakl}
   - {company: Dashlane,         ats: greenhouse, slug: dashlane}
+  - {company: Datadog,          ats: greenhouse, slug: datadog}
+  - {company: Decathlon Technology, ats: greenhouse, slug: decathlontechnology}
+  - {company: Shadow,           ats: greenhouse, slug: shadow}
   # Lever — https://api.lever.co/v0/postings/<slug>
   - {company: BlaBlaCar,            ats: lever, slug: blablacar}
   - {company: Vestiaire Collective, ats: lever, slug: vestiairecollective}
@@ -26,9 +33,13 @@ boards:
   - {company: Swile,                ats: lever, slug: swile}
   - {company: Malt,                 ats: lever, slug: malt}
   - {company: Agicap,               ats: lever, slug: agicap}
+  # One board for Theodo, Theodo Cloud and Padok (Padok's careers page links to it).
   - {company: Theodo,               ats: lever, slug: theodo}
   - {company: Pigment,              ats: lever, slug: pigment}
   - {company: 360Learning,          ats: lever, slug: 360learning}
+  - {company: Veepee,               ats: lever, slug: veepee}
+  - {company: Lumapps,              ats: lever, slug: lumapps}
+  - {company: Scality,              ats: lever, slug: scality}
   # Ashby — https://api.ashbyhq.com/posting-api/job-board/<slug>
   - {company: Doctolib,    ats: ashby, slug: doctolib}
   - {company: Back Market, ats: ashby, slug: backmarket}
@@ -42,3 +53,27 @@ boards:
   - {company: Swan,        ats: ashby, slug: swan}
   - {company: Lifen,       ats: ashby, slug: lifen}
   - {company: Owkin,       ats: ashby, slug: owkin}
+  - {company: Ankorstore,  ats: ashby, slug: ankorstore}
+  - {company: Wescale,     ats: ashby, slug: wescale}
+  # SmartRecruiters — https://api.smartrecruiters.com/v1/companies/<id>/postings?country=fr
+  - {company: Devoteam,       ats: smartrecruiters, slug: Devoteam}
+  - {company: Ubisoft,        ats: smartrecruiters, slug: Ubisoft2}
+  - {company: Wavestone,      ats: smartrecruiters, slug: Wavestone1}
+  - {company: Octo Technology, ats: smartrecruiters, slug: OctoTechnology}
+  - {company: Saint-Gobain,   ats: smartrecruiters, slug: saintgobain}
+  - {company: LVMH,           ats: smartrecruiters, slug: lvmh}
+  - {company: Klaxoon,        ats: smartrecruiters, slug: klaxoon}
+  - {company: Dailymotion,    ats: smartrecruiters, slug: dailymotion}
+  - {company: Cegid,          ats: smartrecruiters, slug: cegid}
+  # Workday — POST https://<host>/wday/cxs/<tenant>/<site>/jobs, slug <host>/<tenant>/<site>.
+  # `cgm.wd3` is CompuGroup Medical, not CMA CGM: not listed.
+  - {company: Airbus,       ats: workday, slug: ag.wd3.myworkdayjobs.com/ag/Airbus}
+  - {company: Thales,       ats: workday, slug: thales.wd3.myworkdayjobs.com/thales/Careers}
+  - {company: Sanofi,       ats: workday, slug: sanofi.wd3.myworkdayjobs.com/sanofi/SanofiCareers}
+  - {company: Renault Group, ats: workday, slug: alliancewd.wd3.myworkdayjobs.com/alliancewd/renault-group-careers}
+  - {company: Air Liquide,  ats: workday, slug: airliquidehr.wd3.myworkdayjobs.com/airliquidehr/AirLiquideExternalCareer}
+  - {company: Michelin,     ats: workday, slug: michelinhr.wd3.myworkdayjobs.com/michelinhr/Michelin}
+  - {company: Accenture,    ats: workday, slug: accenture.wd103.myworkdayjobs.com/accenture/AccentureCareers}
+  - {company: Kyndryl,      ats: workday, slug: kyndryl.wd5.myworkdayjobs.com/kyndryl/KyndrylProfessionalCareers}
+  - {company: Euronext,     ats: workday, slug: hrhub.wd3.myworkdayjobs.com/hrhub/Euronext_Career_Page}
+  - {company: Equinix,      ats: workday, slug: equinix.wd1.myworkdayjobs.com/equinix/External}
