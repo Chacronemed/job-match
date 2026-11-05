@@ -24,7 +24,10 @@ Rule: the tool never presses Send / Submit, creates no account, solves no CAPTCH
    **`--sent [--follow-up-days 7]`**: `applied`, dates, `sent_documents_version`.
 4. Tests: `tests/fixtures/apply/` (3 ATS forms + unsupported + CAPTCHA, `guard.js` records
    any press or submit), `tests/unit/browser/test_apply_forms.py`, `test_answer_kit.py`,
-   `tests/unit/apply/`, `worker/test/kit.test.mjs`. Full suite: **1 677 passed**, ruff clean.
+   `tests/unit/apply/`, `worker/test/kit.test.mjs`. Full suite: **1 682 passed**, ruff clean.
+   **CI fix:** a record opened from `#…?fiche=` before `/api/applications` answered never got
+   its documents nor kit (race with the view transition; red in CI only). `loadTracking` now
+   refills the open record; `open_dashboard(hold_api=True)` + `page.release_api()` fix the order.
 **Next step:** write `private/apply.yaml` (from the example), `job-match cv push`, merge +
 deploy, « Regénérer » one kept offer (v6) and check its kit; then a first real
 `job-match apply <key>` on a Greenhouse / Lever / Ashby offer (Chromium for the profile:

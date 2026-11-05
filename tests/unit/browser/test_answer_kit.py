@@ -113,12 +113,21 @@ def _open(open_dashboard, key, apply=APPLY, status="to_apply"):
         ("GET", path): (200, {"Content-Type": "application/json"}, json.dumps(_bundle(key, apply))),
         ("PUT", put): (200, {"Content-Type": "application/json"}, json.dumps({"application": {}})),
     }
+    # The order is fixed, never raced: the record opens from the link first, then the tracking
+    # answers (the slow order of a real network, the one CI hit) and the record gains its kit.
     page, errors = open_dashboard(
-        _api(key, status), f"#offres?fiche={quote(key, safe='')}", init_script=GRANT, routes=routes
+        _api(key, status),
+        f"#offres?fiche={quote(key, safe='')}",
+        init_script=GRANT,
+        routes=routes,
+        hold_api=True,
     )
     page.on(
         "request", lambda r: saved.append(json.loads(r.post_data)) if r.method == "PUT" else None
     )
+    page.wait_for_selector("#record-title")
+    assert page.locator(".kit").count() == 0
+    page.release_api()
     page.wait_for_selector(f'.kit[data-kit="{key}"] .kit-list dd')
     return page, errors, saved
 

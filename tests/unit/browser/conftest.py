@@ -64,18 +64,36 @@ def open_dashboard(browser, dashboard_data, tmp_path):
     write_site(data, site)
     pages = []
 
-    def _open(api, hash_="#candidatures", init_script=None, viewport=(1440, 900), routes=None):
+    def _open(api, hash_="#candidatures", init_script=None, viewport=(1440, 900), routes=None,
+              hold_api=False):
         """`api`: the `GET /api/applications` payload, or a callable returning it per call
         (a polling test answers differently the second time). `routes`: {(method, path):
         (status, headers, body)} answered before the 404; every call to one of them, and every
         applications call, is appended to `page.api_calls` as (method, path); the renderer's
-        files (`.js`, `.ttf`) to `page.file_calls`, by path."""
+        files (`.js`, `.ttf`) to `page.file_calls`, by path. `hold_api`: the first applications
+        call waits until the test calls `page.release_api()` (a test fixes the order of the
+        page's own rendering and the API answer instead of racing them)."""
         ctx = browser.new_context(viewport={"width": viewport[0], "height": viewport[1]},
                                   accept_downloads=True)
         page = ctx.new_page()
         errors = []
         page.api_calls = []
         page.file_calls = []
+        held = []
+
+        def answer_api(route):
+            payload = api() if callable(api) else api
+            route.fulfill(status=200, content_type="application/json", body=json.dumps(payload))
+
+        def release_api():
+            for _ in range(250):  # the page may not have asked yet: 5 s at most
+                if held:
+                    return answer_api(held.pop())
+                page.wait_for_timeout(20)
+            raise AssertionError("the page never called GET /api/applications")
+
+        page.release_api = release_api
+        page.api_held = False
         page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
         page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
         if init_script:
@@ -88,8 +106,11 @@ def open_dashboard(browser, dashboard_data, tmp_path):
                 route.fulfill(status=200, content_type="text/html; charset=utf-8", body=html)
             elif path == "/api/applications" and request.method == "GET":
                 page.api_calls.append(("GET", path))
-                payload = api() if callable(api) else api
-                route.fulfill(status=200, content_type="application/json", body=json.dumps(payload))
+                if hold_api and not page.api_held:
+                    page.api_held = True
+                    held.append(route)
+                else:
+                    answer_api(route)
             elif extra is not None:
                 page.api_calls.append((request.method, path))
                 status, headers, body = extra
