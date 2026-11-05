@@ -749,3 +749,29 @@ def test_adapter_annotations_are_not_stored_and_do_not_count_as_a_change(db):
 
     second = run_jobs(DictSource(list(reversed(raws))), _profile(), _settings(), db, {})
     assert second.raw_stored == 0
+
+
+def test_board_sources_report_fetched_and_eligible_per_company(db):
+    class BoardSource(NamedSource):
+        reports_by_company = True
+
+    ats = [
+        _job("greenhouse:dataiku:1", source="ats", company="Dataiku",
+             url="https://example.com/jobs/d1"),
+        _job("greenhouse:dataiku:2", source="ats", company="Dataiku", location="Warsaw",
+             title="Senior DevOps", url="https://example.com/jobs/d2",
+             description="DevOps with Kubernetes. 8 years of experience required."),
+        _job("lever:swile:9", source="ats", company="Swile", title="SRE",
+             url="https://example.com/jobs/s9"),
+    ]
+    summary = run_jobs(
+        [NamedSource("france_travail", [_job("FT-1", company="Globex")]),
+         BoardSource("ats", ats, calls=2)],
+        _profile(), _settings(), db, {},
+    )
+
+    assert summary.by_company == {
+        "ats": {"Dataiku": {"fetched": 2, "eligible": 1}, "Swile": {"fetched": 1, "eligible": 1}},
+    }  # France Travail parses its employers: not broken down
+    payload = json.loads(db.conn.execute("SELECT summary_json FROM runs").fetchone()[0])
+    assert payload["by_company"] == summary.by_company

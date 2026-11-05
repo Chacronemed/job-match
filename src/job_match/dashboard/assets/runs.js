@@ -108,6 +108,29 @@
         });
         card.appendChild(sp);
       }
+
+      /* The company boards (source ats, ADR 0020): fetched / eligible per company, the
+         busiest first; a board that answered nothing is not listed. Folded: 30+ lines. */
+      Object.keys(r.by_company || {}).sort().forEach(function (name) {
+        var per = r.by_company[name] || {};
+        var names = Object.keys(per).sort(function (a, b) {
+          return (per[b].fetched || 0) - (per[a].fetched || 0) || a.localeCompare(b, "fr");
+        });
+        if (!names.length) return;
+        var box = el("details", { class: "run-companies" }, [
+          el("summary", { text: (name === "ats" ? "Pages carrière" : name) + " par entreprise (" + names.length + ")" })
+        ]);
+        var ul = el("ul");
+        names.forEach(function (c) {
+          ul.appendChild(el("li", null, [
+            c + " : ",
+            el("b", { text: String(per[c].fetched || 0) }), " récupérées, ",
+            el("b", { text: String(per[c].eligible || 0) }), " éligibles"
+          ]));
+        });
+        box.appendChild(ul);
+        card.appendChild(box);
+      });
       list.appendChild(card);
     });
   }

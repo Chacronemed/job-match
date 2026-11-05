@@ -133,7 +133,7 @@
   }
 
   var PENDING_MAX = 200;
-  var JOB_KEY = /^[a-z0-9_]{1,32}:[A-Za-z0-9._-]{1,64}$/;
+  var JOB_KEY = /^[a-z0-9_]{1,32}:[A-Za-z0-9._:-]{1,128}$/;
   var KINDS = { save: true, decide: true, undecide: true };
 
   function isObject(v) { return v !== null && typeof v === "object" && !Array.isArray(v); }

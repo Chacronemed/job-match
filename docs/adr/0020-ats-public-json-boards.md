@@ -51,3 +51,22 @@ stay where they are and are not read.
 - Adding a company is one YAML line after `scripts/ats_probe.py <slug>` shows it answers.
 - Offers from foreign offices are fetched and rejected by the location gate; they count in
   `fetched` and in `rejected: LOCATION`, which is visible in the run summary.
+
+## Amendment 2026-11-05 (M28): verify `companies.yaml` before reading it
+
+- `job-match companies detect` checks each of the 115 companies against the public endpoints
+  (the three above plus SmartRecruiters `api.smartrecruiters.com/v1/companies/<id>/postings`
+  and Workday `POST <tenant>.<wdN>.myworkdayjobs.com/wday/cxs/<tenant>/<site>/jobs`): the ATS
+  named in `careers_url`, else the links of one GET of the careers page (redirects followed,
+  links only, nothing stored), else the name as a slug. **Verified = 200 with at least one
+  posting**: an unknown SmartRecruiters id answers 200 with zero, so an empty board proves
+  nothing. A board id without the company name (a parent group's board) is flagged.
+  1 request/s per host. Results in `config/companies_detected.yaml`, read by no source yet:
+  the Workday and SmartRecruiters adapters wait for the report's review.
+- The tracking key of an `ats` offer is `ats:<ats>:<slug>:<id>` (up to ~70 characters with a
+  Lever UUID): the key rule (`JOB_KEY_RE`, Worker `validate.js` / `ai.js`, `triage.js`)
+  accepted neither the second `:` nor that length, so since this ADR the Worker refused every
+  status write and AI verdict on an `ats` offer (400). The id part now allows `:` and 128
+  characters.
+- Offres gets a Source filter (source, or one company board) and a Source column; Exécutions
+  lists fetched / eligible per company for `ats` (`by_company` in the run summary).

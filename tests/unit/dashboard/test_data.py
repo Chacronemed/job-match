@@ -16,7 +16,7 @@ from job_match.tracking.constants import JOB_KEY_RE
 
 JOB_KEYS = {
     "id", "key", "group", "section", "title", "company", "department", "location", "contract",
-    "source",
+    "source", "ats",
     "score", "required_years", "experience_status", "collected_at", "published_at",
     "posted_at", "age_days", "url", "explanations", "positive", "negative", "missing", "why",
     "description_excerpt", "ai_hash",
@@ -25,7 +25,7 @@ RUN_KEYS = {
     "id", "pipeline", "started_at", "finished_at", "fetched", "normalized",
     "rejected_by_reason", "duplicates", "self_links_dropped", "stale_links_dropped",
     "eligible", "strong", "stretch", "errors", "api_calls", "checked", "closed",
-    "by_source", "rejected",
+    "by_source", "by_company", "rejected",
 }
 
 
@@ -226,3 +226,14 @@ def test_ai_hash_follows_the_title_and_the_description_only():
     assert len(same) == 64 and same == ai_hash("ingenieur devops", "Kubernetes.")
     assert same != ai_hash("Ingénieur DevOps", "Kubernetes !")
     assert same != ai_hash("SRE", "Kubernetes.")
+
+
+def test_an_ats_offer_names_its_ats_and_runs_carry_the_per_company_counts(dashboard_data):
+    data, seed = dashboard_data
+    board = _by_id(data, seed.stretch)
+    assert board["source"] == "ats" and board["ats"] == "greenhouse"
+    assert _by_id(data, seed.strong)["ats"] is None
+    run = next(r for r in data["runs"] if r["pipeline"] == "jobs")
+    assert run["by_company"]["ats"]["Gamma"] == {"fetched": 7, "eligible": 2}
+    reprocess = next(r for r in data["runs"] if r["pipeline"] == "jobs_reprocess")
+    assert reprocess["by_company"] == {}

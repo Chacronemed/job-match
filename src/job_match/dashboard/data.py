@@ -53,6 +53,7 @@ RUN_KEYS: tuple[str, ...] = (
     "checked",
     "closed",
     "by_source",
+    "by_company",
 )
 
 _STRETCH_YEARS_RE = re.compile(r"requires (\d+(?:\.\d+)?)y")
@@ -221,6 +222,8 @@ def job_entry(job: Job, strong_threshold: int, now: datetime) -> dict:
         "location": job.location,
         "contract": job.contract_type.value,
         "source": job.source,
+        # The ATS behind an `ats` offer (its id is `<ats>:<slug>:<id>`, ADR 0020).
+        "ats": job.source_job_id.split(":", 1)[0] if job.source == "ats" else None,
         "score": job.score,
         "required_years": required_years(job),
         "experience_status": job.experience.status.value if job.experience else None,
@@ -270,7 +273,8 @@ def run_entry(run: RunRecord) -> dict:
         "finished_at": _iso(run.finished_at),
     }
     for key in RUN_KEYS:
-        entry[key] = s.get(key, {} if key in ("rejected_by_reason", "by_source") else 0)
+        mapping = key in ("rejected_by_reason", "by_source", "by_company")
+        entry[key] = s.get(key, {} if mapping else 0)
     # Unique rejected jobs are not stored (the per-reason map may count a job twice),
     # but the funnel is exact: everything fetched is rejected, a duplicate, eligible or stretch.
     entry["rejected"] = max(

@@ -70,6 +70,17 @@ class AtsBoard:
     slug: str  # the board's identifier in the ATS URL
 
 
+@dataclass(frozen=True)
+class TargetCompany:
+    """One company of config/companies.yaml (M28): where its careers page is, and the
+    unverified ATS guess `job-match companies detect` checks against the public endpoints."""
+
+    name: str
+    careers_url: str | None
+    ats_guess: str | None
+    priority: int | None = None
+
+
 @dataclass
 class SourcesConfig:
     """Which job sources run, and the geography/quota they run with.

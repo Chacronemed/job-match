@@ -21,7 +21,7 @@ export const REASONS_MAX = 3;
 export const REASON_LENGTH = 160;
 const DESCRIPTION_MAX = 5000;
 const MAX_TOKENS = 600;
-const JOB_KEY = /^[a-z0-9_]{1,32}:[A-Za-z0-9._-]{1,64}$/;
+const JOB_KEY = /^[a-z0-9_]{1,32}:[A-Za-z0-9._:-]{1,128}$/;
 const HASH = /^[0-9a-f]{64}$/;
 
 // Strict: every key required, nothing else, so a verdict is a verdict or nothing. Ranges and
