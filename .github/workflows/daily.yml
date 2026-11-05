@@ -5,6 +5,12 @@ on:
     - cron: "0 7 * * *"   # 07:00 UTC every day
   workflow_dispatch:       # manual trigger
     inputs:
+      stage:
+        description: "What to run: all = jobs, then funding, then site"
+        required: false
+        default: all
+        type: choice
+        options: [all, jobs, funding, site]
       reprocess_since:
         description: "Optional YYYY-MM-DD: reprocess data collected since this date (empty = normal run)"
         required: false
@@ -25,6 +31,15 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
+    # The cron has no inputs: it runs all. Each stage's steps check RUN_* ("true"/"false").
+    #   jobs    = tracking mirror, France Travail + ATS + other sources, scoring, digest, snapshot
+    #   funding = RSS funding pipeline, digest, snapshot
+    #   site    = D1 migrations, dashboard rebuilt from the snapshot, deploy
+    env:
+      STAGE: ${{ inputs.stage || 'all' }}
+      RUN_JOBS: ${{ contains(fromJSON('["all","jobs"]'), inputs.stage || 'all') }}
+      RUN_FUNDING: ${{ contains(fromJSON('["all","funding"]'), inputs.stage || 'all') }}
+      RUN_SITE: ${{ contains(fromJSON('["all","site"]'), inputs.stage || 'all') }}
 
     steps:
       - uses: actions/checkout@v7
@@ -70,19 +85,8 @@ jobs:
       # gunzip data-repo/jobs.sqlite.gz into data/ (the legacy plain jobs.sqlite is still
       # read once, on the first run after the switch); no file at all means a fresh start.
       - name: Restore DB
+        id: restore
         run: python -m job_match.persistence.snapshot restore --repo data-repo --db data/jobs.sqlite
-
-      # Node runs wrangler: the D1 steps below and the dashboard deploy at the end.
-      - name: Set up Node
-        continue-on-error: true
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      # The Worker bundles its PDF/DOCX libraries (worker/package.json, ADR 0017) at deploy.
-      - name: Install Worker dependencies
-        continue-on-error: true
-        run: npm ci --prefix worker > /dev/null
 
       # Application tracking lives in D1 (ADR 0012). Apply its migrations (idempotent), then
       # mirror applications, decisions and skill overrides into the jobs DB, before the jobs
@@ -91,8 +95,12 @@ jobs:
       # private temp dir, is never printed or uploaded, and is deleted at the end of the
       # step; the import prints counts only. A failed export keeps yesterday's mirror (it
       # travels in the DB snapshot), so neither step can block the digest or the push.
+      # Both run wrangler through npx on the runner's preinstalled Node: setup-node and the
+      # Worker's npm dependencies are only needed by the deploy (site stage). The migrations
+      # run here, before the export, for the jobs stage and for the site stage alike.
       - name: Apply D1 migrations
         id: d1_migrate
+        if: env.RUN_JOBS == 'true' || env.RUN_SITE == 'true'
         continue-on-error: true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -102,6 +110,7 @@ jobs:
 
       - name: Export tracking
         id: tracking
+        if: env.RUN_JOBS == 'true'
         continue-on-error: true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -128,7 +137,7 @@ jobs:
       # fetched again. No API calls; --limit 0 keeps job titles out of this public log.
       - name: Reprocess for skill overrides
         id: reprocess_overrides
-        if: ${{ steps.tracking.outputs.overrides_changed == 'true' }}
+        if: ${{ env.RUN_JOBS == 'true' && steps.tracking.outputs.overrides_changed == 'true' }}
         continue-on-error: true
         run: |
           since=$(python -c "from datetime import date, timedelta; from pathlib import Path; from job_match.config.loader import load_settings; print(date.today() - timedelta(days=load_settings(Path('config/settings.yaml')).jobs.max_age_days))")
@@ -138,6 +147,7 @@ jobs:
       # rest. Which sources are enabled is config/settings.yaml, not this file.
       - name: Run pipeline
         id: pipeline
+        if: env.RUN_JOBS == 'true'
         run: job-match run
         env:
           FT_CLIENT_ID:     ${{ secrets.FT_CLIENT_ID }}
@@ -153,7 +163,7 @@ jobs:
       # $GITHUB_STEP_SUMMARY; an exception in a run is announced there and as an error
       # annotation before the step turns red.
       - name: Check sources
-        if: always() && steps.pipeline.outcome != 'skipped'
+        if: always() && env.RUN_JOBS == 'true' && steps.pipeline.outcome != 'skipped'
         continue-on-error: true
         run: job-match ops check-sources --days 3
         env:
@@ -168,6 +178,7 @@ jobs:
       # unexpected crashes so the jobs digest and the DB push still happen.
       - name: Run funding pipeline
         id: funding
+        if: env.RUN_FUNDING == 'true'
         continue-on-error: true
         run: job-match funding run
 
@@ -177,7 +188,7 @@ jobs:
       # the cleaned DB is the one pushed. --limit 0 keeps job titles out of this public log.
       - name: Reprocess jobs
         id: reprocess_jobs
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.reprocess_since != '' && (inputs.reprocess_scope == 'jobs' || inputs.reprocess_scope == 'both') }}
+        if: ${{ env.RUN_JOBS == 'true' && github.event_name == 'workflow_dispatch' && inputs.reprocess_since != '' && (inputs.reprocess_scope == 'jobs' || inputs.reprocess_scope == 'both') }}
         continue-on-error: true
         env:
           REPROCESS_SINCE: ${{ inputs.reprocess_since }}
@@ -188,16 +199,18 @@ jobs:
       # never interpolated into the script; the CLI rejects anything that is not a date.
       - name: Reprocess funding articles
         id: reprocess
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.reprocess_since != '' && (inputs.reprocess_scope == 'funding' || inputs.reprocess_scope == 'both') }}
+        if: ${{ env.RUN_FUNDING == 'true' && github.event_name == 'workflow_dispatch' && inputs.reprocess_since != '' && (inputs.reprocess_scope == 'funding' || inputs.reprocess_scope == 'both') }}
         continue-on-error: true
         env:
           REPROCESS_SINCE: ${{ inputs.reprocess_since }}
         run: job-match funding reprocess --since "$REPROCESS_SINCE"
 
       # Checkpoint and VACUUM before committing the DB file.
-      # Must run after the pipeline closes its connection.
+      # Must run after the pipeline closes its connection. Only when a stage wrote the DB:
+      # a site-only run reads the snapshot and pushes nothing back.
       - name: WAL checkpoint and VACUUM
         id: wal
+        if: env.RUN_JOBS == 'true' || env.RUN_FUNDING == 'true'
         run: |
           python - <<'EOF'
           import sqlite3, pathlib
@@ -215,6 +228,7 @@ jobs:
       # is masked everywhere in the log, so "465" would hide every count that equals it.
       # Unset, it expands to "" and the notifier falls back to 465.
       - name: Send digest
+        if: env.RUN_JOBS == 'true' || env.RUN_FUNDING == 'true'
         run: job-match digest
         env:
           SMTP_HOST:     ${{ secrets.SMTP_HOST }}
@@ -236,13 +250,32 @@ jobs:
       # never block the DB push above. The repo is public: site/ is never an Actions
       # artifact, nothing in it is printed, and wrangler's stdout (which carries the
       # Worker URL) is discarded; stderr stays so a failed deploy is diagnosable.
+      # Site stage only: after jobs / funding it needs their snapshot (wal success); alone,
+      # it rebuilds from the restored snapshot. Node and npm ci only run here.
+      - name: Set up Node
+        if: always() && env.RUN_SITE == 'true' && steps.restore.outcome == 'success' && (steps.wal.outcome == 'success' || env.STAGE == 'site')
+        continue-on-error: true
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+
+      # The Worker bundles its PDF/DOCX libraries (worker/package.json, ADR 0017) at deploy.
+      - name: Install Worker dependencies
+        if: always() && env.RUN_SITE == 'true' && steps.restore.outcome == 'success' && (steps.wal.outcome == 'success' || env.STAGE == 'site')
+        continue-on-error: true
+        run: npm ci --prefix worker > /dev/null
+
       - name: Build dashboard
-        if: always() && steps.wal.outcome == 'success'
+        id: build
+        if: always() && env.RUN_SITE == 'true' && steps.restore.outcome == 'success' && (steps.wal.outcome == 'success' || env.STAGE == 'site')
         continue-on-error: true
         run: job-match dashboard --out site
 
       - name: Deploy dashboard
-        if: always() && steps.wal.outcome == 'success'
+        id: deploy
+        if: always() && env.RUN_SITE == 'true' && steps.restore.outcome == 'success' && (steps.wal.outcome == 'success' || env.STAGE == 'site')
         continue-on-error: true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -255,3 +288,27 @@ jobs:
           fi
           npx --yes wrangler@4 deploy > /dev/null
           echo "Dashboard deployed"
+
+      # Which stages were played or skipped, with each stage's main-step outcome. With
+      # continue-on-error a failed step's outcome is "failure" even though the job is green.
+      - name: Stage summary
+        if: always()
+        env:
+          JOBS_OUTCOME: ${{ steps.pipeline.outcome }}
+          FUNDING_OUTCOME: ${{ steps.funding.outcome }}
+          SITE_OUTCOME: ${{ steps.deploy.outcome }}
+        run: |
+          {
+            echo "### Stages (stage=$STAGE)"
+            echo ""
+            echo "| Stage | Played | Main step |"
+            echo "|---|---|---|"
+            for row in "jobs:$RUN_JOBS:$JOBS_OUTCOME" "funding:$RUN_FUNDING:$FUNDING_OUTCOME" "site:$RUN_SITE:$SITE_OUTCOME"; do
+              IFS=: read -r name played outcome <<< "$row"
+              if [ "$played" = "true" ]; then
+                echo "| $name | played | ${outcome:-not reached} |"
+              else
+                echo "| $name | skipped | - |"
+              fi
+            done
+          } >> "$GITHUB_STEP_SUMMARY"

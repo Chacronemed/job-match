@@ -168,6 +168,7 @@ CONTENT = {
 }
 
 
+@pytest.mark.worker
 def test_render_local_writes_both_pdfs_and_the_kit(tmp_path):
     if not shutil.which("node") or not Path("worker/node_modules/pdf-lib").exists():
         if os.environ.get("CI"):
