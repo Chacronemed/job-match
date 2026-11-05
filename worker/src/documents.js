@@ -1069,7 +1069,7 @@ export async function runDocuments(env, opts = {}) {
       continue;
     }
     const job = offers.get(row.job_key);
-    if (!job) {
+    if (!job || job.closed === true) { // gone from data.json, or the source said it is closed
       await setStatus(env.DB, row.id, "failed", { error_code: "offer_gone" }, now);
       counters.skipped += 1;
       continue;
@@ -1263,7 +1263,9 @@ export async function requestMissingDocuments(db, env, now, opts = {}) {
     )
     .bind(...statuses)
     .all();
-  const keys = rows.results.map((r) => r.job_key);
+  // An application on an offer the source closed is « Expirée » (ADR 0024): no documents.
+  const offers = offerIndex(await loadAsset(env, "/data.json"));
+  const keys = rows.results.map((r) => r.job_key).filter((k) => !(offers.get(k) && offers.get(k).closed === true));
   let cap = Math.floor(budget.remaining_usd / budget.estimate_usd);
   if (Number.isInteger(opts.limit) && opts.limit >= 0) cap = Math.min(cap, opts.limit);
   const requested = [];

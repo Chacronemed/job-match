@@ -62,7 +62,9 @@ downstream are the same as for any other source.
 
 `source_job_id` is `<ats>:<board id>:<id>` so `check_offer` can find the board again: an
 id missing from a complete listing that answered 200 is CLOSED, a board that could not be
-read, or a listing cut at `max_postings`, is UNKNOWN for an id it did not list.
+read is UNKNOWN. A listing cut at `max_postings` proves nothing for an id it did not list,
+so that one posting is asked directly: SmartRecruiters' detail call (404 = CLOSED), a
+Workday search on the requisition id (an answer without it = CLOSED).
 The board id is the slug, except Workday's `<host>/<tenant>/<site>`, which becomes
 `<tenant>.<site>` (the tracking key allows no `/`).
 """
@@ -181,8 +183,9 @@ class AtsBoardSource:
                 self._sleep(wait)
         self._last_request[host] = self._clock()
 
-    def _json(self, method: str, url: str, label: str, **kwargs: Any) -> Any:
-        """The decoded body, or None when the call failed (logged, never raised)."""
+    def _call(self, method: str, url: str, label: str, **kwargs: Any) -> tuple[int | None, Any]:
+        """(HTTP status, decoded body): (None, None) on a network error, (404, None) for a
+        404, (status, None) for any other error status. Logged, never raised."""
         try:
             self._throttle(url)
             headers = {"Accept": "application/json"}
@@ -192,13 +195,18 @@ class AtsBoardSource:
                 resp = self._http.get(url, headers=headers, **kwargs)
             self._api_calls += 1
             if resp.status_code == 404:
-                logger.warning("%s: %s answers 404, skipped (slug gone?)", self.name, label)
-                return None
+                logger.warning("%s: %s answers 404 (gone?)", self.name, label)
+                return 404, None
             resp.raise_for_status()
-            return resp.json()
+            return resp.status_code, resp.json()
         except Exception as exc:
             logger.warning("%s: %s unreachable: %s", self.name, label, type(exc).__name__)
-            return None
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            return status, None
+
+    def _json(self, method: str, url: str, label: str, **kwargs: Any) -> Any:
+        """The decoded body, or None when the call failed (logged, never raised)."""
+        return self._call(method, url, label, **kwargs)[1]
 
     # ------------------------------------------------------------------ listings
 
@@ -401,7 +409,36 @@ class AtsBoardSource:
         ids, complete = seen
         if job_id in ids:
             return OfferStatus.OPEN
-        return OfferStatus.CLOSED if complete else OfferStatus.UNKNOWN
+        if complete:
+            return OfferStatus.CLOSED
+        board = next(b for b in self._boards if f"{b.ats}:{board_id(b)}" == key)
+        return self._probe(board, job_id)
+
+    def _probe(self, board: AtsBoard, job_id: str) -> OfferStatus:
+        """A capped listing did not list the id: ask the board about that one posting.
+
+        SmartRecruiters: its detail call, 404 (or `active: false`) is CLOSED. Workday: a
+        search on the requisition id over the whole board (no facet); an answer without
+        that id is CLOSED. Any failed call is UNKNOWN."""
+        if board.ats == "smartrecruiters":
+            status, body = self._call("GET", f"{board_url(board)}/{job_id}",
+                                      f"smartrecruiters/{board.slug} posting")
+            if status == 404:
+                return OfferStatus.CLOSED
+            if not isinstance(body, dict):
+                return OfferStatus.UNKNOWN
+            return OfferStatus.CLOSED if body.get("active") is False else OfferStatus.OPEN
+        if board.ats == "workday":
+            body = self._json("POST", board_url(board), f"workday/{board_id(board)} search",
+                              json={"appliedFacets": {}, "limit": WORKDAY_PAGE, "offset": 0,
+                                    "searchText": job_id})
+            if not isinstance(body, dict) or not isinstance(body.get("jobPostings"), list):
+                return OfferStatus.UNKNOWN
+            found = any(isinstance(p, dict) and p.get("externalPath")
+                        and _workday_id(str(p["externalPath"])) == job_id
+                        for p in body["jobPostings"])
+            return OfferStatus.OPEN if found else OfferStatus.CLOSED
+        return OfferStatus.UNKNOWN
 
 
 # ---------------------------------------------------------------------- Workday helpers

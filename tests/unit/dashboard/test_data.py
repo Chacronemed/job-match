@@ -19,7 +19,7 @@ JOB_KEYS = {
     "source", "ats",
     "score", "required_years", "experience_status", "collected_at", "published_at",
     "posted_at", "age_days", "url", "explanations", "positive", "negative", "missing", "why",
-    "description_excerpt", "ai_hash",
+    "description_excerpt", "ai_hash", "apply_form", "closed",
 }
 RUN_KEYS = {
     "id", "pipeline", "started_at", "finished_at", "fetched", "normalized",

@@ -17,6 +17,7 @@ import re
 from datetime import datetime, timedelta
 from urllib.parse import urlsplit
 
+from job_match.apply.forms import detect_ats
 from job_match.config.schema import Settings
 from job_match.domain.models import (
     STRETCH_NOTE_PREFIX,
@@ -232,6 +233,10 @@ def job_entry(job: Job, strong_threshold: int, now: datetime) -> dict:
         "posted_at": posted.isoformat(),
         "age_days": max((now - posted).days, 0),  # as of generated_at; the page is a snapshot
         "url": safe_url(job.url),
+        # The form `job-match apply` fills (greenhouse / lever / ashby), None: by hand.
+        "apply_form": detect_ats(job.url) if safe_url(job.url) else None,
+        # The source said the offer is gone (only a tracked one can be: the list hides them).
+        "closed": False,
         "explanations": list(bd.explanations) if bd else [],
         "positive": list(bd.positive_matches) if bd else [],
         "negative": list(bd.negative_matches) if bd else [],
@@ -292,6 +297,9 @@ def build_dashboard_data(db: Database, settings: Settings, now: datetime) -> dic
     leads = LeadRepository(db.conn).list_details(jobs_since)
     runs = RunRepository(db.conn).list_recent(RUN_PIPELINES, limit=RUN_LIMIT)
     listed = {j.id for j in jobs}
+    repo = JobRepository(db.conn)
+    tracked = [j for j in repo.list_tracked(TRACKED_STATUSES) if j.id not in listed]
+    closed = repo.closed_ids([j.id for j in tracked if j.id is not None])
     return {
         "generated_at": now.isoformat(),
         "thresholds": {
@@ -301,9 +309,8 @@ def build_dashboard_data(db: Database, settings: Settings, now: datetime) -> dic
         "jobs": [job_entry(j, settings.strong_threshold, now) for j in jobs],
         # Offers behind a Candidatures card that the job list no longer shows (closed or old).
         "tracked": [
-            job_entry(j, settings.strong_threshold, now)
-            for j in JobRepository(db.conn).list_tracked(TRACKED_STATUSES)
-            if j.id not in listed
+            {**job_entry(j, settings.strong_threshold, now), "closed": j.id in closed}
+            for j in tracked
         ],
         "leads": [lead_entry(lead) for lead in leads],
         "runs": [run_entry(r) for r in runs],

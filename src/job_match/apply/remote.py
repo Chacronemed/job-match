@@ -107,3 +107,10 @@ def mark_sent(key: str, applied: date, follow_up: date, version: int | None,
         sql += (f" UPDATE applications SET sent_documents_version = {int(version)}"
                 f" WHERE job_key = '{k}';")
     d1(sql, run)
+
+
+def kept_applications(run: Callable | None = None) -> list[dict]:
+    """The applications « À candidater », {job_key, status, updated_at}."""
+    rows = d1("SELECT job_key, status, updated_at FROM applications"
+              " WHERE status = 'to_apply' ORDER BY updated_at, job_key", run)
+    return [r for r in rows if isinstance(r, dict) and JOB_KEY_RE.match(str(r.get("job_key")))]

@@ -854,7 +854,7 @@ table.data.apps col.w-company { width: 16%; }
 table.data.apps col.w-ai { width: 72px; }
 table.data.apps col.w-status { width: 196px; }
 table.data.apps col.w-doc { width: 126px; }
-table.data.apps col.w-link { width: 76px; }
+table.data.apps col.w-link { width: 168px; } /* « Postuler » and « Offre ↗ » */
 table.data.apps col.w-due { width: 150px; }
 table.data.apps td.apps-title .link-btn { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 table.data.apps td.apps-status, table.data.apps td.apps-docs, table.data.apps td.doc-cell, table.data.apps td.apps-due { overflow: visible; text-overflow: clip; }
@@ -862,6 +862,16 @@ table.data.apps td.apps-docs > * { vertical-align: middle; margin-right: 8px; }
 table.data.apps .kb-status { min-height: 30px; max-width: 100%; }
 table.data.apps td.is-due { color: var(--stretch-ink); font-weight: 500; }
 table.data.apps .apps-unknown { color: var(--ink-tertiary); font-style: italic; }
+/* Under the title: whether `job-match apply` fills the form (ADR 0024). */
+table.data.apps .apps-form { display: block; font-size: 11px; line-height: 1.3; color: var(--ink-tertiary); }
+table.data.apps .apps-form.can-prefill { color: var(--ink-muted); }
+table.data.apps .apps-gone { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+table.data.apps td.link-col > * { vertical-align: middle; margin-right: 8px; }
+/* « Expirée »: kept, but the source closed the offer. Grey, on its own line above the menu. */
+.status-badge.is-expired { display: inline-block; margin: 0 0 4px; padding: 1px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; color: var(--ink-muted); background: var(--hairline); }
+table.data.apps td.apps-status .status-badge { display: table; }
+table.data.apps tr.is-expired td.apps-title, table.data.apps tr.is-expired td.apps-company { color: var(--ink-tertiary); }
 .btn-sm { min-height: 26px; padding: 2px 10px; font-size: 12px; }
 
 @media (max-width: 1100px) {
