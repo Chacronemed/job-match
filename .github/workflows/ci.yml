@@ -26,6 +26,17 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
 
+      # write_site copies the PDF/DOCX renderer's libraries (pdf-lib, fontkit, fflate) from
+      # worker/node_modules (ADR 0017): the dashboard render tests need them. No Playwright.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+
+      - name: Install Worker dependencies
+        run: npm ci --prefix worker
+
       - name: Install
         run: pip install ".[dev]"
 

@@ -37,9 +37,15 @@ def test_fast_lints_and_runs_the_unmarked_tests_in_parallel_without_node_or_chro
     assert _step("fast", "Lint")["run"] == "ruff check ."
     assert _step("fast", "Test")["run"] == 'pytest -q -n auto -m "not browser and not worker"'
     assert "if" not in _wf()["jobs"]["fast"]
-    uses = _uses("fast")
-    assert not any(u.startswith("actions/setup-node") for u in uses)
-    assert all("playwright" not in str(s.get("run", "")) for s in _wf()["jobs"]["fast"]["steps"])
+    # write_site needs worker/node_modules (pdf-lib, fontkit, fflate), installed before pytest
+    steps = _wf()["jobs"]["fast"]["steps"]
+    names = [s.get("name") or s.get("uses") for s in steps]
+    node = next(s for s in steps if s.get("uses", "").startswith("actions/setup-node"))
+    assert node["with"]["cache"] == "npm"
+    assert node["with"]["cache-dependency-path"] == "worker/package-lock.json"
+    assert _step("fast", "Install Worker dependencies")["run"] == "npm ci --prefix worker"
+    assert names.index("Install Worker dependencies") < names.index("Test")
+    assert all("playwright" not in str(s.get("run", "")) for s in steps)
     python = next(s for s in _wf()["jobs"]["fast"]["steps"]
                   if s.get("uses", "").startswith("actions/setup-python"))
     assert python["with"]["cache"] == "pip"
