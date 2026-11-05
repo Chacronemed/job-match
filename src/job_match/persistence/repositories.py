@@ -843,6 +843,7 @@ class RunRepository:
                         "funding_no_company": summary.funding_no_company,
                         "leads_deduped": summary.leads_deduped,
                         "by_source": summary.by_source,
+                        "by_company": summary.by_company,
                         "queries": summary.queries,
                         "by_area": summary.by_area,
                         "by_department": summary.by_department,

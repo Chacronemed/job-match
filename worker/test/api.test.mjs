@@ -207,6 +207,13 @@ describe("validation", () => {
     }
   });
 
+  test("a company-board key (ats:<ats>:<slug>:<uuid>, ADR 0020) is accepted", async () => {
+    const key = "ats:lever:vestiairecollective:0f8e6a3c-1b2d-4e5f-9a8b-7c6d5e4f3a2b";
+    const res = await call(`/api/applications/${key}`, { method: "PUT", body: VALID });
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).application.job_key, key);
+  });
+
   test("non-JSON content type -> 415", async () => {
     const res = await call(PATH, {
       method: "PUT",

@@ -140,3 +140,36 @@ def test_light_theme_is_one_click_away_and_remembered(open_dashboard, job_keys):
     assert bg == ("rgb(252, 252, 253)" if after == "light" else "rgb(17, 17, 19)")
     assert page.evaluate("localStorage.getItem('job-match-theme')") == after
     assert errors == []
+
+
+def test_source_filter_lists_the_company_boards_and_outlives_a_reload(open_dashboard, job_keys):
+    page, errors = _open(open_dashboard, _api(job_keys))
+    options = page.eval_on_selector_all("#f-source option", "os => os.map(o => o.value)")
+    assert options == ["", "france_travail", "ats", "ats:Gamma"]
+    cells = page.eval_on_selector_all(f"{ROWS} td.col-source", "ts => ts.map(t => t.textContent)")
+    assert "Greenhouse" in cells and "France Travail" in cells
+    page.locator("#jobs-controls summary").click()
+    page.locator("#f-source").select_option("ats:Gamma")
+    page.wait_for_function(f"() => document.querySelectorAll('{ROWS}').length === 1")
+    assert page.locator(f"{ROWS} td.col-source").inner_text() == "Greenhouse"
+    assert "src=ats%3AGamma" in page.evaluate("location.hash")
+    page.reload()
+    page.wait_for_selector(ROWS)
+    assert page.locator("#f-source").input_value() == "ats:Gamma"
+    assert page.locator(ROWS).count() == 1
+    page.locator("#f-source").select_option("france_travail")
+    page.wait_for_function(f"() => document.querySelectorAll('{ROWS}').length > 1")
+    assert "Greenhouse" not in page.eval_on_selector_all(
+        f"{ROWS} td.col-source", "ts => ts.map(t => t.textContent)")
+    assert errors == []
+
+
+def test_runs_show_fetched_and_eligible_per_company_board(open_dashboard, job_keys):
+    page, errors = open_dashboard(_api(job_keys), hash_="#executions")
+    page.wait_for_selector("#runs-list .run")
+    box = page.locator("#runs-list .run-companies").first  # the newest card is a reprocess
+    assert box.locator("summary").inner_text() == "Pages carrière par entreprise (2)"
+    box.locator("summary").click()
+    assert box.locator("li").all_inner_texts() == [
+        "Gamma : 7 récupérées, 2 éligibles", "Dataiku : 3 récupérées, 0 éligibles"]
+    assert errors == []

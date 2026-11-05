@@ -129,6 +129,21 @@ def main() -> None:
     check_p.add_argument("--days", type=int, default=3, metavar="N",
                          help="Consecutive runs with 0 results that trigger the alert (default: 3)")
 
+    companies_p = sub.add_parser(
+        "companies", help="Target companies (config/companies.yaml): which ATS serves them"
+    )
+    companies_sub = companies_p.add_subparsers(dest="companies_command", metavar="SUBCOMMAND")
+    detect_p = companies_sub.add_parser(
+        "detect",
+        help="Check each company's real ATS and board id on the public endpoints; print a report",
+    )
+    detect_p.add_argument("--only", metavar="NAME", action="append",
+                          help="Only this company (repeatable; case-insensitive)")
+    detect_p.add_argument("--out", metavar="PATH", type=Path,
+                          help="Also write the results as YAML (config/companies_detected.yaml)")
+    detect_p.add_argument("--report", metavar="PATH", type=Path,
+                          help="Also write the Markdown report to this file")
+
     tracking_p = sub.add_parser("tracking", help="Application tracking mirror (D1 -> jobs DB)")
     tracking_sub = tracking_p.add_subparsers(dest="tracking_command", metavar="SUBCOMMAND")
     timp_p = tracking_sub.add_parser(
@@ -197,6 +212,12 @@ def main() -> None:
             _cmd_check_sources(args)
         else:
             ops_p.print_help()
+            sys.exit(1)
+    elif args.command == "companies":
+        if args.companies_command == "detect":
+            _cmd_companies_detect(args)
+        else:
+            companies_p.print_help()
             sys.exit(1)
     elif args.command == "tracking":
         if args.tracking_command == "import":
@@ -525,6 +546,51 @@ def _fail_loudly(step: str, exc: BaseException) -> None:
     (the re-raise) turns the step red. The traceback goes to the log as usual."""
     append_step_summary(failure_markdown(step, exc))
     print(f"::error title={step} failed::{type(exc).__name__}: {exc}")
+
+
+def _cmd_companies_detect(args: argparse.Namespace) -> None:
+    """`job-match companies detect`: the real ATS of each target company (M28). Network
+    reads of public endpoints only; prints the Markdown report, writes nothing by default."""
+    logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s %(message)s")
+    _quiet_http_logs()
+    for stream in (sys.stdout, sys.stderr):  # a Windows console is cp1252: « ✓ », « → »
+        try:
+            stream.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError):
+            pass
+
+    from job_match.companies.detect import Detector, detect_all
+    from job_match.companies.report import render_report, write_record
+    from job_match.config.loader import ConfigError, load_companies
+
+    try:
+        companies = load_companies(_config_dir() / "companies.yaml")
+    except ConfigError as exc:
+        print(f"companies.yaml: {exc}", file=sys.stderr)
+        sys.exit(1)
+    if args.only:
+        wanted = {n.lower() for n in args.only}
+        companies = [c for c in companies if c.name.lower() in wanted]
+    if not companies:
+        print("No company to check.")
+        return
+
+    def progress(i: int, found) -> None:
+        print(f"[{i}/{len(companies)}] {found.company}: {found.status} "
+              f"{found.ats or found.platform or ''}", file=sys.stderr)
+
+    detector = Detector()
+    try:
+        results = detect_all(companies, detector, progress=progress)
+    finally:
+        detector.close()
+    report = render_report(results, requests=detector.requests)
+    print(report)
+    if args.report:
+        args.report.write_text(report, encoding="utf-8")
+    if args.out:
+        write_record(results, args.out, datetime.now().astimezone())
+        print(f"Written: {args.out}", file=sys.stderr)
 
 
 def _cmd_check_sources(args: argparse.Namespace) -> None:

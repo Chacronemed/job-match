@@ -8,7 +8,7 @@ export const URL_MAX = 500;
 
 export const SKILL_MAX = 40;
 
-const JOB_KEY_RE = /^[a-z0-9_]{1,32}:[A-Za-z0-9._-]{1,64}$/;
+const JOB_KEY_RE = /^[a-z0-9_]{1,32}:[A-Za-z0-9._:-]{1,128}$/;
 // A vocabulary term, lowercase: "gitlab ci", "c#", "node.js".
 const SKILL_RE = /^[a-z0-9][a-z0-9+#./ -]{0,39}$/;
 const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;

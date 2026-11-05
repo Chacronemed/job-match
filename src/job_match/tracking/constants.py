@@ -13,7 +13,7 @@ ACTIVE_STATUSES = ("to_review", "to_apply")
 # A follow-up stops mattering once the application is closed either way.
 NO_FOLLOW_UP_STATUSES = ("rejected", "ignored")
 
-JOB_KEY_RE = re.compile(r"^[a-z0-9_]{1,32}:[A-Za-z0-9._-]{1,64}\Z")
+JOB_KEY_RE = re.compile(r"^[a-z0-9_]{1,32}:[A-Za-z0-9._:-]{1,128}\Z")
 # A skill override's name: a lowercase vocabulary term ("gitlab ci", "c#", "node.js").
 SKILL_MAX = 40
 SKILL_RE = re.compile(r"^[a-z0-9][a-z0-9+#./ -]{0,39}\Z")

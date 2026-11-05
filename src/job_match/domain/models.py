@@ -334,6 +334,9 @@ class RunSummary:
     self_links_dropped: int = 0
     stale_links_dropped: int = 0
     by_source: dict[str, dict[str, int]] = field(default_factory=dict)
+    # source → company → {fetched, eligible}, for the sources that read named company
+    # boards (ats); the others parse the employer from the posting and are not broken down.
+    by_company: dict[str, dict[str, dict[str, int]]] = field(default_factory=dict)
     by_area: dict[str, int] = field(default_factory=dict)  # queried area → fetched
     # Where the offers actually are, parsed from each offer's own location: the only
     # geographic breakdown left once the search is national and by_area is just "all".

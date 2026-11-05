@@ -31,6 +31,7 @@ from job_match.config.schema import (
     SkillWeight,
     SourceLimits,
     SourcesConfig,
+    TargetCompany,
     TitleRelevanceConfig,
 )
 from job_match.domain.models import ContractType
@@ -106,6 +107,35 @@ def load_ats_boards(path: Path) -> list[AtsBoard]:
             raise ConfigError(f"boards[{i}] needs a company and a URL-safe slug in {path}")
         boards.append(AtsBoard(company=company, ats=ats, slug=slug))
     return boards
+
+
+def load_companies(path: Path) -> list[TargetCompany]:
+    """The target companies of `config/companies.yaml`, in file order. Missing file: none.
+
+    Only what detection needs is read (name, careers_url, ats_guess, priority); the rest of
+    each entry (sector, sites, why) is for me, not for the code. A `careers_url` that is
+    not http(s) is dropped: it would be fetched.
+    """
+    if not path.exists():
+        return []
+    with path.open(encoding="utf-8") as fh:
+        raw = yaml.safe_load(fh) or {}
+    entries = raw.get("companies") if isinstance(raw, dict) else None
+    if not isinstance(entries, list):
+        raise ConfigError(f"companies file must have a `companies` list: {path}")
+    companies: list[TargetCompany] = []
+    for i, entry in enumerate(entries):
+        if not isinstance(entry, dict) or not str(entry.get("name") or "").strip():
+            raise ConfigError(f"companies[{i}] needs a name in {path}")
+        url = str(entry.get("careers_url") or "").strip()
+        priority = entry.get("priority")
+        companies.append(TargetCompany(
+            name=str(entry["name"]).strip(),
+            careers_url=url if re.match(r"https?://", url) else None,
+            ats_guess=str(entry.get("ats_guess") or "").strip().lower() or None,
+            priority=priority if isinstance(priority, int) else None,
+        ))
+    return companies
 
 
 def load_skill_vocabulary(path: Path) -> tuple[str, ...]:

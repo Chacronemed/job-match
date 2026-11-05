@@ -3,7 +3,33 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**Four-item pass (branch `claude/intelligent-lovelace-wxyiss`, 2026-11-04, one commit per item,
+**M28: companies.yaml exploité, part 1 (source visibility + detection)** (branch
+`feat/m28-companies` from `main` at PR #16, 2026-11-05, ADR 0020 amendment). **Done locally,
+stopped before the Workday / SmartRecruiters adapters** (the report is to be reviewed first).
+1. **Offres:** Source filter (`#f-source`, hash `src=`: France Travail / Adzuna / Jooble /
+   « Pages carrière (ATS) », and under it one entry per ATS company, `ats:<company>`) and a
+   Source column (the ATS name for an `ats` offer: `ats` field in data.json). **Exécutions:**
+   « Pages carrière par entreprise (N) », fetched / eligible per company (`by_company` in the
+   run summary, filled by the sources with `reports_by_company`, so `ats` only).
+2. **Fix (prod bug since PR #16):** an `ats` key `ats:<ats>:<slug>:<id>` failed `JOB_KEY_RE`
+   (second `:`, and > 64 chars with a Lever UUID): the Worker answered 400 to every status
+   write and AI verdict on an ATS offer. Id part now `[A-Za-z0-9._:-]{1,128}` in
+   `tracking/constants.py`, `worker/src/validate.js`, `ai.js`, `assets/triage.js`.
+3. **`job-match companies detect [--only NAME] [--out PATH] [--report PATH]`**
+   (`src/job_match/companies/`): ATS from the URL, else one GET of the careers page (links
+   only), else name slugs; verified = 200 with ≥ 1 posting; 1 req/s per host. Live run
+   2026-11-05: **44 verified** (Greenhouse 9, Lever 14, Ashby 8, SmartRecruiters 9, Workday 4),
+   **21 custom**, **50 not found**, 533 requests; `ats_guess` right for 21/44. Results:
+   `config/companies_detected.yaml` (read by no source).
+**Next step:** your review of the report, then (on your go) the Workday and SmartRecruiters
+adapters. **Open points from the report:** 16 Workday tenants answer **422** (tenant exists,
+site name in companies.yaml wrong: e.g. Capgemini, Safran, Renault, TotalEnergies), worth a
+site discovery before the adapter; 23 Lever slugs of companies.yaml answer 404 (company left
+Lever); Contentsquare is listed twice in companies.yaml; Padok and Theodo Cloud share the
+`theodo` board.
+**Local note:** the Worker tests need `node --experimental-sqlite` on Node 22.11 (`node:sqlite`).
+
+Before it: **Four-item pass** (branch `claude/intelligent-lovelace-wxyiss`, 2026-11-04, one commit per item,
 one PR).** Done locally, CI to confirm on the PR.
 1. **ATS public boards + career-ops hand-off** (ADR 0020, `docs/positioning.md`): source `ats`
    reads the Greenhouse / Lever / Ashby JSON boards of 30 verified French tech companies

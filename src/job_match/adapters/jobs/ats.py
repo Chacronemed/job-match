@@ -79,6 +79,7 @@ def board_url(board: AtsBoard) -> str:
 
 class AtsBoardSource:
     name = SOURCE_NAME
+    reports_by_company = True  # the run summary counts fetched / eligible per board company
 
     def __init__(
         self,

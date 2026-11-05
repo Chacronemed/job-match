@@ -238,6 +238,7 @@ table.data.fixed { table-layout: fixed; }
 table.data.fixed col.w-company { width: 15%; }
 table.data.fixed col.w-city { width: 11%; }
 table.data.fixed col.w-contract { width: 72px; }
+table.data.fixed col.w-source { width: 112px; }
 table.data.fixed col.w-score { width: 92px; }
 table.data.fixed col.w-age { width: 56px; }
 table.data.fixed col.w-why { width: 18%; }
@@ -256,7 +257,7 @@ table.data.jobs td.col-title { display: flex; align-items: center; gap: 8px; min
 table.data.jobs td.col-title .title-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 table.data.jobs td.col-title .status { flex: none; }
 .row-meta { display: none; }
-table.data.jobs td.col-company, table.data.jobs td.col-city, table.data.jobs td.col-contract, table.data.jobs td.col-age { color: var(--ink-subtle); }
+table.data.jobs td.col-company, table.data.jobs td.col-city, table.data.jobs td.col-contract, table.data.jobs td.col-source, table.data.jobs td.col-age { color: var(--ink-subtle); }
 table.data.jobs td.col-more { padding: 0 4px; text-align: center; }
 .expand.icon-btn { width: 28px; height: 28px; min-height: 0; color: var(--ink-tertiary); }
 .expand.icon-btn .i { transition: transform var(--d-fast) var(--ease); }
@@ -652,6 +653,10 @@ table.data.leads td.col-hiring { height: auto; padding-top: 4px; padding-bottom:
 .run-reasons b { color: var(--ink-muted); font-family: var(--mono); font-weight: 500; }
 .run-sources { margin: 6px 0 0; font-size: 12px; color: var(--ink-subtle); display: flex; flex-wrap: wrap; gap: 4px 18px; }
 .run-sources b { color: var(--ink-muted); font-family: var(--mono); font-weight: 500; }
+.run-companies { margin: 6px 0 0; font-size: 12px; color: var(--ink-subtle); }
+.run-companies summary { cursor: pointer; }
+.run-companies ul { margin: 4px 0 0; padding: 0; list-style: none; columns: 2 220px; column-gap: 18px; }
+.run-companies b { color: var(--ink-muted); font-family: var(--mono); font-weight: 500; }
 
 /* ---------- responsive ---------- */
 
@@ -711,7 +716,7 @@ table.data.leads td.col-hiring { height: auto; padding-top: 4px; padding-bottom:
   table.data.jobs td.col-title .row-meta { display: block; flex: 1 1 100%; order: 2; font-size: 12px; color: var(--ink-subtle); }
   table.data.jobs td.col-more { grid-area: more; min-height: 0; padding: 0; align-self: start; }
   table.data.jobs td.col-more::before { display: none; }
-  table.data.jobs td.col-company, table.data.jobs td.col-city, table.data.jobs td.col-contract, table.data.jobs td.col-age { display: none; }
+  table.data.jobs td.col-company, table.data.jobs td.col-city, table.data.jobs td.col-contract, table.data.jobs td.col-source, table.data.jobs td.col-age { display: none; }
   table.data.jobs td.col-why { grid-area: why; min-height: 0; }
   table.data.jobs td.col-why::before { display: none; }
   table.data.jobs td.col-why .why-top { white-space: normal; }

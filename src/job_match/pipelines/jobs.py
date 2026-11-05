@@ -80,6 +80,8 @@ def run_jobs(
     errors = 0
     raw_stored = 0
     by_source: dict[str, dict[str, int]] = {}
+    # Sources whose company is configured, not parsed (ats): fetched / eligible per company.
+    by_company: dict[str, dict[str, dict[str, int]]] = {}
     by_department: dict[str, int] = {}
     seen_ids: list[int] = []  # rows the search returned today: open by definition
 
@@ -107,6 +109,12 @@ def run_jobs(
 
             fetched += 1
             counts["fetched"] += 1
+            company_counts = None
+            if getattr(source, "reports_by_company", False):
+                company_counts = by_company.setdefault(source.name, {}).setdefault(
+                    job.company or "?", {"fetched": 0, "eligible": 0}
+                )
+                company_counts["fetched"] += 1
 
             # Raw payload, as the source sent it: private DB only, never logged.
             if not dry_run:
@@ -196,6 +204,8 @@ def run_jobs(
             else:
                 eligible += 1
                 counts["eligible"] += 1
+                if company_counts is not None:
+                    company_counts["eligible"] += 1
                 if breakdown.score is not None and breakdown.score >= settings.strong_threshold:
                     strong += 1
 
@@ -252,6 +262,7 @@ def run_jobs(
         by_keyword=by_keyword,
         by_department=by_department,
         by_source=by_source,
+        by_company=by_company,
         queries=len(stats),
     )
 

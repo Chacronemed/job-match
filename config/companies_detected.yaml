@@ -1,0 +1,538 @@
+# Written by `job-match companies detect` (M28). Do not edit: re-run the command.
+# Checked 2026-11-05 against the public ATS endpoints;
+# verified = 200 with at least one posting. Not read by any source yet.
+checked_at: '2026-11-05T11:07:01+01:00'
+companies:
+- name: Airbus
+  status: verified
+  ats: workday
+  id: ag.wd3.myworkdayjobs.com/ag/Airbus
+  postings: 2000
+  method: url
+  ats_guess: workday
+- name: Thales
+  status: verified
+  ats: workday
+  id: thales.wd3.myworkdayjobs.com/thales/Careers
+  postings: 2000
+  method: url
+  ats_guess: workday
+- name: Dassault Systèmes
+  status: custom
+  ats_guess: smartrecruiters
+- name: OVHcloud
+  status: not_found
+  ats_guess: smartrecruiters
+- name: Scaleway
+  status: verified
+  ats: lever
+  id: scaleway
+  postings: 33
+  method: slug
+  ats_guess: lever
+- name: Doctolib
+  status: verified
+  ats: ashby
+  id: doctolib
+  postings: 151
+  method: slug
+  ats_guess: greenhouse
+- name: TotalEnergies
+  status: not_found
+  ats_guess: workday
+- name: BNP Paribas
+  status: not_found
+  ats_guess: taleo
+- name: Société Générale
+  status: custom
+  platform: taleo
+  ats_guess: custom
+- name: Crédit Agricole CIB / GIE
+  status: custom
+  platform: talentsoft
+  ats_guess: taleo
+- name: BPCE (Banque Populaire Caisse d'Épargne)
+  status: not_found
+  ats_guess: successfactors
+- name: Criteo
+  status: not_found
+  ats_guess: greenhouse
+- name: Datadog
+  status: verified
+  ats: greenhouse
+  id: datadog
+  postings: 396
+  method: slug
+  ats_guess: greenhouse
+- name: Amadeus
+  status: custom
+  ats_guess: successfactors
+- name: Safran
+  status: not_found
+  ats_guess: workday
+- name: EDF
+  status: not_found
+  ats_guess: successfactors
+- name: Schneider Electric
+  status: not_found
+  ats_guess: workday
+- name: Renault Group
+  status: not_found
+  ats_guess: workday
+- name: Stellantis
+  status: not_found
+  ats_guess: workday
+- name: Air Liquide
+  status: not_found
+  ats_guess: workday
+- name: Sanofi
+  status: verified
+  ats: workday
+  id: sanofi.wd3.myworkdayjobs.com/sanofi/SanofiCareers
+  postings: 1055
+  method: url
+  ats_guess: workday
+- name: L'Oréal
+  status: custom
+  ats_guess: workday
+- name: Orange
+  status: custom
+  platform: phenom
+  ats_guess: custom
+- name: Bouygues Telecom
+  status: custom
+  platform: talentsoft
+  ats_guess: talentsoft
+- name: SNCF Connect & Tech
+  status: custom
+  platform: jobs_net
+  ats_guess: custom
+- name: Air France-KLM
+  status: custom
+  ats_guess: custom
+- name: CMA CGM
+  status: verified
+  ats: workday
+  id: cgm.wd3.myworkdayjobs.com/cgm/cgm
+  postings: 241
+  method: url
+  ats_guess: workday
+- name: Axa
+  status: custom
+  platform: icims
+  ats_guess: taleo
+- name: Alan
+  status: verified
+  ats: ashby
+  id: alan
+  postings: 133
+  method: slug
+  ats_guess: lever
+- name: Qonto
+  status: verified
+  ats: ashby
+  id: qonto
+  postings: 51
+  method: page
+  ats_guess: lever
+- name: Mirakl
+  status: verified
+  ats: greenhouse
+  id: mirakl
+  postings: 27
+  method: slug
+  ats_guess: lever
+- name: Deezer
+  status: not_found
+  ats_guess: lever
+- name: Back Market
+  status: verified
+  ats: ashby
+  id: backmarket
+  postings: 33
+  method: slug
+  ats_guess: lever
+- name: Contentsquare
+  status: verified
+  ats: lever
+  id: contentsquare
+  postings: 27
+  method: slug
+  ats_guess: lever
+- name: Swile
+  status: verified
+  ats: lever
+  id: swile
+  postings: 31
+  method: url
+  ats_guess: lever
+- name: Spendesk
+  status: not_found
+  ats_guess: lever
+- name: Ledger
+  status: verified
+  ats: ashby
+  id: ledger
+  postings: 13
+  method: slug
+  ats_guess: lever
+- name: PayFit
+  status: not_found
+  ats_guess: lever
+- name: ManoMano
+  status: not_found
+  ats_guess: lever
+- name: Veepee
+  status: verified
+  ats: lever
+  id: veepee
+  postings: 110
+  method: slug
+  ats_guess: smartrecruiters
+- name: LVMH
+  status: verified
+  ats: smartrecruiters
+  id: lvmh
+  postings: 4
+  method: slug
+  ats_guess: custom
+- name: Kering
+  status: custom
+  ats_guess: workday
+- name: Hermès
+  status: custom
+  ats_guess: custom
+- name: Carrefour
+  status: not_found
+  ats_guess: custom
+- name: Leroy Merlin / Adeo
+  status: not_found
+  ats_guess: smartrecruiters
+- name: Decathlon Technology
+  status: verified
+  ats: greenhouse
+  id: decathlontechnology
+  postings: 71
+  method: slug
+  ats_guess: smartrecruiters
+- name: Capgemini
+  status: not_found
+  ats_guess: workday
+- name: Worldline
+  status: not_found
+  ats_guess: workday
+- name: Ubisoft
+  status: verified
+  ats: smartrecruiters
+  id: Ubisoft2
+  postings: 296
+  method: url
+  ats_guess: smartrecruiters
+- name: Mistral AI
+  status: not_found
+  ats_guess: ashby
+- name: Shift Technology
+  status: verified
+  ats: greenhouse
+  id: shifttechnology
+  postings: 16
+  method: slug
+  ats_guess: lever
+- name: Contentsquare
+  status: verified
+  ats: lever
+  id: contentsquare
+  postings: 27
+  method: url
+  ats_guess: lever
+- name: Pigment
+  status: verified
+  ats: lever
+  id: pigment
+  postings: 129
+  method: slug
+  ats_guess: ashby
+- name: Pennylane
+  status: verified
+  ats: ashby
+  id: pennylane
+  postings: 197
+  method: url
+  ats_guess: ashby
+- name: Ankorstore
+  status: verified
+  ats: ashby
+  id: ankorstore
+  postings: 1
+  method: slug
+  ats_guess: lever
+- name: Vestiaire Collective
+  status: verified
+  ats: lever
+  id: vestiairecollective
+  postings: 15
+  method: slug
+  ats_guess: greenhouse
+- name: Algolia
+  status: verified
+  ats: greenhouse
+  id: algolia
+  postings: 28
+  method: slug
+  ats_guess: lever
+- name: Clever Cloud
+  status: custom
+  ats_guess: custom
+- name: Iliad (Free)
+  status: not_found
+  ats_guess: custom
+- name: SFR (Altice France)
+  status: custom
+  platform: talentsoft
+  ats_guess: talentsoft
+- name: Engie
+  status: not_found
+  ats_guess: workday
+- name: Vinci Énergies (Axians)
+  status: not_found
+  ats_guess: workday
+- name: Saint-Gobain
+  status: verified
+  ats: smartrecruiters
+  id: saintgobain
+  postings: 18
+  method: slug
+  ats_guess: workday
+- name: Michelin
+  status: not_found
+  ats_guess: workday
+- name: Alstom
+  status: not_found
+  ats_guess: workday
+- name: Naval Group
+  status: custom
+  platform: talentsoft
+  ats_guess: talentsoft
+- name: MBDA
+  status: not_found
+  ats_guess: custom
+- name: Sopra Steria
+  status: not_found
+  ats_guess: workday
+- name: Devoteam
+  status: verified
+  ats: smartrecruiters
+  id: Devoteam
+  postings: 955
+  method: url
+  ats_guess: smartrecruiters
+- name: Wavestone
+  status: verified
+  ats: smartrecruiters
+  id: Wavestone1
+  postings: 268
+  method: page
+  ats_guess: smartrecruiters
+- name: Accenture France
+  status: not_found
+  ats_guess: workday
+- name: Kyndryl France
+  status: not_found
+  ats_guess: workday
+- name: Atos / Eviden
+  status: custom
+  ats_guess: successfactors
+- name: Cegid
+  status: verified
+  ats: smartrecruiters
+  id: cegid
+  postings: 1
+  method: slug
+  ats_guess: smartrecruiters
+- name: Berger-Levrault
+  status: not_found
+  ats_guess: talentsoft
+- name: Esker
+  status: custom
+  platform: jobs_net
+  ats_guess: custom
+- name: Octo Technology
+  status: verified
+  ats: smartrecruiters
+  id: OctoTechnology
+  postings: 41
+  method: url
+  ats_guess: smartrecruiters
+- name: Theodo Cloud
+  status: verified
+  ats: lever
+  id: theodo
+  postings: 130
+  method: url
+  ats_guess: lever
+- name: Padok
+  status: verified
+  ats: lever
+  id: theodo
+  postings: 130
+  method: page
+  check: board id does not carry the company name
+  ats_guess: welcometothejungle
+- name: Wescale
+  status: verified
+  ats: ashby
+  id: wescale
+  postings: 7
+  method: slug
+  ats_guess: lever
+- name: Dailymotion
+  status: verified
+  ats: smartrecruiters
+  id: dailymotion
+  postings: 1
+  method: slug
+  ats_guess: lever
+- name: BlaBlaCar
+  status: verified
+  ats: lever
+  id: blablacar
+  postings: 7
+  method: slug
+  ats_guess: greenhouse
+- name: Ivalua
+  status: verified
+  ats: greenhouse
+  id: ivalua
+  postings: 41
+  method: slug
+  ats_guess: greenhouse
+- name: Lumapps
+  status: verified
+  ats: lever
+  id: lumapps
+  postings: 3
+  method: url
+  ats_guess: lever
+- name: Klaxoon
+  status: verified
+  ats: smartrecruiters
+  id: klaxoon
+  postings: 3
+  method: slug
+  ats_guess: lever
+- name: Talend (Qlik)
+  status: not_found
+  ats_guess: lever
+- name: Withings
+  status: not_found
+  ats_guess: lever
+- name: Contentful France
+  status: not_found
+  ats_guess: lever
+- name: Sendinblue (Brevo)
+  status: verified
+  ats: lever
+  id: brevo
+  postings: 27
+  method: url
+  check: board id does not carry the company name
+  ats_guess: lever
+- name: Shadow (OVHcloud group)
+  status: verified
+  ats: greenhouse
+  id: shadow
+  postings: 2
+  method: slug
+  ats_guess: lever
+- name: Kyriba
+  status: not_found
+  ats_guess: lever
+- name: CGI France
+  status: custom
+  platform: njoyn
+  ats_guess: custom
+- name: Lusis
+  status: not_found
+  ats_guess: custom
+- name: Veeam Software France
+  status: custom
+  ats_guess: smartrecruiters
+- name: Murex
+  status: not_found
+  ats_guess: workday
+- name: Snyk France
+  status: not_found
+  ats_guess: lever
+- name: GitLab France
+  status: not_found
+  ats_guess: ashby
+- name: Elastic France
+  status: not_found
+  ats_guess: lever
+- name: Miro France
+  status: not_found
+  ats_guess: lever
+- name: Hubee
+  status: not_found
+  ats_guess: custom
+- name: Adeo Services
+  status: custom
+  ats_guess: smartrecruiters
+- name: Nexthink France
+  status: not_found
+  ats_guess: lever
+- name: Malt Community
+  status: verified
+  ats: lever
+  id: malt
+  postings: 27
+  method: url
+  ats_guess: lever
+- name: Dataiku
+  status: verified
+  ats: greenhouse
+  id: dataiku
+  postings: 16
+  method: slug
+  ats_guess: lever
+- name: Teads
+  status: not_found
+  ats_guess: lever
+- name: Exotec
+  status: not_found
+  ats_guess: lever
+- name: Scality
+  status: verified
+  ats: lever
+  id: scality
+  postings: 6
+  method: url
+  ats_guess: lever
+- name: Vade (Hornetsecurity)
+  status: not_found
+  ats_guess: lever
+- name: Inetum
+  status: not_found
+  ats_guess: workday
+- name: Euronext
+  status: not_found
+  ats_guess: workday
+- name: Dassault Aviation
+  status: not_found
+  ats_guess: talentsoft
+- name: Equinix France
+  status: not_found
+  ats_guess: workday
+- name: Akeneo
+  status: not_found
+  ats_guess: lever
+- name: Platform.sh (Upsun)
+  status: verified
+  ats: greenhouse
+  id: platformsh
+  postings: 7
+  method: slug
+  ats_guess: lever
+- name: Qonto Bank
+  status: custom
+  ats_guess: lever

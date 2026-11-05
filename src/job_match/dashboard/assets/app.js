@@ -50,7 +50,7 @@ window.JM = window.JM || {};
   var SORT_TEXT = {
     title: "titre", company: "entreprise", department: "département", contract: "contrat",
     score: "score", required_years: "années", status: "statut", posted_at: "publication",
-    age_days: "âge"
+    age_days: "âge", source: "source"
   };
   var leads = data.leads || [];
   var runs = data.runs || [];
@@ -240,6 +240,7 @@ window.JM = window.JM || {};
       var off = SECTIONS.filter(function (s) { return !JM.state.sections[s]; });
       if (off.length) parts.push("hide=" + off.join(","));
       if (JM.state.department) parts.push("dept=" + encodeURIComponent(JM.state.department));
+      if (JM.state.source) parts.push("src=" + encodeURIComponent(JM.state.source));
       if (JM.state.status) parts.push("st=" + JM.state.status);
       if (JM.state.ai) parts.push("ia=" + JM.state.ai);
       if (V.tab === "candidatures" && V.appsView === "table") parts.push("view=table");

@@ -73,9 +73,9 @@ def _breakdown(score, explanations=(), positive=(), negative=(), missing=()):
 
 def _job(sid, title, company_name, *, score, eligibility, location="75 - Paris",
          experience=None, breakdown=None, url=None, collected_at=_NOW, rejection_reason=None,
-         company_id=None, published_at=None):
+         company_id=None, published_at=None, source="france_travail"):
     return Job(
-        source="france_travail",
+        source=source,
         source_job_id=sid,
         title=title,
         company=company_name,
@@ -117,8 +117,9 @@ def _seed(db: Database) -> DashboardSeed:
         url="javascript:alert(1)",
     ))
     stretch = jobs.save(_job(
-        "stretch", "SRE confirmé", "Gamma", score=72, eligibility=Eligibility.STRETCH,
-        location="69 - Lyon",
+        "greenhouse:gamma:42", "SRE confirmé", "Gamma", score=72,
+        eligibility=Eligibility.STRETCH, location="69 - Lyon", source="ats",
+        url="https://example.test/stretch",
         experience=ExperienceRequirement(ExperienceStatus.UNKNOWN, None, None, None),
         breakdown=_breakdown(72, ["stretch: requires 3y, you have 2", "+12 kubernetes"],
                              positive=["kubernetes"]),
@@ -167,7 +168,10 @@ def _seed(db: Database) -> DashboardSeed:
                 pipeline="jobs", fetched=100 + i, duplicates=5, eligible=20, strong=8,
                 stretch=3, errors=1 if i == 0 else 0, api_calls=13,
                 rejected_by_reason={"EXPERIENCE": 50, "CONTRACT": 30, "NOT_RELEVANT": 10},
-                by_source={"france_travail": {"fetched": 100 + i, "eligible": 20, "calls": 13}},
+                by_source={"france_travail": {"fetched": 90 + i, "eligible": 18, "calls": 13},
+                           "ats": {"fetched": 10, "eligible": 2, "calls": 2}},
+                by_company={"ats": {"Gamma": {"fetched": 7, "eligible": 2},
+                                    "Dataiku": {"fetched": 3, "eligible": 0}}},
                 by_keyword={_SECRET_KEYWORD: 40},
             ),
             started_at=started,

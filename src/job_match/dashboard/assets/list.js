@@ -25,6 +25,7 @@
     q: "",
     sections: { strong: true, eligible: true, stretch: true },
     department: "",
+    source: "",
     status: "",
     ai: "",
     minScore: 0,
@@ -37,6 +38,7 @@
 
   var searchInput = byId("f-search");
   var deptSelect = byId("f-department");
+  var sourceSelect = byId("f-source");
   var statusSelect = byId("f-status");
   var aiSelect = byId("f-ai");
   /* The IA filter's values (hash `ia=`): the Worker's levels, as score.js names them. */
@@ -64,6 +66,41 @@
     if (unknown) deptSelect.appendChild(el("option", { value: "?", text: "? inconnu (" + unknown + ")" }));
   }
 
+  /* Where an offer comes from: a national board by name, a company board by its ATS. */
+  var SOURCE_TEXT = { france_travail: "France Travail", adzuna: "Adzuna", jooble: "Jooble", ats: "Pages carrière (ATS)" };
+  var ATS_TEXT = { greenhouse: "Greenhouse", lever: "Lever", ashby: "Ashby", workday: "Workday", smartrecruiters: "SmartRecruiters" };
+  function sourceText(j) {
+    if (j.source === "ats") return ATS_TEXT[j.ats] || j.ats || "ATS";
+    return SOURCE_TEXT[j.source] || j.source || "";
+  }
+  /* The Source filter's values a posting answers to: its source ("ats"), and for a company
+     board also that company ("ats:Dataiku"). */
+  function sourceKeys(p) {
+    var keys = [p.source || ""];
+    if (p.source === "ats" && p.company) keys.push("ats:" + p.company);
+    return keys;
+  }
+
+  /* Each source with its count; the companies read through their ATS listed under it. */
+  function fillSources() {
+    var counts = {};
+    var companies = {};
+    jobs.forEach(function (j) {
+      counts[j.source] = (counts[j.source] || 0) + 1;
+      if (j.source === "ats" && j.company) companies[j.company] = (companies[j.company] || 0) + 1;
+    });
+    Object.keys(counts).sort(function (a, b) {
+      if (a === "ats" || b === "ats") return a === "ats" ? 1 : -1;
+      return a < b ? -1 : 1;
+    }).forEach(function (s) {
+      sourceSelect.appendChild(el("option", { value: s, text: (SOURCE_TEXT[s] || s) + " (" + counts[s] + ")" }));
+      if (s !== "ats") return;
+      Object.keys(companies).sort(function (a, b) { return a.localeCompare(b, "fr"); }).forEach(function (c) {
+        sourceSelect.appendChild(el("option", { value: "ats:" + c, text: "\u00a0\u00a0· " + c + " (" + companies[c] + ")" }));
+      });
+    });
+  }
+
   function fillStatuses() {
     T.STATUSES.forEach(function (s) {
       statusSelect.appendChild(el("option", { value: s, text: T.STATUS_TEXT[s] }));
@@ -79,6 +116,7 @@
     if (state.q) n += 1;
     if (SECTIONS.some(function (s) { return !state.sections[s]; })) n += 1;
     if (state.department) n += 1;
+    if (state.source) n += 1;
     if (state.status) n += 1;
     if (state.ai) n += 1;
     if (state.minScore) n += 1;
@@ -95,6 +133,7 @@
       if (!verdict || verdict.level !== state.ai) return false;
     }
     if (state.minScore > 0 && (j.score === null || j.score < state.minScore)) return false;
+    if (state.source && !T.postingsOf(j).some(function (p) { return sourceKeys(p).indexOf(state.source) >= 0; })) return false;
     if (state.department) {
       var depts = T.postingsOf(j).map(function (p) { return p.department || ""; });
       if (state.department === "?" ? depts.indexOf("") < 0 : depts.indexOf(state.department) < 0) return false;
@@ -115,6 +154,7 @@
   function sortValue(j, k) {
     if (k === "status") return T.STATUSES.indexOf(statusOfJob(j));
     if (k === "department") return cityOf(j);
+    if (k === "source") return sourceText(j);
     return j[k];
   }
 
@@ -204,6 +244,11 @@
       return td;
     },
     contract: function (j) { return cell("col-contract", "Contrat", j.contract && j.contract !== "UNKNOWN" ? j.contract : "—"); },
+    source: function (j) {
+      var td = cell("col-source", "Source", sourceText(j) || "—");
+      td.title = j.source === "ats" ? "Page carrière de " + (j.company || "l’entreprise") + " (" + sourceText(j) + ")" : sourceText(j);
+      return td;
+    },
     age_days: function (j) {
       var age = typeof j.age_days === "number" ? j.age_days : null;
       var td = cell("num col-age", "Âge", el("span", { class: age === null ? "unknown" : "", text: age === null ? "—" : age + " j" }));
@@ -218,7 +263,7 @@
       }));
     }
   };
-  var JOB_COLUMNS = ["score", "title", "company", "department", "contract", "age_days", "why", "more"];
+  var JOB_COLUMNS = ["score", "title", "company", "department", "contract", "source", "age_days", "why", "more"];
 
   /* ---------- the row's details ---------- */
 
@@ -502,6 +547,12 @@
     });
   });
 
+  sourceSelect.addEventListener("change", function () {
+    state.source = sourceSelect.value;
+    renderJobs();
+    syncHash();
+  });
+
   deptSelect.addEventListener("change", function () {
     state.department = deptSelect.value;
     renderJobs();
@@ -534,6 +585,7 @@
     SECTIONS.forEach(function (s) { state.sections[s] = true; });
     chips.forEach(function (c) { c.setAttribute("aria-pressed", "true"); });
     state.department = ""; deptSelect.value = "";
+    state.source = ""; sourceSelect.value = "";
     state.status = ""; statusSelect.value = "";
     state.ai = ""; aiSelect.value = "";
     state.minScore = 0; minScoreInput.value = "0"; minScoreOut.textContent = "0";
@@ -568,7 +620,7 @@
     });
   }
 
-  var SORT_KEYS = ["title", "company", "department", "contract", "score", "required_years", "status", "posted_at", "age_days"];
+  var SORT_KEYS = ["title", "company", "department", "contract", "source", "score", "required_years", "status", "posted_at", "age_days"];
   var DAY = /^\d{4}-\d{2}-\d{2}$/;
 
   /* The remembered filters (app.js writes them with the hash), for a hash that carries none. */
@@ -598,6 +650,9 @@
     var deptOk = p.dept && Array.prototype.some.call(deptSelect.options, function (o) { return o.value === p.dept; });
     state.department = deptOk ? p.dept : "";
     deptSelect.value = state.department;
+    var srcOk = p.src && Array.prototype.some.call(sourceSelect.options, function (o) { return o.value === p.src; });
+    state.source = srcOk ? p.src : "";
+    sourceSelect.value = state.source;
     state.status = T.STATUSES.indexOf(p.st) >= 0 ? p.st : "";
     statusSelect.value = state.status;
     state.ai = AI_LEVELS.indexOf(p.ia) >= 0 ? p.ia : "";
@@ -635,6 +690,7 @@
   /* Shared with the other files. */
   JM.applyHash = applyHash;
   JM.fillDepartments = fillDepartments;
+  JM.fillSources = fillSources;
   JM.fillStatuses = fillStatuses;
   JM.postingsBlock = postingsBlock;
   JM.renderJobs = renderJobs;
