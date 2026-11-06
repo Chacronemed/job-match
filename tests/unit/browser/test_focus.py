@@ -172,3 +172,66 @@ def test_a_tracking_error_is_said_and_leaves_only_the_offer_link(open_dashboard,
     assert foot.locator("a", has_text="Voir l’annonce").count() == 1
     assert foot.locator("button").count() == 0
     assert "Suivi indisponible" in page.locator("#record .track-off").inner_text()
+
+
+# ---------- Tri ----------
+
+TRI_READY = ("() => window.JM.track.status === 'ready'"
+             " && document.querySelector('#tri-stage .tcard:not(.is-next)')")
+SECOND = "() => document.querySelector('#tri-count').textContent === 'Offre 2 sur 3'"
+
+
+def _open_tri(open_dashboard, viewport=(1440, 900)):
+    page, errors = open_dashboard(_api(), hash_="#tri", viewport=viewport)
+    page.route("**/api/applications/*", _echo)
+    page.route("**/api/decisions", lambda r: r.fulfill(
+        status=200, content_type="application/json", body='{"decision": {"id": 1}}'))
+    page.wait_for_function(TRI_READY)
+    return page, errors
+
+
+def test_tri_card_is_centred_wide_and_counts_the_queue(open_dashboard, job_keys):
+    page, errors = _open_tri(open_dashboard)
+    card = page.locator("#tri-stage .tcard:not(.is-next)")
+    box = card.bounding_box()
+    assert 680 <= box["width"] <= 760
+    main = page.locator("#main").bounding_box()
+    centre = box["x"] + box["width"] / 2 - main["x"]
+    assert abs(centre - main["width"] / 2) < 8
+    assert page.locator("#tri-count").inner_text() == "Offre 1 sur 3"
+    assert "2 restantes après celle-ci" in page.locator("#tri-left").inner_text()
+    # the score is the row's own, the band its word, the ledger open with its lines
+    assert card.locator(".score-big .num").inner_text() == "85"
+    assert card.locator(".tcard-top .band").inner_text().strip() == "Forte"
+    assert card.locator(".ledger.is-open .ledger-total-n").inner_text() == "85"
+    assert "Relevé du score" in card.locator(".ledger-sum").inner_text()
+    assert card.locator(".fact", has_text="2 ans requis").count() == 1
+    # → keeps: the next card comes up, the undo wakes
+    page.keyboard.press("ArrowRight")
+    page.wait_for_function(SECOND)
+    assert not page.locator("#tri-undo").is_disabled()
+    assert page.evaluate(f"window.JM.track.apps[{json.dumps(job_keys[0])}].status") == "to_apply"
+    # ↵ opens this exact offer's record, said as the one being triaged
+    page.keyboard.press("Enter")
+    page.wait_for_function("() => !document.getElementById('record').hidden")
+    assert page.locator("#record .record-crumb").text_content() == "Offre en cours de tri"
+    assert page.locator("#record-title").inner_text() == card.locator(".tcard-open").inner_text()
+    assert errors == []
+
+
+def test_tri_on_a_phone_keeps_its_actions_above_the_tab_bar(open_dashboard, job_keys):
+    page, errors = _open_tri(open_dashboard, viewport=(390, 844))
+    assert page.evaluate(OVERFLOW) <= 0
+    bar = page.locator("#tri-bar").bounding_box()
+    tabbar = page.locator("#tabbar").bounding_box()
+    assert bar["y"] + bar["height"] <= tabbar["y"] + 1
+    for button in page.locator("#tri-controls .tbtn").all():
+        assert button.bounding_box()["height"] >= 44
+    card = page.locator("#tri-stage .tcard:not(.is-next)").bounding_box()
+    assert card["x"] >= 0 and card["x"] + card["width"] <= 390
+    assert card["y"] + card["height"] <= bar["y"] + 1
+    # the unknown experience of the stretch offer is said, not guessed
+    page.locator("#tri-drop").click()
+    page.wait_for_function(SECOND)
+    assert page.locator("#tri-reasons-bar").is_visible()
+    assert errors == []

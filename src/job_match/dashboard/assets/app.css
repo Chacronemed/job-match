@@ -319,7 +319,11 @@ table.data.jobs tr.details td { display: block; padding: 0 17px 16px 17px; borde
 .fact dt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .fact dd { margin: 0; overflow-wrap: anywhere; }
 .fact-title { display: none; }
-.tcard .ledger { padding: 16px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--raised); }
+.tcard .ledger { padding: 14px 14px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--raised); }
+/* The card already shows the score and the band above: the summary line reads « Relevé du
+   score : <gap sentence> » instead of repeating them. */
+.tcard .ledger-sum .sr-only { position: static; width: auto; height: auto; margin: 0; clip: auto; overflow: visible; white-space: normal; font-weight: 600; }
+.tcard .ledger-sum-n, .tcard .ledger-sum > .band { display: none; }
 .tcard-quote { margin: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--raised); color: var(--ink-2); font-size: var(--fs-sm); line-height: 1.6; overflow-wrap: anywhere; }
 .tcard-quote::before { content: "« "; color: var(--ink-3); }
 .tcard-quote::after { content: " »"; color: var(--ink-3); }
@@ -407,13 +411,15 @@ table.data.jobs tr.details td { display: block; padding: 0 17px 16px 17px; borde
 .ledger-line.down dd { color: var(--amber-11); }
 .ledger-total { display: flex; justify-content: space-between; align-items: baseline; padding-top: var(--s2); border-top: 1px solid var(--line-2); font-weight: 600; }
 .ledger-total-n { font-size: var(--fs-xl); letter-spacing: -0.02em; }
-.scale { position: relative; height: 30px; margin-top: var(--s1); }
+.scale { position: relative; height: 42px; margin-top: var(--s1); }
 .scale-track { position: absolute; left: 0; right: 0; top: 4px; height: 5px; border-radius: 4px; background: var(--slate-5); overflow: hidden; }
 .scale-fill { position: absolute; inset: 0; background: var(--accent); transform-origin: left; transform: scaleX(var(--to)); }
 .scale-fill.band-strong { background: var(--green-9); }
 .scale-fill.band-stretch { background: var(--amber-9); }
 .scale-tick { position: absolute; top: 0; width: 1px; height: 13px; background: var(--slate-8); }
 .scale-tick span { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 10px; color: var(--ink-3); }
+.scale-tick:nth-child(3) { height: 25px; }
+.scale-tick:nth-child(3) span { top: 27px; }  /* the two thresholds are close: one label per line */
 .ledger-gap { margin: 0; color: var(--ink); font-weight: 500; }
 .ledger.compact .ledger-line { min-height: 24px; }
 .ledger.is-collapsible { gap: 0; }
