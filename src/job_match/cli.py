@@ -848,7 +848,10 @@ def _cmd_reopen(args: argparse.Namespace) -> None:
         sys.exit(1)
     with Database(path=str(db_path)) as db:
         report = reopen(db, args.source, since, settings.outage_guard, apply=bool(args.apply))
-    print(format_report(report))
+    text = format_report(report)
+    print(text)
+    # The job summary: run ids, counts and reasons only (the report never names an offer).
+    append_step_summary(f"## Reopen\n\n```\n{text}\n```")
 
 
 def _build_funding_sources(names: list[str]) -> list:

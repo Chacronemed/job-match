@@ -6,11 +6,26 @@ on:
   workflow_dispatch:       # manual trigger
     inputs:
       stage:
-        description: "What to run: all = jobs, then funding, then site"
+        description: "What to run: all = jobs, then funding, then site; reopen = repair closures (ADR 0027)"
         required: false
         default: all
         type: choice
-        options: [all, jobs, funding, site]
+        options: [all, jobs, funding, site, reopen]
+      reopen_since:
+        description: "reopen only, YYYY-MM-DD: first run date whose closures are reopened (e.g. 2026-11-06)"
+        required: false
+        default: ""
+        type: string
+      reopen_source:
+        description: "reopen only: the source whose offers are reopened"
+        required: false
+        default: france_travail
+        type: string
+      reopen_apply:
+        description: "reopen only: write the reopenings (default: dry-run), then push the snapshot and redeploy the site"
+        required: false
+        default: false
+        type: boolean
       reprocess_since:
         description: "Optional YYYY-MM-DD: reprocess data collected since this date (empty = normal run)"
         required: false
@@ -35,11 +50,15 @@ jobs:
     #   jobs    = tracking mirror, France Travail + ATS + other sources, scoring, digest, snapshot
     #   funding = RSS funding pipeline, digest, snapshot
     #   site    = D1 migrations, dashboard rebuilt from the snapshot, deploy
+    #   reopen  = `job-match ops reopen` on the restored snapshot (ADR 0027): a dry run, or with
+    #             reopen_apply the reopenings written, the snapshot pushed and the site redeployed
     env:
       STAGE: ${{ inputs.stage || 'all' }}
       RUN_JOBS: ${{ contains(fromJSON('["all","jobs"]'), inputs.stage || 'all') }}
       RUN_FUNDING: ${{ contains(fromJSON('["all","funding"]'), inputs.stage || 'all') }}
-      RUN_SITE: ${{ contains(fromJSON('["all","site"]'), inputs.stage || 'all') }}
+      RUN_SITE: ${{ contains(fromJSON('["all","site"]'), inputs.stage || 'all') || ((inputs.stage || 'all') == 'reopen' && inputs.reopen_apply) }}
+      RUN_REOPEN: ${{ (inputs.stage || 'all') == 'reopen' }}
+      REOPEN_APPLY: ${{ (inputs.stage || 'all') == 'reopen' && inputs.reopen_apply }}
 
     steps:
       - uses: actions/checkout@v7
@@ -173,6 +192,29 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           DIGEST_TO:     ${{ secrets.DIGEST_TO }}
 
+      # Repair (ADR 0027): reopen the offers a source closed during a run marked down or beyond
+      # the closure threshold, on the restored snapshot. Dry-run unless reopen_apply, which
+      # writes, then the checkpoint pushes the DB and the site is rebuilt and deployed. The
+      # inputs travel through env, never into the script; the CLI prints and writes to the job
+      # summary run ids, counts and reasons only (never a title nor a note).
+      - name: Reopen closures
+        id: reopen
+        if: env.RUN_REOPEN == 'true'
+        env:
+          REOPEN_SINCE: ${{ inputs.reopen_since }}
+          REOPEN_SOURCE: ${{ inputs.reopen_source }}
+        run: |
+          set -euo pipefail
+          if [ -z "$REOPEN_SINCE" ]; then
+            echo "::error title=reopen::reopen_since (YYYY-MM-DD) is required"
+            exit 1
+          fi
+          if [ "$REOPEN_APPLY" = "true" ]; then
+            job-match ops reopen --since "$REOPEN_SINCE" --source "$REOPEN_SOURCE" --apply
+          else
+            job-match ops reopen --since "$REOPEN_SINCE" --source "$REOPEN_SOURCE"
+          fi
+
       # Funding pipeline: RSS → articles → FundingEvent → Lead. Needs no secrets.
       # Feed/article failures are counted, never fatal; continue-on-error only guards
       # unexpected crashes so the jobs digest and the DB push still happen.
@@ -210,7 +252,7 @@ jobs:
       # a site-only run reads the snapshot and pushes nothing back.
       - name: WAL checkpoint and VACUUM
         id: wal
-        if: env.RUN_JOBS == 'true' || env.RUN_FUNDING == 'true'
+        if: env.RUN_JOBS == 'true' || env.RUN_FUNDING == 'true' || env.REOPEN_APPLY == 'true'
         run: |
           python - <<'EOF'
           import sqlite3, pathlib
@@ -296,6 +338,7 @@ jobs:
         env:
           JOBS_OUTCOME: ${{ steps.pipeline.outcome }}
           FUNDING_OUTCOME: ${{ steps.funding.outcome }}
+          REOPEN_OUTCOME: ${{ steps.reopen.outcome }}
           SITE_OUTCOME: ${{ steps.deploy.outcome }}
         run: |
           {
@@ -303,7 +346,7 @@ jobs:
             echo ""
             echo "| Stage | Played | Main step |"
             echo "|---|---|---|"
-            for row in "jobs:$RUN_JOBS:$JOBS_OUTCOME" "funding:$RUN_FUNDING:$FUNDING_OUTCOME" "site:$RUN_SITE:$SITE_OUTCOME"; do
+            for row in "jobs:$RUN_JOBS:$JOBS_OUTCOME" "funding:$RUN_FUNDING:$FUNDING_OUTCOME" "reopen:$RUN_REOPEN:$REOPEN_OUTCOME" "site:$RUN_SITE:$SITE_OUTCOME"; do
               IFS=: read -r name played outcome <<< "$row"
               if [ "$played" = "true" ]; then
                 echo "| $name | played | ${outcome:-not reached} |"
@@ -311,4 +354,8 @@ jobs:
                 echo "| $name | skipped | - |"
               fi
             done
+            if [ "$RUN_REOPEN" = "true" ]; then
+              echo ""
+              if [ "$REOPEN_APPLY" = "true" ]; then echo "reopen: **applied** (snapshot pushed, site redeployed)"; else echo "reopen: dry run, nothing written"; fi
+            fi
           } >> "$GITHUB_STEP_SUMMARY"

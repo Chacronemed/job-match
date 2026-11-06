@@ -52,8 +52,12 @@ after the closures are written, and three days late.
    or that closed more than the threshold of what it asked (per source when the run stored
    those counters, the run's totals for runs older than this ADR), every job of the source
    marked closed between the run's start and end is reopened (`closed_at` and
-   `last_checked_at` cleared). Dry-run by default; `--apply` writes. Never run against the
-   production DB from a dev machine without the dry-run first.
+   `last_checked_at` cleared). Dry-run by default; `--apply` writes; the report (run ids,
+   counts, reasons, never a title) goes to the job summary too. On production it runs through
+   the Daily run's `workflow_dispatch` stage **reopen** (`reopen_since`, `reopen_source`,
+   `reopen_apply` false by default) on the restored snapshot: with `reopen_apply` the snapshot
+   is pushed and the site rebuilt and deployed, without a digest. Never run against the
+   production DB from a dev machine.
 
 ## Alternatives considered
 

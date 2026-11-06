@@ -236,3 +236,46 @@ def test_digest_markdown_names_the_source_down_instead_of_zero_jobs():
                          outages=("France Travail",))
     assert "⚠️ **France Travail indisponible aujourd'hui** : clôtures suspendues" in md
     assert "outages" not in digest_markdown(jobs=0, strong=0, leads=0, followups=0, sent=False)
+
+
+def test_reopen_command_prints_and_writes_counts_only_to_the_summary(tmp_path, monkeypatch, capsys):
+    """`job-match ops reopen` (ADR 0027): the report goes to stdout and the job summary; run
+    ids, counts and reasons only, never a title; dry run unless --apply."""
+    import shutil
+
+    from job_match.cli import _cmd_reopen
+    from job_match.domain.models import ContractType, Eligibility, Job, WorkplaceType
+    from job_match.persistence.repositories import JobRepository
+
+    monkeypatch.chdir(tmp_path)
+    shutil.copytree(Path(__file__).resolve().parents[2] / "config", tmp_path / "config")
+    (tmp_path / "data").mkdir()
+    start = NOW - timedelta(days=1)
+    with Database(path=str(tmp_path / "data" / "jobs.sqlite")) as db:
+        RunRepository(db.conn).save(
+            RunSummary(pipeline="jobs", outages=[_down()],
+                       by_source={"france_travail": {"fetched": 0}}),
+            start, start + timedelta(minutes=10))
+        job = JobRepository(db.conn).save(Job(
+            source="france_travail", source_job_id="SECRET-TITLE-1", title="Secret title",
+            company="Acme", location="Paris", workplace_type=WorkplaceType.UNKNOWN,
+            contract_type=ContractType.CDI, description="x", url="https://x.test/1",
+            collected_at=NOW, eligibility=Eligibility.ELIGIBLE, score=70))
+        JobRepository(db.conn).mark_closed([job.id], start + timedelta(minutes=5))
+    target = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(target))
+    args = argparse.Namespace(since=(NOW - timedelta(days=2)).date().isoformat(),
+                              source="france_travail", dry_run=True, apply=False)
+    _cmd_reopen(args)
+    out = capsys.readouterr().out
+    summary = target.read_text(encoding="utf-8")
+    assert "[DRY RUN]" in out and "1 offer(s) would be reopened (add --apply)" in out
+    assert "## Reopen" in summary and "1 offer(s) would be reopened" in summary
+    for leak in ("Secret title", "SECRET-TITLE-1"):
+        assert leak not in out and leak not in summary
+    with Database(path=str(tmp_path / "data" / "jobs.sqlite")) as db:
+        assert db.conn.execute("SELECT closed_at FROM jobs").fetchone()[0] is not None
+    _cmd_reopen(argparse.Namespace(**{**vars(args), "apply": True}))
+    assert "1 offer(s) reopened" in capsys.readouterr().out
+    with Database(path=str(tmp_path / "data" / "jobs.sqlite")) as db:
+        assert db.conn.execute("SELECT closed_at FROM jobs").fetchone()[0] is None
