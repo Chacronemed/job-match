@@ -3,7 +3,19 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**Focus dashboard redesign** (branch `design/job-match-focus-inputs`, 2026-11-06, ADR 0025,
+**Statistiques view** (branch `design/job-match-focus-inputs`, 2026-11-06, ADR 0026). Done
+locally, not committed. New view `#statistiques` (sidebar, tab bar « Stats », G S),
+`stats.js` (pure `JMStats.compute` + the view): cohort funnel on 30 / 90 days / Tout
+(`?p=90`), rates, delays garder → envoyer and envoyer → 1re réponse, expirées / archivées
+counted on their own, weekly SVG chart (gardées, envoyées, réponses, hover tooltip, table),
+drop reasons, missing skills of the kept offers, per source and per company. Real data only,
+undated events counted and shown as such. `track.decisionAt` keeps the verdict dates.
+Lucide `chart-column` added. Fix: `gAt` started at 0, so a lone key in the first 900 ms
+was read as « G + key » (`S` sent to Statistiques). Tests `tests/unit/browser/test_stats.py`
+(9). Suite **1 734 passed**, ruff clean, Node 0 fail.
+**Next step:** check it on the real data (`job-match dashboard --out site`), then merge with PR #21.
+
+Before it: **Focus dashboard redesign** (branch `design/job-match-focus-inputs`, 2026-11-06, ADR 0025,
 PR #21 in draft). **Done, pushed, not merged.** The art direction imposed by
 `docs/design/JOB_MATCH_FOCUS.md` and the five mockups, on the same vanilla stack, CSP and
 `window.JM` contracts: sidebar 232 px + 64 px top bar, page tops with counts from the data,

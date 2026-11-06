@@ -28,6 +28,7 @@ __CSS__
     <a class="nav-item" href="#tri" data-tab="tri" data-icon="layers"><span class="nav-label">Tri</span><span class="nav-n num" data-count="tri"></span></a>
     <a class="nav-item" href="#offres" data-tab="offres" data-icon="list"><span class="nav-label">Offres</span><span class="nav-n num" data-count="offres"></span></a>
     <a class="nav-item" href="#candidatures" data-tab="candidatures" data-icon="briefcase-business"><span class="nav-label">Candidatures</span><span class="nav-n num" data-count="candidatures"></span></a>
+    <a class="nav-item" href="#statistiques" data-tab="statistiques" data-icon="chart-column"><span class="nav-label">Statistiques</span></a>
     <a class="nav-item" href="#leads" data-tab="leads" data-icon="radar"><span class="nav-label">Leads</span><span class="nav-n num" data-count="leads"></span></a>
     <a class="nav-item" href="#executions" data-tab="executions" data-icon="activity"><span class="nav-label">Exécutions</span><span class="nav-n num" data-count="executions"></span></a>
   </nav>
@@ -216,6 +217,25 @@ __CSS__
   </div>
 </section>
 
+<section class="panel view view-stats" id="panel-statistiques" aria-labelledby="h-statistiques" hidden>
+  <header class="page-top">
+    <div class="page-top-text">
+      <p class="eyebrow">Mesurer pour ajuster</p>
+      <h1 id="h-statistiques">Statistiques</h1>
+      <p class="page-sub" id="stats-sub"></p>
+    </div>
+    <div class="page-actions">
+      <div class="seg" role="group" aria-label="Période">
+        <button type="button" class="chip chip-plain" data-period="30" aria-pressed="true">30 jours</button>
+        <button type="button" class="chip chip-plain" data-period="90" aria-pressed="false">90 jours</button>
+        <button type="button" class="chip chip-plain" data-period="tout" aria-pressed="false">Tout</button>
+      </div>
+    </div>
+  </header>
+  <p class="tri-note" id="stats-off" hidden></p>
+  <div class="stats" id="stats-body"></div>
+</section>
+
 <section class="panel view view-leads" id="panel-leads" aria-labelledby="h-leads" hidden>
   <header class="page-top">
     <div class="page-top-text">
@@ -283,6 +303,7 @@ __CSS__
   <a class="tab-item" href="#tri" data-tab="tri" data-icon="layers"><span class="nav-label">Tri</span><span class="nav-n num" data-count="tri"></span></a>
   <a class="tab-item" href="#offres" data-tab="offres" data-icon="list"><span class="nav-label">Offres</span><span class="nav-n num" data-count="offres"></span></a>
   <a class="tab-item" href="#candidatures" data-tab="candidatures" data-icon="briefcase-business"><span class="nav-label">Candid.</span><span class="nav-n num" data-count="candidatures"></span></a>
+  <a class="tab-item" href="#statistiques" data-tab="statistiques" data-icon="chart-column"><span class="nav-label">Stats</span></a>
   <a class="tab-item" href="#leads" data-tab="leads" data-icon="radar"><span class="nav-label">Leads</span><span class="nav-n num" data-count="leads"></span></a>
   <a class="tab-item" href="#executions" data-tab="executions" data-icon="activity"><span class="nav-label">Exéc.</span><span class="nav-n num" data-count="executions"></span></a>
 </nav>

@@ -108,6 +108,7 @@
     track.decisions[key] = label;
     return api.decide(key, label, score).then(function (res) {
       if (res && res.decision) undo.attach(key, res.decision.id);
+      if (res && res.decision && typeof res.decision.created_at === "string") track.decisionAt[key] = res.decision.created_at;
     }, function (err) {
       if (X.retryable(err)) { retry.add({ kind: "decide", payload: { key: key, label: label, score: score } }); renderPending(); }
     });

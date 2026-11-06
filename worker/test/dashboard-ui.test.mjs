@@ -168,7 +168,7 @@ describe("M24 explanation lines", () => {
 });
 
 describe("dashboard scope (app.js, the screens, dashboard.js)", () => {
-  const FILES = ["app.js", "why.js", "list.js", "tri.js", "board.js", "leads.js", "runs.js", "dashboard.js"];
+  const FILES = ["app.js", "why.js", "list.js", "tri.js", "board.js", "leads.js", "runs.js", "stats.js", "dashboard.js"];
   test("no name is declared twice at the top level of a file's IIFE (a var would replace a function)", async () => {
     const { readFile } = await import("node:fs/promises");
     let total = 0;

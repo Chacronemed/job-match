@@ -44,7 +44,7 @@ THEME = "#111113"  # DESIGN.md --bg (Radix slate-1, dark)
 # Inlined in this order: the tokens, then the components (Focus, docs/design/JOB_MATCH_FOCUS.md).
 STYLESHEETS = ("tokens.css", "app.css")
 # Each script needs the ones before it (tracking -> triage; icons -> score -> ui -> palette).
-# They are inlined as one `<script>` each, and the CSP allows exactly those eight by their
+# They are inlined as one `<script>` each, and the CSP allows exactly those by their
 # sha256 (`script_hash`): no 'unsafe-inline', so a script that reached the markup would not
 # run. The renderer and its libraries are same-origin files ('self', ADR 0019).
 SCRIPTS = (
@@ -62,6 +62,7 @@ SCRIPTS = (
     "board.js",
     "leads.js",
     "runs.js",
+    "stats.js",      # Statistiques: the funnel and its breakdowns, computed in the page
     "dashboard.js",  # boot, last
 )
 
