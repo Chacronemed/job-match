@@ -12,6 +12,7 @@
   var T = JM.T;
   var U = JM.U;
   var X = JM.X;
+  var ageText = function () { return JM.ageText.apply(null, arguments); };
   var aiOf = function () { return JM.aiOf.apply(null, arguments); };
   var api = JM.api;
   var byId = function () { return JM.byId.apply(null, arguments); };
@@ -126,22 +127,14 @@
     if (card) card.focus({ preventScroll: true });
   }
 
-  /* The "Publiée" fact: how long ago, as of the snapshot. */
-  function ageText(days) {
-    if (typeof days !== "number") return "Date inconnue";
-    if (days <= 0) return "Aujourd’hui";
-    return days === 1 ? "Hier" : "Il y a " + days + "\u00a0j";
-  }
-
   /* The ledger animates only when a card arrives (first view, or the one after a decision),
      not when the same card is drawn again. */
   var triArrive = true;
 
-  /* One card (DESIGN.md "Tri card"): the facts, the collapsible ledger, then the whole
-     description laid out by description.js; the card's own content scrolls, the buttons stay.
-     Everything from the data goes through textContent. The ledger carries the weights, so the
-     skills are not listed a second time (AUDIT P2-7); the title opens this exact offer's
-     record (P1-9). */
+  /* One card (Focus): the score and its band first, the title (it opens the record), the
+     company and place, the facts as chips, the ledger, one sentence of the offer behind the
+     best skill, then the whole description laid out by description.js; the card's own content
+     scrolls, the buttons stay. Everything from the data goes through textContent. */
   function triCard(item, isNext) {
     var j = item.row;
     var w = j.why || { skills: [], unlisted: [], lowered: [] };
@@ -159,30 +152,38 @@
     var body = el("div", { class: "tcard-scroll" });
     card.appendChild(body);
 
-    var badges = [];
+    /* The score, big, in its band's hue; the band, the AI's score and the flags as badges. */
+    var bd = S.band(j);
+    var known = typeof j.score === "number";
+    var badges = [el("span", { class: "band band-" + bd.key }, [el("span", { class: "dot", "aria-hidden": "true" }), known ? bd.label : "Score inconnu"])];
     var verdict = aiOf(j);
     if (verdict) {
       var aiBand = S.aiBand(verdict.level);
       badges.push(el("span", { class: "badge badge-ai" + (aiBand ? " ai-" + aiBand.key : ""), title: aiBand ? "Selon l’IA : " + aiBand.label : "Selon l’IA", text: "IA " + verdict.score }));
     }
     if (item.isNew) badges.push(el("span", { class: "badge badge-new", text: "Nouveau" }));
-    if (j.section === "stretch") badges.push(el("span", { class: "badge badge-stretch", text: "À tenter" }));
     if (j.postings) badges.push(el("span", { class: "badge", text: j.departments.length + " départements" }));
-    if (badges.length) body.appendChild(el("div", { class: "tcard-badges" }, badges));
+    body.appendChild(el("div", { class: "tcard-top" }, [
+      el("span", { class: "score-big band-" + (known ? bd.key : "low"), "aria-label": known ? "Score " + j.score + " sur 100" : "Score inconnu" }, [
+        el("span", { class: "num", text: known ? String(j.score) : "—" }), known ? el("small", { text: "/ 100" }) : null]),
+      el("span", { class: "tcard-badges" }, badges)
+    ]));
 
-    /* The facts first, in a fixed order, scannable at a glance. Salary only when the text
-       states it on its own line (description.js), word for word. */
+    /* The title opens the record; the company and the place under it; then the facts as
+       chips, in a fixed order. Salary only when the text states it on its own line
+       (description.js), word for word. Unknown facts say so. */
     var open = el("button", { type: "button", class: "tcard-open", title: "Ouvrir la fiche", text: j.title || "—", tabindex: isNext ? "-1" : null });
     open.addEventListener("click", function () { openRecord(j, open); });
-    function fact(label, value, cls) {
-      return el("div", { class: "fact" + (cls ? " " + cls : "") }, [el("dt", { text: label }), el("dd", null, value)]);
+    body.appendChild(el("div", null, [
+      el("h2", { class: "tcard-title" }, open),
+      el("p", { class: "tcard-sub", text: [j.company || "Entreprise non communiquée", j.location || (j.department ? "Département " + j.department : "Lieu non précisé")].join(" · ") })
+    ]));
+    function fact(label, value) {
+      return el("div", { class: "fact" }, [el("dt", { text: label }), el("dd", null, value)]);
     }
     var facts = [
-      fact("Poste", el("h2", { class: "tcard-title" }, open), "fact-title"),
-      fact("Entreprise", j.company || "Non communiquée"),
-      fact("Expérience demandée", yearsText(j.required_years)),
-      fact("Lieu", j.location || (j.department ? "Département " + j.department : "Non précisé")),
-      fact("Contrat", j.contract || "Inconnu")
+      fact("Contrat", j.contract && j.contract !== "UNKNOWN" ? j.contract : "Contrat inconnu"),
+      fact("Expérience demandée", yearsText(j.required_years))
     ];
     if (desc.salary) facts.push(fact("Salaire", desc.salary));
     var posted = fact("Publiée", ageText(j.age_days));
@@ -195,8 +196,13 @@
       missing: j.missing || [], unlisted: (w.unlisted || []).map(function (u) { return u.name; })
     }));
 
+    /* One sentence of the offer, the one behind its strongest matched skill, word for word. */
+    var quoted = (w.skills || []).filter(function (s) { return s && s.snippet; })
+      .sort(function (a, b) { return (typeof b.weight === "number" ? b.weight : 0) - (typeof a.weight === "number" ? a.weight : 0); })[0];
+    if (quoted) body.appendChild(el("blockquote", { class: "tcard-quote", "aria-label": "Extrait de l’annonce (" + quoted.name + ")", text: quoted.snippet }));
+
     if (desc.sections.length) {
-      body.appendChild(el("div", { class: "tcard-desc", "aria-label": "Description de l’offre", role: "group" }, D.render(desc, el)));
+      body.appendChild(el("div", { class: "tcard-desc", "aria-label": "Description de l’offre", role: "group" }, [el("p", { class: "tcard-desc-title", text: "L’annonce" })].concat(D.render(desc, el))));
     } else {
       body.appendChild(el("p", { class: "tcard-empty", text: "La source n’a pas fourni de description." }));
     }
@@ -366,11 +372,12 @@
     var atBoundary = pr.atBoundary;
     var done = pr.done;
     byId("tri-progress-bar").hidden = total === 0;
-    /* « N / total restantes · lot X de Y »: what is left in this batch over what is left in
-       the queue, both shrinking with each decision; the bar fills with the batch (AUDIT P2-8). */
-    byId("tri-count").textContent = total ? pr.leftInBatch + " / " + pr.left : "";
-    byId("tri-left").textContent = total
-      ? (pr.left > 1 ? "restantes" : "restante") + " · lot " + pr.batch + " de " + pr.batches : "";
+    /* « Offre N sur T » over the whole queue, then what is left after this one and the batch;
+       the bar fills with the batch (AUDIT P2-8). */
+    var after = Math.max(0, pr.left - 1);
+    byId("tri-count").textContent = total && !done ? "Offre " + Math.min(tri.pos + 1, total) + " sur " + total : "";
+    byId("tri-left").textContent = total && !done
+      ? after + (after > 1 ? " restantes" : " restante") + " après celle-ci · lot " + pr.batch + " de " + pr.batches : "";
     if (total) {
       byId("tri-progress-fill").style.transform = "scaleX(" + (pr.decided / Math.max(pr.size, 1)) + ")";
       var bar = byId("tri-progress-bar");

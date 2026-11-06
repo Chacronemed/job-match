@@ -23,20 +23,34 @@ __CSS__
 <div class="app">
 <aside class="sidebar" aria-label="Navigation">
   <div class="brand"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name" translate="no">job-match</span></div>
-  <button type="button" class="search" id="palette-btn" aria-keyshortcuts="Control+K Meta+K"><span class="search-label">Rechercher…</span></button>
+  <p class="side-label">Espace personnel</p>
   <nav class="nav" aria-label="Vues">
     <a class="nav-item" href="#tri" data-tab="tri" data-icon="layers"><span class="nav-label">Tri</span><span class="nav-n num" data-count="tri"></span></a>
-    <a class="nav-item" href="#candidatures" data-tab="candidatures" data-icon="briefcase-business"><span class="nav-label">Candidatures</span><span class="nav-n num" data-count="candidatures"></span></a>
     <a class="nav-item" href="#offres" data-tab="offres" data-icon="list"><span class="nav-label">Offres</span><span class="nav-n num" data-count="offres"></span></a>
+    <a class="nav-item" href="#candidatures" data-tab="candidatures" data-icon="briefcase-business"><span class="nav-label">Candidatures</span><span class="nav-n num" data-count="candidatures"></span></a>
     <a class="nav-item" href="#leads" data-tab="leads" data-icon="radar"><span class="nav-label">Leads</span><span class="nav-n num" data-count="leads"></span></a>
     <a class="nav-item" href="#executions" data-tab="executions" data-icon="activity"><span class="nav-label">Exécutions</span><span class="nav-n num" data-count="executions"></span></a>
   </nav>
+  <p class="side-label side-label-quick">Accès rapide</p>
+  <nav class="nav" aria-label="Accès rapide">
+    <a class="nav-item nav-quick" href="#candidatures" id="nav-due" data-icon="calendar-clock"><span class="nav-label">Relances à faire</span><span class="nav-n num" data-count="relances"></span></a>
+  </nav>
+  <button type="button" class="search" id="palette-btn" aria-keyshortcuts="Control+K Meta+K"><span class="search-label">Rechercher partout</span></button>
   <div class="sidebar-foot">
-    <p class="snapshot" id="generated-at"></p>
-    <button class="foot-btn theme-toggle" id="theme-toggle" type="button" aria-pressed="false">Mode clair</button>
+    <p class="last-run" id="last-run"></p>
     <button type="button" class="foot-btn" id="help-btn" aria-keyshortcuts="Shift+?">Raccourcis <kbd aria-hidden="true">?</kbd></button>
   </div>
 </aside>
+
+<div class="main-col">
+<header class="topbar">
+  <div class="brand topbar-brand" aria-hidden="true"><span class="brand-mark"></span><span class="brand-name" translate="no">job-match</span></div>
+  <p class="crumb"><span class="crumb-root">Mon espace</span><span class="crumb-sep" aria-hidden="true">/</span><strong id="crumb-view">Tri</strong></p>
+  <span class="fill"></span>
+  <span class="snapshot" id="generated-at"></span>
+  <button type="button" class="icon-btn topbar-search" id="palette-btn-m" aria-label="Rechercher partout"></button>
+  <button class="foot-btn theme-toggle" id="theme-toggle" type="button" aria-pressed="false">Mode clair</button>
+</header>
 
 <main id="main" class="main" tabindex="-1">
 <div class="track-banner" id="track-banner" role="status" hidden>
@@ -45,143 +59,171 @@ __CSS__
 </div>
 
 <section class="panel view view-tri" id="panel-tri" aria-labelledby="h-tri">
-  <header class="view-head">
-    <h1 id="h-tri">Tri <span class="tri-count num" id="tri-count"></span></h1>
-    <span class="tri-left num" id="tri-left"></span>
-    <span class="fill"></span>
-    <span class="progress" id="tri-progress-bar" role="progressbar" aria-label="Avancement du lot" aria-valuemin="0" aria-valuenow="0" aria-valuemax="20" hidden><i id="tri-progress-fill"></i></span>
-  </header>
-  <p class="sr-only" id="tri-live" aria-live="polite" aria-atomic="true"></p>
-  <p class="tri-note" id="tri-off" hidden>Le tri enregistre tes choix : il demande le tableau de bord hébergé, avec le suivi chargé.</p>
-  <div class="tri-pending" id="tri-pending" role="status" hidden>
-    <span id="tri-pending-text" class="fill"></span>
-    <button type="button" class="link-btn" id="tri-pending-retry">Réessayer</button>
-  </div>
-  <div class="tri-stack" id="tri-stage"></div>
-  <div class="tri-end" id="tri-end" tabindex="-1" hidden></div>
-  <div class="tri-bar" id="tri-bar">
-    <div class="tri-reasons" id="tri-reasons-bar" role="group" aria-labelledby="tri-reasons-title" hidden>
-      <p class="tri-reasons-title" id="tri-reasons-title">Pourquoi l’écarter ?</p>
-      <div class="tri-reason-chips" id="tri-reason-chips"></div>
+  <header class="page-top">
+    <div class="page-top-text">
+      <p class="eyebrow">Décider vite, sans se tromper</p>
+      <h1 id="h-tri">Tri des nouvelles offres</h1>
+      <p class="page-sub">Une opportunité à la fois</p>
     </div>
-    <div class="tri-actions" id="tri-controls">
-      <button type="button" class="tbtn drop" id="tri-drop" aria-keyshortcuts="ArrowLeft">Écarter</button>
-      <button type="button" class="tbtn undo" id="tri-undo" aria-keyshortcuts="Z" aria-label="Annuler la dernière décision" disabled></button>
-      <button type="button" class="tbtn keep" id="tri-keep" aria-keyshortcuts="ArrowRight">Garder</button>
+  </header>
+  <div class="tri-frame">
+    <div class="tri-steps">
+      <span class="tri-count num" id="tri-count"></span>
+      <span class="tri-left num" id="tri-left"></span>
+    </div>
+    <span class="progress" id="tri-progress-bar" role="progressbar" aria-label="Avancement du lot" aria-valuemin="0" aria-valuenow="0" aria-valuemax="20" hidden><i id="tri-progress-fill"></i></span>
+    <p class="sr-only" id="tri-live" aria-live="polite" aria-atomic="true"></p>
+    <p class="tri-note" id="tri-off" hidden>Le tri enregistre tes choix : il demande le tableau de bord hébergé, avec le suivi chargé.</p>
+    <div class="tri-pending" id="tri-pending" role="status" hidden>
+      <span id="tri-pending-text" class="fill"></span>
+      <button type="button" class="link-btn" id="tri-pending-retry">Réessayer</button>
+    </div>
+    <div class="tri-stack" id="tri-stage"></div>
+    <div class="tri-end" id="tri-end" tabindex="-1" hidden></div>
+    <div class="tri-bar" id="tri-bar">
+      <div class="tri-reasons" id="tri-reasons-bar" role="group" aria-labelledby="tri-reasons-title" hidden>
+        <p class="tri-reasons-title" id="tri-reasons-title">Pourquoi l’écarter ?</p>
+        <div class="tri-reason-chips" id="tri-reason-chips"></div>
+      </div>
+      <div class="tri-actions" id="tri-controls">
+        <button type="button" class="tbtn drop" id="tri-drop" aria-keyshortcuts="ArrowLeft">Écarter</button>
+        <button type="button" class="tbtn undo" id="tri-undo" aria-keyshortcuts="Z" aria-label="Annuler la dernière décision" disabled></button>
+        <button type="button" class="tbtn keep" id="tri-keep" aria-keyshortcuts="ArrowRight">Garder</button>
+      </div>
     </div>
   </div>
 </section>
 
-<section class="panel legacy" id="panel-candidatures" aria-labelledby="h-candidatures" hidden>
-  <header class="view-head"><h1 id="h-candidatures">Candidatures <span class="view-n num" data-count="candidatures"></span></h1>
-    <div class="view-toggle" role="group" aria-label="Affichage des candidatures">
-      <button type="button" class="chip" id="apps-view-kanban" data-view="kanban" aria-pressed="true">Kanban</button>
-      <button type="button" class="chip" id="apps-view-table" data-view="table" aria-pressed="false">Tableau</button>
-    </div></header>
-  <p class="tri-off" id="kb-off" hidden>Les candidatures viennent du suivi : il demande le tableau de bord hébergé.</p>
+<section class="panel view view-apps" id="panel-candidatures" aria-labelledby="h-candidatures" hidden>
+  <header class="page-top">
+    <div class="page-top-text">
+      <p class="eyebrow">Suivre, relancer, avancer</p>
+      <h1 id="h-candidatures">Candidatures <span class="view-n num" data-count="candidatures"></span></h1>
+      <p class="page-sub board-stats" id="apps-stats"></p>
+    </div>
+    <div class="page-actions">
+      <button type="button" class="due-chip" id="apps-due-chip" hidden></button>
+      <div class="view-toggle seg" role="group" aria-label="Affichage des candidatures">
+        <button type="button" class="chip chip-plain" id="apps-view-kanban" data-view="kanban" aria-pressed="true">Kanban</button>
+        <button type="button" class="chip chip-plain" id="apps-view-table" data-view="table" aria-pressed="false">Tableau</button>
+      </div>
+    </div>
+  </header>
+  <p class="tri-note" id="kb-off" hidden>Les candidatures viennent du suivi : il demande le tableau de bord hébergé.</p>
   <div class="kb-inbox" id="kb-inbox" hidden></div>
   <div class="kb-due" id="kb-due" hidden></div>
   <div class="kb-board" id="kb-board"></div>
   <div class="kb-table" id="kb-table" hidden></div>
 </section>
 
-<section class="panel legacy" id="panel-offres" aria-labelledby="h-offres" hidden>
-  <header class="view-head"><h1 id="h-offres">Offres <span class="view-n num" data-count="offres"></span></h1>
-    <span class="fill"></span>
-    <div class="density" role="group" aria-label="Densité des lignes">
-      <button type="button" class="chip chip-plain" id="density-dense" data-density="dense" aria-pressed="true">Dense</button>
-      <button type="button" class="chip chip-plain" id="density-comfortable" data-density="comfortable" aria-pressed="false">Confortable</button>
+<section class="panel view view-offres" id="panel-offres" aria-labelledby="h-offres" hidden>
+  <header class="page-top">
+    <div class="page-top-text">
+      <p class="eyebrow">Ta recherche, organisée</p>
+      <h1 id="h-offres">Les opportunités qui comptent</h1>
+      <p class="page-sub" id="offres-sub"><span class="view-n num" data-count="offres"></span> offres</p>
+    </div>
+    <div class="page-actions">
+      <div class="density seg" role="group" aria-label="Densité des lignes">
+        <button type="button" class="chip chip-plain" id="density-dense" data-density="dense" aria-pressed="true">Dense</button>
+        <button type="button" class="chip chip-plain" id="density-comfortable" data-density="comfortable" aria-pressed="false">Confortable</button>
+      </div>
+      <button type="button" class="button primary" id="offres-to-tri">Trier les nouvelles <span class="num btn-n" data-count="tri"></span></button>
     </div>
   </header>
 
-  <details class="controls" id="jobs-controls">
-    <summary class="controls-summary">Filtres<span id="filters-count"></span><span class="controls-hint" id="jobs-rowcount" aria-live="polite"></span></summary>
-    <div class="controls-grid">
-      <label class="field field-search">
-        <span class="field-label">Recherche <kbd aria-hidden="true">/</kbd></span>
-        <input type="search" id="f-search" name="q" placeholder="ex. orbital kubernetes" autocomplete="off" spellcheck="false">
-      </label>
-      <div class="field field-sections" role="group" aria-label="Sections">
-        <span class="field-label">Section</span>
-        <div class="chips">
+  <div class="split" id="offres-split">
+    <div class="list-panel">
+      <div class="list-tools">
+        <label class="searchbox">
+          <span class="sr-only">Recherche</span>
+          <input type="search" id="f-search" name="q" placeholder="ex. orbital kubernetes" aria-label="Rechercher une offre, une entreprise, une compétence" autocomplete="off" spellcheck="false">
+          <kbd aria-hidden="true">/</kbd>
+        </label>
+        <div class="tabline" role="group" aria-label="Sections">
+          <button type="button" class="chip chip-all" id="section-all" aria-pressed="true">Toutes <span class="num" id="kpi-all">0</span></button>
           <button type="button" class="chip chip-strong" data-section="strong" aria-pressed="true">Fortes <span class="num" id="kpi-strong">0</span></button>
           <button type="button" class="chip chip-eligible" data-section="eligible" aria-pressed="true">Éligibles <span class="num" id="kpi-eligible">0</span></button>
           <button type="button" class="chip chip-stretch" data-section="stretch" aria-pressed="true">À tenter <span class="num" id="kpi-stretch">0</span></button>
         </div>
       </div>
-      <label class="field">
-        <span class="field-label">Département</span>
-        <select id="f-department" name="department"><option value="">Tous</option></select>
-      </label>
-      <label class="field">
-        <span class="field-label">Source</span>
-        <select id="f-source" name="source"><option value="">Toutes</option></select>
-      </label>
-      <label class="field">
-        <span class="field-label">Statut</span>
-        <select id="f-status" name="status"><option value="">Tous</option></select>
-      </label>
-      <label class="field">
-        <span class="field-label">Avis de l’IA</span>
-        <select id="f-ai" name="ai"><option value="">Tous</option></select>
-      </label>
-      <div class="field field-score">
-        <label class="field-label" for="f-min-score">Score minimum <span class="field-hint" id="min-score-hint"></span></label>
-        <div class="score-row">
-          <input type="range" id="f-min-score" name="min_score" min="0" max="100" step="5" value="0">
-          <output for="f-min-score" id="f-min-score-out" class="mono">0</output>
+
+      <details class="controls" id="jobs-controls">
+        <summary class="controls-summary">Filtres<span id="filters-count"></span><span class="controls-hint" id="jobs-rowcount" aria-live="polite"></span></summary>
+        <div class="controls-grid">
+          <label class="field">
+            <span class="field-label">Département</span>
+            <select id="f-department" name="department"><option value="">Tous</option></select>
+          </label>
+          <label class="field">
+            <span class="field-label">Source</span>
+            <select id="f-source" name="source"><option value="">Toutes</option></select>
+          </label>
+          <label class="field">
+            <span class="field-label">Statut</span>
+            <select id="f-status" name="status"><option value="">Tous</option></select>
+          </label>
+          <label class="field">
+            <span class="field-label">Avis de l’IA</span>
+            <select id="f-ai" name="ai"><option value="">Tous</option></select>
+          </label>
+          <div class="field field-score">
+            <label class="field-label" for="f-min-score">Score minimum <span class="field-hint" id="min-score-hint"></span></label>
+            <div class="score-row">
+              <input type="range" id="f-min-score" name="min_score" min="0" max="100" step="5" value="0">
+              <output for="f-min-score" id="f-min-score-out" class="mono">0</output>
+            </div>
+          </div>
+          <label class="field">
+            <span class="field-label">Publiée depuis</span>
+            <input type="date" id="f-from" name="from" autocomplete="off">
+          </label>
+          <label class="field">
+            <span class="field-label">Publiée avant</span>
+            <input type="date" id="f-to" name="to" autocomplete="off">
+          </label>
+          <button type="button" class="button field-reset" id="f-reset">Réinitialiser</button>
+        </div>
+      </details>
+
+      <div class="table-wrap">
+        <table class="data jobs" id="jobs-table">
+          <thead>
+            <tr class="sortbar">
+              <th scope="col" class="num" aria-sort="descending"><button type="button" class="sort" data-key="score">Score</button></th>
+              <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="title">Titre</button></th>
+              <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="company">Entreprise</button></th>
+              <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="department">Ville</button></th>
+              <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="contract">Contrat</button></th>
+              <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="source">Source</button></th>
+              <th scope="col" class="num" aria-sort="none"><button type="button" class="sort" data-key="age_days">Âge</button></th>
+              <th scope="col" class="th-why"><span class="sort-static">Pourquoi</span></th>
+              <th scope="col" class="th-more"><span class="sr-only">Détails</span></th>
+            </tr>
+          </thead>
+          <tbody id="jobs-body"></tbody>
+        </table>
+        <div class="empty" id="jobs-empty" hidden>
+          <p id="jobs-empty-text">Le run de ce matin n’a rien trouvé pour ces filtres.</p>
+          <button type="button" class="button" id="jobs-empty-reset">Réinitialiser les filtres</button>
         </div>
       </div>
-      <label class="field">
-        <span class="field-label">Publiée depuis</span>
-        <input type="date" id="f-from" name="from" autocomplete="off">
-      </label>
-      <label class="field">
-        <span class="field-label">Publiée avant</span>
-        <input type="date" id="f-to" name="to" autocomplete="off">
-      </label>
-      <button type="button" class="btn btn-secondary field-reset" id="f-reset">Réinitialiser</button>
     </div>
-  </details>
-
-  <div class="table-wrap">
-    <table class="data fixed jobs" id="jobs-table">
-      <colgroup>
-        <col class="w-score">
-        <col class="w-title">
-        <col class="w-company">
-        <col class="w-city">
-        <col class="w-contract">
-        <col class="w-source">
-        <col class="w-age">
-        <col class="w-why">
-        <col class="w-more">
-      </colgroup>
-      <thead>
-        <tr>
-          <th scope="col" class="num" aria-sort="descending"><button type="button" class="sort" data-key="score">Score</button></th>
-          <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="title">Titre</button></th>
-          <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="company">Entreprise</button></th>
-          <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="department">Ville</button></th>
-          <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="contract">Contrat</button></th>
-          <th scope="col" aria-sort="none"><button type="button" class="sort" data-key="source">Source</button></th>
-          <th scope="col" class="num" aria-sort="none"><button type="button" class="sort" data-key="age_days">Âge</button></th>
-          <th scope="col"><span class="sort-static">Pourquoi</span></th>
-          <th scope="col"><span class="sr-only">Détails</span></th>
-        </tr>
-      </thead>
-      <tbody id="jobs-body"></tbody>
-    </table>
-    <div class="empty" id="jobs-empty" hidden>
-      <p id="jobs-empty-text">Le run de ce matin n’a rien trouvé pour ces filtres.</p>
-      <button type="button" class="button" id="jobs-empty-reset">Réinitialiser les filtres</button>
+    <div class="detail-empty" id="offres-detail-empty" aria-hidden="true">
+      <p>Sélectionne une offre pour lire son relevé du score.</p>
+      <p class="empty-hint">J et K parcourent la liste, O ouvre la fiche.</p>
     </div>
   </div>
 </section>
 
-<section class="panel legacy" id="panel-leads" aria-labelledby="h-leads" hidden>
-  <header class="view-head"><h1 id="h-leads">Leads <span class="view-n num" data-count="leads"></span></h1></header>
-  <p class="rowcount" id="leads-rowcount"></p>
+<section class="panel view view-leads" id="panel-leads" aria-labelledby="h-leads" hidden>
+  <header class="page-top">
+    <div class="page-top-text">
+      <p class="eyebrow">Signaux de financement</p>
+      <h1 id="h-leads">Leads <span class="view-n num" data-count="leads"></span></h1>
+      <p class="page-sub" id="leads-rowcount"></p>
+    </div>
+  </header>
   <div class="table-wrap">
     <table class="data leads" id="leads-table">
       <thead>
@@ -203,38 +245,46 @@ __CSS__
   </div>
 </section>
 
-<section class="panel legacy" id="panel-executions" aria-labelledby="h-executions" hidden>
-  <header class="view-head"><h1 id="h-executions">Exécutions <span class="view-n num" data-count="executions"></span></h1></header>
-  <section class="ai-runs" aria-labelledby="h-ai-runs">
-    <div class="section-head"><h2 id="h-ai-runs" class="section-title">Rerank IA</h2><button type="button" class="btn btn-small" id="ai-run-now" disabled>Lancer maintenant</button></div>
-    <div class="runs" id="ai-runs-list"></div>
-    <p class="empty empty-sm" id="ai-runs-empty" hidden>Aucun passage de l’IA.</p>
-  </section>
-  <section class="ai-runs" aria-labelledby="h-docs-runs">
-    <div class="section-head"><h2 id="h-docs-runs" class="section-title">Documents</h2><button type="button" class="btn btn-small" id="docs-run-now" disabled>Lancer maintenant</button></div>
-    <p class="empty empty-sm">Génération des CV et lettres en attente, toutes les dix minutes ; l’état de chaque offre est dans sa fiche.</p>
-  </section>
-  <h2 class="section-title">Collectes</h2>
-  <p class="rowcount" id="runs-rowcount"></p>
+<section class="panel view view-runs" id="panel-executions" aria-labelledby="h-executions" hidden>
+  <header class="page-top">
+    <div class="page-top-text">
+      <p class="eyebrow">Ce que la machine a fait</p>
+      <h1 id="h-executions">Exécutions <span class="view-n num" data-count="executions"></span></h1>
+      <p class="page-sub" id="runs-rowcount"></p>
+    </div>
+  </header>
+  <div class="runs-grid">
+    <section class="ai-runs card" aria-labelledby="h-ai-runs">
+      <div class="section-head"><h2 id="h-ai-runs" class="section-title">Rerank IA</h2><button type="button" class="button small" id="ai-run-now" disabled>Lancer maintenant</button></div>
+      <div class="runs" id="ai-runs-list"></div>
+      <p class="empty empty-sm" id="ai-runs-empty" hidden>Aucun passage de l’IA.</p>
+    </section>
+    <section class="ai-runs card" aria-labelledby="h-docs-runs">
+      <div class="section-head"><h2 id="h-docs-runs" class="section-title">Documents</h2><button type="button" class="button small" id="docs-run-now" disabled>Lancer maintenant</button></div>
+      <p class="empty empty-sm">Génération des CV et lettres en attente, toutes les dix minutes ; l’état de chaque offre est dans sa fiche.</p>
+    </section>
+  </div>
+  <div class="section-head runs-head"><h2 class="section-title">Collectes</h2>
   <div class="legend" aria-hidden="true">
     <span class="legend-item"><i class="swatch sw-rejected"></i>Rejetées</span>
     <span class="legend-item"><i class="swatch sw-duplicates"></i>Doublons</span>
     <span class="legend-item"><i class="swatch sw-eligible"></i>Éligibles</span>
     <span class="legend-item"><i class="swatch sw-strong"></i>dont fortes</span>
     <span class="legend-item"><i class="swatch sw-stretch"></i>À tenter</span>
-  </div>
+  </div></div>
   <div class="runs" id="runs-list"></div>
   <p class="empty" id="runs-empty" hidden>Aucune exécution enregistrée : la première arrive avec le run quotidien, ou `job-match run` à la main.</p>
 </section>
 </main>
+</div>
 <aside class="record" id="record" aria-labelledby="record-title" hidden></aside>
 </div>
 <nav class="tabbar" id="tabbar" aria-label="Vues (barre du bas)">
   <a class="tab-item" href="#tri" data-tab="tri" data-icon="layers"><span class="nav-label">Tri</span><span class="nav-n num" data-count="tri"></span></a>
-  <a class="tab-item" href="#candidatures" data-tab="candidatures" data-icon="briefcase-business"><span class="nav-label">Candidatures</span><span class="nav-n num" data-count="candidatures"></span></a>
   <a class="tab-item" href="#offres" data-tab="offres" data-icon="list"><span class="nav-label">Offres</span><span class="nav-n num" data-count="offres"></span></a>
+  <a class="tab-item" href="#candidatures" data-tab="candidatures" data-icon="briefcase-business"><span class="nav-label">Candid.</span><span class="nav-n num" data-count="candidatures"></span></a>
   <a class="tab-item" href="#leads" data-tab="leads" data-icon="radar"><span class="nav-label">Leads</span><span class="nav-n num" data-count="leads"></span></a>
-  <a class="tab-item" href="#executions" data-tab="executions" data-icon="activity"><span class="nav-label">Exécutions</span><span class="nav-n num" data-count="executions"></span></a>
+  <a class="tab-item" href="#executions" data-tab="executions" data-icon="activity"><span class="nav-label">Exéc.</span><span class="nav-n num" data-count="executions"></span></a>
 </nav>
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden>

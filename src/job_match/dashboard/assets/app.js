@@ -14,6 +14,12 @@ window.JM = window.JM || {};
   var listKeys = function () { return JM.listKeys.apply(null, arguments); };
   var canTriage = function () { return JM.canTriage.apply(null, arguments); };
   var documentsBlock = function () { return JM.documentsBlock.apply(null, arguments); };
+  var dueKeys = function () { return JM.dueKeys.apply(null, arguments); };
+  var ensureSelection = function () { return JM.ensureSelection.apply(null, arguments); };
+  var markSelected = function () { return JM.markSelected.apply(null, arguments); };
+  var recordActions = function () { return JM.recordActions.apply(null, arguments); };
+  var listedCount = function () { return JM.listedCount.apply(null, arguments); };
+  var sourceText = function () { return JM.sourceText.apply(null, arguments); };
   var flushRetry = function () { return JM.flushRetry.apply(null, arguments); };
   var focusTriCard = function () { return JM.focusTriCard.apply(null, arguments); };
   var overlayPending = function () { return JM.overlayPending.apply(null, arguments); };
@@ -207,11 +213,12 @@ window.JM = window.JM || {};
       });
       TABS.forEach(function (t) { byId("panel-" + t).hidden = t !== name; });
       V.tab = name;
+      byId("crumb-view").textContent = VIEW_TITLE[name];
       if (entering) {
         if (R.open && R.tab !== name) closeRecord(false);
         if (name === "candidatures") preloadRenderer();
         renderCurrent();
-        byId("main").scrollTop = 0;
+        byId("panel-" + name).scrollTop = 0;
       }
       syncHash();
       document.title = VIEW_TITLE[name] + " · job-match";
@@ -341,6 +348,7 @@ window.JM = window.JM || {};
       entry.node.className = "status status-" + s;
       entry.node.textContent = T.STATUS_TEXT[s];
     });
+    if (R.open && R.job && T.postingsOf(R.job).some(function (p) { return p.key === key; })) refreshRecordFoot();
     updateCounts();
   }
 
@@ -416,7 +424,7 @@ window.JM = window.JM || {};
       renderJobs();
       renderCurrent();
       /* A record opened before the tracking (a #…?fiche= link) has no documents nor kit yet. */
-      if (R.open && R.job) openRecord(R.job, R.opener);
+      if (R.open && R.job) openRecord(R.job, R.opener, { quiet: true });
     }).catch(function () {
       track.status = "error";
       trackBanner();
@@ -779,7 +787,7 @@ window.JM = window.JM || {};
   function setCount(view, n) {
     document.querySelectorAll('[data-count="' + view + '"]').forEach(function (node) {
       /* The tab bar's Tri badge disappears at zero rather than showing "0". */
-      node.textContent = n || !node.closest(".tab-item") ? String(n) : "";
+      node.textContent = n || !node.closest(".tab-item, .btn-n") ? String(n) : "";
     });
   }
 
@@ -787,6 +795,8 @@ window.JM = window.JM || {};
   function updateCounts() {
     var n = X.sidebarCounts(rows, track.apps, runAt, thresholds.min_score, leads, runs, track.ai);
     Object.keys(n).forEach(function (view) { setCount(view, n[view]); });
+    /* « Relances à faire » (sidebar): the due follow-ups, as Candidatures lists them. */
+    setCount("relances", track.status === "ready" ? dueKeys(T.localDay()).length : "");
   }
 
   /* ---------- record panel (Attio): split at ≥ 1280 px, overlay below ---------- */
@@ -795,6 +805,15 @@ window.JM = window.JM || {};
   var R = JM.rec = { open: false, tab: null, job: null, opener: null };
   function wideScreen() { return !!(window.matchMedia && window.matchMedia("(min-width: 1280px)").matches); }
 
+  /* Where the panel lives: inside the Offres split when that view is wide, else as the app
+     grid's third column (the overlay rules take over below 1280 px). */
+  function placeRecord() {
+    var inSplit = V.tab === "offres" && wideScreen();
+    var host = inSplit ? byId("offres-split") : document.querySelector(".app");
+    if (record.parentNode !== host) host.appendChild(record);
+    document.body.classList.toggle("record-split", inSplit);
+  }
+
   /* Below 1280 px the record covers the page: what is under it is inert, so Tab stays inside. */
   function setInert() {
     var cover = R.open && !wideScreen();
@@ -802,35 +821,71 @@ window.JM = window.JM || {};
       if (n) { if (cover) n.setAttribute("inert", ""); else n.removeAttribute("inert"); }
     });
   }
-  if (window.matchMedia) window.matchMedia("(min-width: 1280px)").addEventListener("change", setInert);
+  if (window.matchMedia) window.matchMedia("(min-width: 1280px)").addEventListener("change", function () {
+    setInert();
+    if (R.open) placeRecord();
+    ensureSelection();
+  });
 
-  function prop(iconName, label, value) {
-    return el("div", { class: "prop" }, [el("dt", { icon: iconName }, label), el("dd", null, value)]);
+  /* How old the offer is, as of the snapshot (also the Tri card's fact). */
+  function ageText(days) {
+    if (typeof days !== "number") return "Date inconnue";
+    if (days <= 0) return "Publiée aujourd’hui";
+    return days === 1 ? "Publiée hier" : "Publiée il y a " + days + "\u00a0j";
   }
 
-  /* Order (AUDIT P2-13): what the offer says, why it scored so, then the tracking. */
+  /* « Adéquation avec ton profil »: the real score, big, in its band's hue, the scale and the
+     band's word; the AI's own score next to it when the Worker has one. Unknown says so. */
+  function scoreBlock(j) {
+    var bd = S.band(j);
+    var known = typeof j.score === "number";
+    var big = el("span", { class: "score-big band-" + (known ? bd.key : "low"), "aria-label": known ? j.score + " sur 100" : "Score inconnu" }, [
+      el("span", { class: "num", text: known ? String(j.score) : "—" }), known ? el("small", { text: "/ 100" }) : null
+    ]);
+    var bar = el("span", { class: "record-score-bar band-" + bd.key, "aria-hidden": "true" }, el("i"));
+    bar.firstChild.style.setProperty("--w", (known ? Math.max(0, Math.min(100, j.score)) : 0) + "%");
+    var side = el("div", { class: "record-score-side" }, [bar,
+      el("span", { class: "band band-" + bd.key }, [el("span", { class: "dot", "aria-hidden": "true" }), known ? bd.label : "Score inconnu"])]);
+    var v = aiOf(j);
+    if (v) {
+      var aiBand = S.aiBand(v.level);
+      side.appendChild(el("span", { class: "record-ai" }, ["Selon l’IA : ", el("b", { class: "num", text: String(v.score) }), aiBand ? " · " + aiBand.label : ""]));
+    }
+    return el("section", { class: "record-score", "aria-label": "Adéquation avec ton profil" }, [
+      el("div", null, [el("h3", { text: "Adéquation avec ton profil" }), big]), side
+    ]);
+  }
+
+  /* Order: what the offer is, the score, why (the ledger with its sentences, the AI's view),
+     the announcement itself, then the tracking, the documents and the replies. */
   function recordBody(j) {
     var box = el("div", { class: "record-scroll" });
+    var status = T.rowStatus(j, track.apps);
+    var tags = el("div", { class: "record-tags" }, [
+      status !== "to_review" ? statusBadge(j) : null,
+      el("span", { class: "pill", text: j.contract && j.contract !== "UNKNOWN" ? j.contract : "Contrat inconnu" }),
+      el("span", { class: "pill", text: yearsText(j.required_years) }),
+      el("span", { class: "pill", title: j.posted_at ? fmtDate(j.posted_at) : null, text: ageText(j.age_days) }),
+      el("span", { class: "pill", title: j.source === "ats" ? "Page carrière de " + (j.company || "l’entreprise") : null, text: sourceText(j) || "Source inconnue" })
+    ]);
     box.appendChild(el("header", { class: "record-head" }, [
       el("h2", { id: "record-title", tabindex: "-1", text: j.title || "—" }),
-      el("p", { class: "record-sub", text: [j.company || "Entreprise non communiquée", j.location].filter(Boolean).join(", ") })
+      el("p", { class: "record-sub", text: [j.company || "Entreprise non communiquée", j.location].filter(Boolean).join(" · ") }),
+      tags
     ]));
-    box.appendChild(el("dl", { class: "props" }, [
-      prop("circle-dot", "Statut", el("span", { class: "band" }, [U.dot(STATUS_HUE[T.rowStatus(j, track.apps)]), T.STATUS_TEXT[T.rowStatus(j, track.apps)]])),
-      prop("briefcase-business", "Contrat", j.contract || "Inconnu"),
-      prop("timer", "Expérience", yearsText(j.required_years)),
-      prop("calendar", "Publiée", j.posted_at ? fmtDate(j.posted_at) : "Date inconnue"),
-      prop("git-branch", "Source", j.source || "—")
-    ]));
-    /* From Tri the card already shows the whole description: not twice. */
-    if (j.description_excerpt && V.tab !== "tri") {
-      box.appendChild(el("section", { class: "record-sec record-desc" }, [el("h3", { text: "Description de l’offre" })].concat(D.render(D.parse(j.description_excerpt), el))));
-    }
-    box.appendChild(el("section", { class: "record-sec" }, [U.ledger(j, thresholds, { compact: true, ai: aiOf(j) })]));
+    box.appendChild(scoreBlock(j));
     var form = trackForm(j, "rec");
     var why = whyPanel(j, form.verdictBlock || null);
     why.open = true;
-    box.appendChild(el("section", { class: "record-sec" }, [why]));
+    var v = aiOf(j);
+    box.appendChild(el("section", { class: "record-sec" }, [why, v ? U.aiBlock(v) : null]));
+    /* From Tri the card already shows the whole description: not twice. */
+    if (j.description_excerpt && V.tab !== "tri") {
+      box.appendChild(el("details", { class: "record-desc" }, [
+        el("summary", { text: "Description de l’annonce" }),
+        el("div", { class: "record-desc-body" }, D.render(D.parse(j.description_excerpt), el))
+      ]));
+    }
     if (j.postings) box.appendChild(el("section", { class: "record-sec" }, [postingsBlock(j)]));
     box.appendChild(el("section", { class: "record-sec" }, [el("h3", { text: "Suivi" }), form]));
     if (j.key && track.status === "ready") box.appendChild(el("section", { class: "record-sec" }, [documentsBlock(j)]));
@@ -858,20 +913,38 @@ window.JM = window.JM || {};
   /* « Générer » / « Regénérer » (record panel and table): one new pending version. The button
      stays off while the request runs; `onDone(doc)` refreshes the caller's own view. */
 
-  function openRecord(j, opener) {
+  /* The footer's buttons follow the status (a save redraws them, refreshBadges). */
+  function refreshRecordFoot() {
+    var foot = record.querySelector(".record-foot");
+    if (!foot || !R.job) return;
+    clear(foot);
+    foot.appendChild(recordActions(R.job));
+  }
+
+  /* opts.quiet: the panel opens without taking the focus (the split's own selection). */
+  function openRecord(j, opener, opts) {
     var was = R.open;
-    R.opener = opener || document.activeElement;
+    var quiet = !!(opts && opts.quiet);
+    var keep = was && record.contains(document.activeElement) ? null : document.activeElement;
+    R.opener = opener || (quiet ? R.opener : document.activeElement);
     function fill() {
+      placeRecord();
       clear(record);
-      var close = el("button", { type: "button", class: "icon-btn", "aria-label": "Fermer la fiche", "aria-keyshortcuts": "Escape" }, U.icon("x"));
+      var close = el("button", { type: "button", class: "icon-btn record-close", "aria-label": "Fermer la fiche", "aria-keyshortcuts": "Escape" }, U.icon("x"));
       close.addEventListener("click", function () { closeRecord(); });
-      var bar = el("div", { class: "record-bar" }, [el("span", { class: "record-crumb", text: VIEW_TITLE[V.tab] }), el("span", { class: "fill" })]);
+      /* On a phone the bar is the way back to the list; elsewhere the overline and the close. */
+      var n = V.tab === "offres" ? listedCount() : 0;
+      var back = el("button", { type: "button", class: "record-back", "aria-label": "Retour à la liste" }, [U.icon("arrow-left"),
+        n ? "Retour aux " + n + (n > 1 ? " offres" : " offre") : "Retour"]);
+      back.addEventListener("click", function () { closeRecord(); });
+      var bar = el("div", { class: "record-bar" }, [back, el("span", { class: "record-crumb", text: V.tab === "tri" ? "Offre en cours de tri" : "Offre sélectionnée" })]);
       if (j.url && HTTP.test(j.url)) {
-        bar.appendChild(el("a", { class: "icon-btn", href: j.url, target: "_blank", rel: "noopener noreferrer", "aria-label": "Voir l’offre « " + (j.title || "offre") + " » sur le site source" }, U.icon("external-link")));
+        bar.appendChild(el("a", { class: "icon-btn", href: j.url, target: "_blank", rel: "noopener noreferrer", "aria-label": "Voir l’offre « " + (j.title || "offre") + " » sur le site source" }, U.icon("external-link")));
       }
       bar.appendChild(close);
       record.appendChild(bar);
       record.appendChild(recordBody(j));
+      record.appendChild(el("div", { class: "record-foot" }, recordActions(j)));
       record.hidden = false;
       record.classList.remove("closing");
       document.body.classList.add("record-open");
@@ -879,10 +952,19 @@ window.JM = window.JM || {};
       R.tab = V.tab;
       R.job = j;
       setInert();
+      markSelected();
       syncHash();
     }
-    var shown = (!was && wideScreen()) ? U.transition(fill, ["record"]) : (fill(), Promise.resolve());
-    shown.then(function () { var h = byId("record-title"); if (h) h.focus({ preventScroll: true }); });
+    /* A quiet open is synchronous: the state is set before the next render looks at it. */
+    var shown = (!was && !quiet && wideScreen()) ? U.transition(fill, ["record"]) : (fill(), Promise.resolve());
+    shown.then(function () {
+      /* Quiet: the focus stays where it was (a row, a field), or nowhere; a focus that was
+         inside the panel before it was redrawn goes to its title, as a user open does. */
+      if (quiet && keep === document.body) return;
+      if (quiet && keep && document.contains(keep)) { keep.focus({ preventScroll: true }); return; }
+      var h = byId("record-title");
+      if (h) h.focus({ preventScroll: true });
+    });
   }
 
   function closeRecord(animate) {
@@ -893,12 +975,15 @@ window.JM = window.JM || {};
       record.classList.remove("closing");
       clear(record);
       document.body.classList.remove("record-open");
+      document.body.classList.remove("record-split");
       R.open = false;
       R.job = null;
       setInert();
+      markSelected();
       syncHash();
     }
     R.open = false;
+    setInert();  /* the page is focusable again before the focus goes back to it */
     if (animate === false || U.reduced()) done();
     else if (wideScreen()) U.transition(done, ["record"]);
     else { record.classList.add("closing"); setTimeout(done, 160); }
@@ -996,6 +1081,7 @@ window.JM = window.JM || {};
   JM.T = T;
   JM.U = U;
   JM.X = X;
+  JM.ageText = ageText;
   JM.aiOf = aiOf;
   JM.api = api;
   JM.applyChanges = applyChanges;
@@ -1026,6 +1112,7 @@ window.JM = window.JM || {};
   JM.postingByKey = postingByKey;
   JM.record = record;
   JM.refreshBadges = refreshBadges;
+  JM.refreshRecordFoot = refreshRecordFoot;
   JM.rows = rows;
   JM.runAt = runAt;
   JM.runs = runs;

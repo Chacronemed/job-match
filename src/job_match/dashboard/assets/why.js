@@ -112,7 +112,7 @@
     if (w.unlisted.length) parts.push(plural(w.unlisted.length, "non trouvée", "non trouvées"));
     var panel = el("details", { class: "why" });
     panel.appendChild(el("summary", { class: "why-title" }, [
-      el("span", { text: "Pourquoi cette offre ?" }),
+      el("span", { text: "Pourquoi cette offre te correspond" }),
       el("span", { class: "why-summary", text: parts.join(" · ") })
     ]));
     var ledger = el("dl", { class: "why-ledger" });
