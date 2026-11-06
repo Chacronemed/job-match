@@ -9,6 +9,7 @@ import yaml
 
 from job_match.config.schema import (
     AiConfig,
+    ArchiveConfig,
     AtsBoard,
     Candidate,
     ConfigError,
@@ -252,6 +253,7 @@ def load_settings(path: Path) -> Settings:
         jobs=_parse_jobs(raw.get("jobs"), path),
         raw_payloads=_parse_raw_payloads(raw.get("raw_payloads"), path),
         outage_guard=_parse_outage_guard(raw.get("outage_guard"), path),
+        archive=_parse_archive(raw.get("archive"), path),
         ai=_parse_ai(raw.get("ai"), path),
         documents=_parse_documents(raw.get("documents"), path),
     )
@@ -499,6 +501,18 @@ def _parse_outage_guard(value: object, path: Path) -> OutageGuardConfig:
             raise ConfigError(f"outage_guard.{key} must be a number between 0 and 1 (in {path})")
         out[key] = float(v)
     return OutageGuardConfig(**out)
+
+
+def _parse_archive(value: object, path: Path) -> ArchiveConfig:
+    raw = _mapping(value, "archive", path)
+    d = ArchiveConfig()
+    out: dict = {}
+    for key in ("kept_days", "published_days"):
+        v = raw.get(key, getattr(d, key))
+        if isinstance(v, bool) or not isinstance(v, int) or v <= 0:
+            raise ConfigError(f"archive.{key} must be a positive integer (in {path})")
+        out[key] = v
+    return ArchiveConfig(**out)
 
 
 def _parse_raw_payloads(value: object, path: Path) -> RawPayloadsConfig:

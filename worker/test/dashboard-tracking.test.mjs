@@ -391,3 +391,38 @@ describe("expired applications and the apply list (ADR 0024)", () => {
     assert.ok(T.missingDocuments(apps, {}).includes("ats:greenhouse:a:9"), "without postings: unchanged");
   });
 });
+
+describe("auto-archive (ADR 0028)", () => {
+  const TODAY = "2026-11-06";
+  const ago = (days) => new Date(Date.parse(TODAY + "T09:00:00Z") - days * 86400000).toISOString();
+  const apps = {
+    "ft:old": { status: "to_apply", updated_at: ago(20) },
+    "ft:fresh": { status: "to_apply", updated_at: ago(2) },
+    "ft:sent": { status: "applied", updated_at: ago(20) },
+  };
+  const decisions = {
+    "ft:old": { label: "good_fit", created_at: ago(20) },
+    "ft:fresh": { label: "good_fit", created_at: ago(2) },
+    "ft:sent": { label: "good_fit", created_at: ago(20) },
+  };
+  const postings = {
+    "ft:old": { key: "ft:old", apply_form: "lever", closed: false },
+    "ft:fresh": { key: "ft:fresh", apply_form: "lever", closed: false },
+    "ft:sent": { key: "ft:sent", apply_form: "lever", closed: false },
+  };
+
+  test("an archived application gets no documents and no « Postuler »", () => {
+    assert.deepEqual(T.missingDocuments(apps, {}, postings, decisions, TODAY), ["ft:fresh", "ft:sent"]);
+    assert.deepEqual(T.missingDocuments(apps, {}, postings), ["ft:fresh", "ft:old", "ft:sent"], "without a clock: unchanged");
+    assert.deepEqual(T.applyList(apps, postings, decisions, TODAY), ["ft:fresh"]);
+    assert.deepEqual(T.applyList(apps, postings), ["ft:old", "ft:fresh"]);
+  });
+
+  test("the client calls the reactivate route", async () => {
+    const calls = [];
+    const c = T.client(async (url, init) => { calls.push([init.method, url]); return { ok: true, json: async () => ({ application: { job_key: "ft:old" } }) }; });
+    const res = await c.reactivate("ft:old");
+    assert.deepEqual(calls, [["POST", "/api/applications/ft%3Aold/reactivate"]]);
+    assert.equal(res.application.job_key, "ft:old");
+  });
+});

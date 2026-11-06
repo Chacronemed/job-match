@@ -3,7 +3,9 @@ import sqlite3
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 
+from job_match.config.schema import ArchiveConfig
 from job_match.domain.models import (
+    ArchivedApplication,
     Article,
     Company,
     CompanyFunding,
@@ -26,6 +28,7 @@ from job_match.domain.models import (
 from job_match.normalization.company import normalize_company
 from job_match.normalization.location import department_of, is_french_department
 from job_match.normalization.title import normalize_title
+from job_match.tracking.archive import archive_state
 from job_match.tracking.constants import ACTIVE_STATUSES, NO_FOLLOW_UP_STATUSES
 
 # ---------------------------------------------------------------------------
@@ -874,6 +877,8 @@ class RunRepository:
                         "closed": summary.closed,
                         "suspended": summary.suspended,
                         "outages": summary.outages,
+                        "archived": summary.archived,
+                        "archived_today": summary.archived_today,
                         "raw_stored": summary.raw_stored,
                         "raw_pruned": summary.raw_pruned,
                         "articles": summary.articles,
@@ -1327,9 +1332,9 @@ class ApplicationRepository:
             self._conn.execute("DELETE FROM decisions")
             self._conn.executemany(
                 "INSERT INTO applications(job_key, status, applied_at, follow_up_at, note,"
-                " cv_url, updated_at) VALUES (:job_key, :status, :applied_at, :follow_up_at,"
-                " :note, :cv_url, :updated_at)",
-                applications,
+                " cv_url, updated_at, reactivated_at) VALUES (:job_key, :status, :applied_at,"
+                " :follow_up_at, :note, :cv_url, :updated_at, :reactivated_at)",
+                [{"reactivated_at": None, **row} for row in applications],
             )
             self._conn.executemany(
                 "INSERT INTO decisions(id, job_key, label, score_at_decision, created_at)"
@@ -1375,10 +1380,53 @@ class ApplicationRepository:
         decs = self._conn.execute("SELECT COUNT(*) FROM decisions").fetchone()[0]
         return apps, decs
 
-    def list_followups_due(self, today: date) -> list[FollowUp]:
+    # One row per « À candidater » application with what the archive rule reads (ADR 0028):
+    # the latest decision, the reactivation, the offer's publication date and closure.
+    _TO_APPLY_SQL = """
+        SELECT a.job_key, a.status, a.updated_at, a.reactivated_at, a.follow_up_at,
+               d.label AS decision_label, d.created_at AS decision_created_at,
+               j.published_at, j.closed_at, j.title, j.company, j.url
+        FROM applications a
+        LEFT JOIN decisions d ON d.id = (SELECT MAX(id) FROM decisions WHERE job_key = a.job_key)
+        LEFT JOIN jobs j ON j.source_id || ':' || j.source_job_id = a.job_key
+        WHERE a.status = 'to_apply'
+        ORDER BY a.job_key
+    """
+
+    def list_archived(self, today: date, config: ArchiveConfig) -> list[ArchivedApplication]:
+        """The « À candidater » applications archived as of `today` (ADR 0028), with the reason,
+        and whether they became archived today (not archived as of yesterday)."""
+        out: list[ArchivedApplication] = []
+        for r in self._conn.execute(self._TO_APPLY_SQL).fetchall():
+            state = self._archive_state(r, today, config)
+            if state is None:
+                continue
+            before = self._archive_state(r, today - timedelta(days=1), config)
+            out.append(ArchivedApplication(
+                job_key=r["job_key"], reason=state.reason, days=state.days, text=state.text,
+                new_today=before is None, title=r["title"], company=r["company"],
+            ))
+        return out
+
+    @staticmethod
+    def _archive_state(row: sqlite3.Row, today: date, config: ArchiveConfig):
+        return archive_state(
+            status=row["status"], reactivated_at=row["reactivated_at"],
+            decision_label=row["decision_label"], decision_created_at=row["decision_created_at"],
+            updated_at=row["updated_at"], published_at=row["published_at"],
+            closed=row["closed_at"] is not None, today=today, config=config,
+        )
+
+    def list_followups_due(
+        self, today: date, archive: ArchiveConfig | None = None
+    ) -> list[FollowUp]:
         """Follow-ups due today or overdue, oldest first, unless the application is closed
-        (rejected/ignored) or expired (kept « À candidater », the offer closed). The offer is
-        joined when it is still stored, closed or not."""
+        (rejected/ignored), expired (kept « À candidater », the offer closed) or, with
+        `archive`, auto-archived (ADR 0028). The offer is joined when it is still stored,
+        closed or not."""
+        archived: set[str] = set()
+        if archive is not None:
+            archived = {a.job_key for a in self.list_archived(today, archive)}
         rows = self._conn.execute(
             f"""
             SELECT a.job_key, a.status, a.follow_up_at, j.title, j.company, j.url
@@ -1403,6 +1451,7 @@ class ApplicationRepository:
                 url=r["url"],
             )
             for r in rows
+            if r["job_key"] not in archived
         ]
 
 

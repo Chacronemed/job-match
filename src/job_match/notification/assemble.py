@@ -68,7 +68,7 @@ def build_digest(db: Database, settings: Settings, now: datetime) -> DigestBatch
     selection = select_leads(all_leads, settings.funding.lead_filters, settings.digest.max_leads)
 
     # The run starts at 07:00 UTC, so the UTC date is the date in France too.
-    followups = ApplicationRepository(db.conn).list_followups_due(now.date())
+    followups = ApplicationRepository(db.conn).list_followups_due(now.date(), settings.archive)
 
     data = DigestData(
         outages=today_outages(db, now),

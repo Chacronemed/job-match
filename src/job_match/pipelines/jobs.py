@@ -25,6 +25,7 @@ from job_match.normalization.location import block_location, department_of
 from job_match.normalization.title import normalize_title
 from job_match.persistence.db import Database
 from job_match.persistence.repositories import (
+    ApplicationRepository,
     CompanyRepository,
     JobDuplicateRepository,
     JobRepository,
@@ -254,6 +255,11 @@ def run_jobs(
     for source in source_list:
         by_source[source.name]["calls"] = getattr(source, "api_calls_count", 0)
 
+    # Auto-archived applications (ADR 0028): counted from the mirror for the run summary and
+    # the Exécutions page; the archive itself is derived everywhere, never written.
+    archived_apps = ApplicationRepository(db.conn).list_archived(now.date(), settings.archive)
+    archived_today = sum(1 for a in archived_apps if a.new_today)
+
     api_calls = sum(c["calls"] for c in by_source.values())
     stats = tuple(
         stat
@@ -282,6 +288,8 @@ def run_jobs(
         closed=closure.closed,
         suspended=closure.suspended,
         outages=[o.as_dict() for o in outages],
+        archived=len(archived_apps),
+        archived_today=archived_today,
         raw_stored=raw_stored,
         raw_pruned=raw_pruned,
         errors=errors,

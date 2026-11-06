@@ -72,6 +72,13 @@ def jobs_markdown(summary: RunSummary, elapsed_s: float) -> str:
         f"{summary.checked} re-checked, {summary.closed} closed"
         + (f", {summary.suspended} closures suspended" if summary.suspended else ""),
     ]
+    if summary.archived or summary.archived_today:
+        n = summary.archived_today
+        lines.append(
+            f"\n**{n} candidature{'s' if n != 1 else ''} archivée{'s' if n != 1 else ''} "
+            f"aujourd'hui** · {summary.archived} archivée"
+            f"{'s' if summary.archived != 1 else ''} au total (ADR 0028)"
+        )
     return "\n".join(lines)
 
 

@@ -462,7 +462,7 @@
   /* « Générer les manquants » (table header): the count and the estimated cost in a held
      toast, then one request; the cron or « Lancer maintenant » does the generation. */
   function generateMissing(button) {
-    var missing = T.missingDocuments(track.apps, track.documents, postingByKey);
+    var missing = T.missingDocuments(track.apps, track.documents, postingByKey, decisionsIndex(), T.localDay());
     var summary = T.budgetSummary(track.budget, missing.length);
     if (!summary.affordable) { showToast(summary.text); return; }
     showToast("Générer " + summary.text + " ?", [
@@ -527,10 +527,55 @@
     card.addEventListener("pointercancel", end);
   }
 
-  /* The follow-ups due today or before, soonest first (expired offers excluded). */
+  /* Auto-archive (ADR 0028): the latest decision as the rule reads it, the state of one
+     application (null when live, expired or not « À candidater »), the archived keys. */
+  function decisionOf(k) {
+    return track.decisions[k] ? { label: track.decisions[k], created_at: track.decisionAt[k] || null } : null;
+  }
+  function decisionsIndex() {
+    var idx = {};
+    Object.keys(track.decisions).forEach(function (k) { idx[k] = decisionOf(k); });
+    return idx;
+  }
+  function archiveStateOf(k, today) {
+    var app = track.apps[k];
+    if (!app) return null;
+    return T.archiveState(app, postingByKey[k], decisionOf(k), today || T.localDay());
+  }
+  function archivedKeys(today) {
+    return boardKeys().filter(function (k) { return archiveStateOf(k, today) !== null; });
+  }
+  function archivedSet() {
+    var set = {};
+    archivedKeys(T.localDay()).forEach(function (k) { set[k] = true; });
+    return set;
+  }
+
+  /* « Réactiver »: the Worker writes reactivated_at, the application is back in the lists
+     for another kept_days from today. `onDone` redraws the caller's own view. */
+  function reactivate(k, button, onDone) {
+    if (button) button.disabled = true;
+    api.reactivate(k).then(function (res) {
+      if (res && res.application && res.application.job_key) {
+        track.apps[k] = track.confirmed[k] = res.application;
+      }
+      showToast("Réactivée : elle reste « À candidater » " + T.ARCHIVE.kept_days + " jours de plus");
+      renderApps();
+      refreshBadges(k);
+      /* the record open on it loses its « Archivée » badge and gets its usual buttons back */
+      if (JM.rec && JM.rec.open && JM.rec.job && JM.rec.job.key === k) openRecord(JM.rec.job, null, { quiet: true });
+      if (onDone) onDone(res);
+    }).catch(function (err) {
+      if (button) button.disabled = false;
+      showToast("Non réactivée (" + failureText(err) + ")", [{ text: "Réessayer", run: function () { reactivate(k, button, onDone); } }]);
+    });
+  }
+
+  /* The follow-ups due today or before, soonest first (expired and archived offers excluded). */
   function dueKeys(today) {
-    return Object.keys(track.apps).filter(function (k) { return T.isDue(track.apps[k], today) && !T.isExpired(track.apps[k], postingByKey[k]); })
-      .sort(function (a, b) { return track.apps[a].follow_up_at < track.apps[b].follow_up_at ? -1 : 1; });
+    return Object.keys(track.apps).filter(function (k) {
+      return T.isDue(track.apps[k], today) && !T.isExpired(track.apps[k], postingByKey[k]) && archiveStateOf(k, today) === null;
+    }).sort(function (a, b) { return track.apps[a].follow_up_at < track.apps[b].follow_up_at ? -1 : 1; });
   }
 
   /* Under the title: the counts the board shows, nothing else. */
@@ -567,7 +612,20 @@
     byId("kb-table").hidden = V.appsView !== "table";
     byId("kb-off").hidden = canTriage() || track.status === "loading";
     renderInbox();
-    var keys = boardKeys();
+    /* The archived applications (ADR 0028) leave the board, the table and the counts; the
+       toggle shows them in a folded section under either view. */
+    var archived = archivedKeys(today);
+    var archivedMap = {};
+    archived.forEach(function (k) { archivedMap[k] = true; });
+    var keys = boardKeys().filter(function (k) { return !archivedMap[k]; });
+    var toggle = byId("apps-show-archived");
+    toggle.hidden = track.status !== "ready" || (!archived.length && !V.showArchived);
+    toggle.textContent = (V.showArchived ? "Masquer les archivées" : "Afficher les archivées") + " (" + archived.length + ")";
+    toggle.setAttribute("aria-pressed", String(V.showArchived));
+    var archBox = byId("kb-archived");
+    clear(archBox);
+    archBox.hidden = !(V.showArchived && track.status === "ready");
+    if (!archBox.hidden) archBox.appendChild(archivedSection(archived, today));
     var dueKeys = JM.dueKeys(today);
     renderStats(keys, dueKeys.length);
     due.hidden = dueKeys.length === 0;
@@ -593,7 +651,8 @@
       return;
     }
     BOARD.forEach(function (status) {
-      /* an expired application (its offer closed) leaves « À candidater »: the table keeps it */
+      /* an expired application (its offer closed) leaves « À candidater »: the table keeps it;
+         an archived one left `keys` already */
       var inCol = keys.filter(function (k) { return T.statusOf(track.apps[k]) === status && !T.isExpired(track.apps[k], postingByKey[k]); })
         .sort(function (a, b) {
           var da = T.isDue(track.apps[a], today) ? 0 : 1, db = T.isDue(track.apps[b], today) ? 0 : 1;
@@ -720,7 +779,7 @@
       wrap.appendChild(el("p", { class: "kb-empty", text: "Garde des offres dans Tri pour les voir ici." }));
       return;
     }
-    var missing = T.missingDocuments(track.apps, track.documents, postingByKey);
+    var missing = T.missingDocuments(track.apps, track.documents, postingByKey, decisionsIndex(), today);
     var gen = el("button", { type: "button", class: "btn", id: "apps-generate-missing", text: "Générer les manquants (" + missing.length + ")" });
     gen.disabled = !missing.length || track.status !== "ready";
     gen.addEventListener("click", function () { generateMissing(gen); });
@@ -745,7 +804,7 @@
         window.open(j.url, "_blank", "noopener,noreferrer");
         return;
       }
-      var n = T.applyList(track.apps, postingByKey).indexOf(k) + 1;
+      var n = T.applyList(track.apps, postingByKey, decisionsIndex(), T.localDay()).indexOf(k) + 1;
       var say = function () { showToast("Commande copiée · Colle dans PowerShell et choisis le n° " + n); };
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(APPLY_COMMAND).then(say, function () {
@@ -805,11 +864,86 @@
     }
   }
 
+  /* « Archivées » (ADR 0028): a folded section, oldest first. Grey badge with the reason, the
+     documents still downloadable, « Réactiver »; no « Postuler », no « Générer ». */
+  var ARCHIVED_COLUMNS = ["Offre", "Entreprise", "Statut", "CV", "Lettre", "Action"];
+  function archivedSection(keys, today) {
+    var box = el("details", { class: "kb-archived-box", id: "kb-archived-box" });
+    box.appendChild(el("summary", null, [
+      "Archivées ", el("span", { class: "tab-count", text: String(keys.length) }),
+      el("span", { class: "kb-archived-hint", text: "À candidater jamais traitées : gardées il y a plus de " + T.ARCHIVE.kept_days +
+        " jours ou publiées il y a plus de " + T.ARCHIVE.published_days + " jours. Rien n’est supprimé ; les documents restent téléchargeables." })
+    ]));
+    if (!keys.length) {
+      box.appendChild(el("p", { class: "kb-empty", text: "Aucune candidature archivée." }));
+      return box;
+    }
+    var rows = keys.slice().sort(function (a, b) {
+      return (archiveStateOf(b, today) || { days: 0 }).days - (archiveStateOf(a, today) || { days: 0 }).days || (a < b ? -1 : 1);
+    });
+    var head = el("tr");
+    ARCHIVED_COLUMNS.forEach(function (h) { head.appendChild(el("th", { scope: "col", text: h })); });
+    var body = el("tbody");
+    rows.forEach(function (k) { body.appendChild(safeNode(k, function () { return archivedRow(k, today); }, function () { return brokenRow(k); })); });
+    box.appendChild(el("table", { class: "data apps archived", "aria-label": "Candidatures archivées" }, [el("thead", null, head), body]));
+    return box;
+  }
+
+  function archivedRow(k, today) {
+    var app = track.apps[k];
+    var j = postingByKey[k];
+    var doc = track.documents[k] || null;
+    var links = T.documentLinks(k, doc);
+    var state = archiveStateOf(k, today);
+    var tr = el("tr", { "data-key": k, class: "is-archived" });
+    var titleText = j ? (j.title || k) : k;
+    var title = j
+      ? el("button", { type: "button", class: "link-btn", title: titleText, text: titleText })
+      : el("span", { class: "apps-gone", title: titleText, text: titleText });
+    if (j) title.addEventListener("click", function () { openRecord(j, title); });
+    tr.appendChild(el("td", { class: "apps-title", "data-label": "Offre" }, title));
+    var company = j ? (j.company || null) : "offre plus affichée";
+    tr.appendChild(el("td", { class: "apps-company", "data-label": "Entreprise", title: company },
+      company ? company : el("span", { class: "apps-unknown", text: "Non communiquée" })));
+    tr.appendChild(el("td", { class: "apps-status", "data-label": "Statut" }, [
+      el("span", { class: "status-badge is-archived", text: "Archivée", title: "Archivée automatiquement, rien n’est supprimé" }),
+      el("span", { class: "kb-archived-reason", text: T.archiveReason(state) })
+    ]));
+    if (links) {
+      tr.appendChild(el("td", { class: "doc-cell", "data-label": "CV" }, fileCell(links, "cv", doc, "CV", k)));
+      tr.appendChild(el("td", { class: "doc-cell", "data-label": "Lettre" }, fileCell(links, "letter", doc, "Lettre", k)));
+    } else {
+      tr.appendChild(el("td", { class: "doc-cell", "data-label": "CV", text: "—" }));
+      tr.appendChild(el("td", { class: "doc-cell", "data-label": "Lettre", text: "—" }));
+    }
+    var react = el("button", { type: "button", class: "btn btn-small apps-reactivate", text: "Réactiver",
+      "aria-label": "Réactiver : " + titleText, title: "Remet la candidature dans la liste pour " + T.ARCHIVE.kept_days + " jours" });
+    react.disabled = track.status !== "ready";
+    react.addEventListener("click", function () { reactivate(k, react); });
+    tr.appendChild(el("td", { class: "link-col", "data-label": "Action" }, react));
+    return tr;
+  }
+
+  byId("apps-show-archived").addEventListener("click", function () {
+    V.showArchived = !V.showArchived;
+    renderApps();
+    JM.syncHash();
+    if (V.showArchived) {
+      var box = byId("kb-archived-box");
+      if (box) { box.open = true; box.scrollIntoView({ block: "nearest" }); }
+    }
+  });
+
   /* A view that fails to render says so instead of leaving the panel blank. */
 
   /* Shared with the other files. */
   JM.documentsBlock = documentsBlock;
   JM.dueKeys = dueKeys;
+  JM.archiveStateOf = archiveStateOf;
+  JM.archivedKeys = archivedKeys;
+  JM.archivedSet = archivedSet;
+  JM.decisionsIndex = decisionsIndex;
+  JM.reactivate = reactivate;
   JM.preloadRenderer = preloadRenderer;
   JM.renderApps = renderApps;
   JM.setRecord = setRecord;

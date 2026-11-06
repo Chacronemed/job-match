@@ -694,6 +694,22 @@ table.data.apps td.link-col > * { vertical-align: middle; margin-right: 8px; }
 .status-badge.is-expired { display: inline-block; margin: 0 0 4px; padding: 1px 7px; border-radius: 5px; font-size: var(--fs-xs); font-weight: 600; color: var(--ink-2); background: var(--slate-4); }
 table.data.apps td.apps-status .status-badge { display: table; }
 table.data.apps tr.is-expired td.apps-title, table.data.apps tr.is-expired td.apps-company { color: var(--ink-3); }
+/* Auto-archived applications (ADR 0028): a folded section under the board or the table, grey badge. */
+.kb-archived { margin-top: 14px; }
+.kb-archived-box { border: 1px solid var(--line); border-radius: 11px; background: var(--surface); }
+.kb-archived-box > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: 44px; padding: 8px 14px; cursor: pointer; list-style: none; font-weight: 600; font-size: var(--fs-sm); color: var(--ink); }
+.kb-archived-box > summary::-webkit-details-marker { display: none; }
+.kb-archived-box > summary::after { content: ""; margin-left: auto; width: 6px; height: 6px; border-right: 1.5px solid var(--ink-3); border-bottom: 1.5px solid var(--ink-3); transform: rotate(45deg); transition: transform var(--d-fast) var(--ease); }
+.kb-archived-box[open] > summary::after { transform: rotate(-135deg); }
+.kb-archived-box > summary .tab-count { color: var(--ink-3); font-size: var(--fs-xs); font-weight: 500; }
+.kb-archived-hint { flex-basis: 100%; font-weight: 400; color: var(--ink-3); font-size: var(--fs-xs); }
+.kb-archived-box .kb-empty { padding: 0 14px 12px; }
+.kb-archived-box table.data { border-top: 1px solid var(--line); }
+.status-badge.is-archived { display: inline-block; margin: 0 0 4px; padding: 1px 7px; border-radius: 5px; font-size: var(--fs-xs); font-weight: 600; color: var(--ink-2); background: var(--slate-4); }
+.kb-archived-reason { display: block; font-size: var(--fs-xs); color: var(--ink-3); white-space: normal; }
+table.data.apps tr.is-archived td.apps-title, table.data.apps tr.is-archived td.apps-company { color: var(--ink-3); }
+table.data.archived td.apps-status { overflow: visible; white-space: normal; }
+#apps-show-archived[aria-pressed="true"] { color: var(--ink); background: var(--slate-4); }
 table.data td.col-actions { overflow: visible; text-overflow: clip; }
 
 /* ---------- Leads ---------- */

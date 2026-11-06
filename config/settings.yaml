@@ -341,6 +341,17 @@ outage_guard:
   min_checked: 10
   board_min_previous: 5
 
+# Auto-archive (ADR 0028): an « À candidater » application I never handled leaves my lists by
+# itself, without being deleted. Archived when kept more than kept_days ago (the « Garder »
+# decision date, or the « Réactiver » date, which restarts the counter) without being sent, or
+# when the offer was published more than published_days ago (ignored once reactivated;
+# unknown publication date: the kept rule alone). « Expirée » (offer closed) wins over
+# « Archivée ». Derived at display time by the page and the Worker (nothing written by the
+# CI); both repeat these two values as constants, a test keeps them equal.
+archive:
+  kept_days: 15
+  published_days: 20
+
 # Raw source payloads, kept as the API sent them in the private DB only (never logged, never
 # in the dashboard). Stored when new or changed since the last copy of the same offer, since
 # the 3-day window refetches most offers daily; rows older than retention_days are pruned

@@ -123,7 +123,7 @@ jobs:
           mkdir -p "$dir"
           trap 'rm -rf "$dir"' EXIT
           d1() { npx --yes wrangler@4 d1 execute job-match --remote --json --command "$1"; }
-          d1 "SELECT job_key, status, applied_at, follow_up_at, note, cv_url, updated_at FROM applications" > "$dir/applications.json"
+          d1 "SELECT job_key, status, applied_at, follow_up_at, note, cv_url, updated_at, reactivated_at FROM applications" > "$dir/applications.json"
           d1 "SELECT id, job_key, label, score_at_decision, created_at FROM decisions" > "$dir/decisions.json"
           d1 "SELECT skill, created_at FROM skill_overrides" > "$dir/skill_overrides.json"
           d1 "SELECT id, job_key, hash, provider, model, prompt_version, score, level, reasons, red_flags, created_at FROM ai_verdicts" > "$dir/ai_verdicts.json"

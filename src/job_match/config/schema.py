@@ -239,6 +239,18 @@ class OutageGuardConfig:
 
 
 @dataclass
+class ArchiveConfig:
+    """Auto-archive of stale « À candidater » applications (ADR 0028). Derived at display
+    time, never written: kept more than `kept_days` ago (the « Garder » decision, or the
+    reactivation) without being sent, or the offer published more than `published_days` ago
+    (ignored once reactivated; unknown publication: the kept rule alone). The Worker and the
+    page repeat the two values as constants; a test keeps them equal."""
+
+    kept_days: int = 15
+    published_days: int = 20
+
+
+@dataclass
 class RawPayloadsConfig:
     """`retention_days`: raw source payloads (private DB only) older than this are pruned at
     the end of each jobs run."""
@@ -325,5 +337,6 @@ class Settings:
     jobs: JobsConfig = field(default_factory=JobsConfig)
     raw_payloads: RawPayloadsConfig = field(default_factory=RawPayloadsConfig)
     outage_guard: OutageGuardConfig = field(default_factory=OutageGuardConfig)
+    archive: ArchiveConfig = field(default_factory=ArchiveConfig)
     ai: AiConfig = field(default_factory=AiConfig)
     documents: DocumentsConfig = field(default_factory=DocumentsConfig)

@@ -8,6 +8,7 @@
 // does no rendering. Nothing here logs: not the key, not the master, not a prompt, not a text.
 
 import { countCall, day, loadAsset } from "./ai.js";
+import { archiveState, decisionIndex } from "./archive.js";
 import { availabilityText } from "./kit.js";
 
 export { availabilityText };
@@ -56,7 +57,7 @@ const APPLY_KEY = "master/apply.json";
 export const FILE_NAMES = ["cv.pdf", "cv.docx", "letter.pdf", "letter.docx"];
 export const KEEP_STATUSES = ["to_apply", "applied", "interview"];
 export const ERROR_CODES = [
-  "decision_gone", "offer_gone", "invalid_json", "refused", "api_error", "unknown_bullet",
+  "decision_gone", "offer_gone", "archived", "invalid_json", "refused", "api_error", "unknown_bullet",
   "too_many_bullets", "too_long", "invented_number", "invented_skill", "unknown_name",
   "forbidden_phrase", "wrong_language", "bad_shape", "unsourced_tool", "wrong_context",
   "letter_formula", "too_many_skills", "dev_language", "wrong_tense", "profile_address",
@@ -1057,12 +1058,13 @@ export async function runDocuments(env, opts = {}) {
   if (await recentCreditStop(env.DB, now)) return result("credit");
 
   const offers = offerIndex(await loadAsset(env, "/data.json"));
+  const decisions = await latestDecisions(env.DB);
   const system = buildSystem(master);
   let spent = await spentThisMonth(env.DB, now);
 
   for (const row of pending.results) {
     if (spent >= budget) break;
-    const app = await env.DB.prepare("SELECT status FROM applications WHERE job_key = ?").bind(row.job_key).first();
+    const app = await env.DB.prepare("SELECT status, updated_at, reactivated_at FROM applications WHERE job_key = ?").bind(row.job_key).first();
     if (!app || !KEEP_STATUSES.includes(app.status)) {
       await setStatus(env.DB, row.id, "failed", { error_code: "decision_gone" }, now);
       counters.skipped += 1;
@@ -1071,6 +1073,11 @@ export async function runDocuments(env, opts = {}) {
     const job = offers.get(row.job_key);
     if (!job || job.closed === true) { // gone from data.json, or the source said it is closed
       await setStatus(env.DB, row.id, "failed", { error_code: "offer_gone" }, now);
+      counters.skipped += 1;
+      continue;
+    }
+    if (archiveState(app, job, decisions.get(row.job_key) || null, today)) { // auto-archived (ADR 0028)
+      await setStatus(env.DB, row.id, "failed", { error_code: "archived" }, now);
       counters.skipped += 1;
       continue;
     }
@@ -1258,14 +1265,20 @@ export async function requestMissingDocuments(db, env, now, opts = {}) {
   const marks = statuses.map(() => "?").join(", ");
   const rows = await db
     .prepare(
-      "SELECT a.job_key FROM applications a WHERE a.status IN (" + marks + ")" +
+      "SELECT a.job_key, a.status, a.updated_at, a.reactivated_at FROM applications a WHERE a.status IN (" + marks + ")" +
         " AND NOT EXISTS (SELECT 1 FROM documents d WHERE d.job_key = a.job_key) ORDER BY a.updated_at ASC",
     )
     .bind(...statuses)
     .all();
-  // An application on an offer the source closed is « Expirée » (ADR 0024): no documents.
+  // An application on an offer the source closed is « Expirée » (ADR 0024): no documents. An
+  // auto-archived one (ADR 0028) gets none either, from the cron or from « Générer les manquants ».
   const offers = offerIndex(await loadAsset(env, "/data.json"));
-  const keys = rows.results.map((r) => r.job_key).filter((k) => !(offers.get(k) && offers.get(k).closed === true));
+  const decisions = await latestDecisions(db);
+  const today = day(now);
+  const keys = rows.results
+    .filter((r) => !(offers.get(r.job_key) && offers.get(r.job_key).closed === true))
+    .filter((r) => !archiveState(r, offers.get(r.job_key) || null, decisions.get(r.job_key) || null, today))
+    .map((r) => r.job_key);
   let cap = Math.floor(budget.remaining_usd / budget.estimate_usd);
   if (Number.isInteger(opts.limit) && opts.limit >= 0) cap = Math.min(cap, opts.limit);
   const requested = [];
@@ -1274,6 +1287,14 @@ export async function requestMissingDocuments(db, env, now, opts = {}) {
     if (row) requested.push(row);
   }
   return { requested: requested.length, skipped_budget: keys.length - requested.length, remaining_usd: budget.remaining_usd, documents: requested };
+}
+
+// The latest decision per offer, what the archive rule reads as the « Garder » date.
+async function latestDecisions(db) {
+  const rows = await db
+    .prepare("SELECT job_key, label, created_at FROM decisions WHERE id IN (SELECT MAX(id) FROM decisions GROUP BY job_key)")
+    .all();
+  return decisionIndex(rows.results);
 }
 
 // First "Garder": one pending row when the offer has none yet.
