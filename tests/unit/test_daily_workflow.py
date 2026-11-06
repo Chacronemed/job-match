@@ -263,8 +263,8 @@ def test_tracking_steps_use_the_cloudflare_secrets_and_print_nothing_from_d1():
 
 def test_export_selects_exactly_the_mirrored_columns():
     export = _steps()[_index("Export tracking")]["run"]
-    assert ("SELECT job_key, status, applied_at, follow_up_at, note, cv_url, updated_at "
-            "FROM applications") in export
+    assert ("SELECT job_key, status, applied_at, follow_up_at, note, cv_url, updated_at, "
+            "reactivated_at FROM applications") in export
     assert "SELECT id, job_key, label, score_at_decision, created_at FROM decisions" in export
     assert "SELECT skill, created_at FROM skill_overrides" in export
     # The AI rerank mirror (ADR 0016): the Worker's three tables, whole.

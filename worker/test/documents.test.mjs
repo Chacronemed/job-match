@@ -25,7 +25,9 @@ import {
   DOCUMENT_SCHEMA,
   DOCUMENTS_CRON,
   DOCUMENTS_MODEL,
+  ERROR_CODES,
   listDocuments,
+  requestMissingDocuments,
   runDocuments,
   spentThisMonth,
   STUCK_MINUTES,
@@ -666,6 +668,41 @@ describe("runDocuments", () => {
     assert.equal(row("france_travail:EXP").error_code, "offer_gone");
     assert.equal(db.raw.prepare("SELECT COUNT(*) AS n FROM documents WHERE job_key = 'france_travail:EXQ'").get().n, 0);
     assert.equal(r.counters.queued, 0);
+  });
+
+  test("an auto-archived application (ADR 0028) gets no documents, queued or pending", async () => {
+    const ago = (days) => new Date(NOW.getTime() - days * 86400000).toISOString();
+    const decide = (key, days) => db.raw
+      .prepare("INSERT INTO decisions (job_key, label, score_at_decision, created_at) VALUES (?, 'good_fit', 80, ?)")
+      .run(key, ago(days));
+    keep("france_travail:ARC"); // kept 16 days ago: archived, its pending row fails
+    decide("france_travail:ARC", 16);
+    pending("france_travail:ARC");
+    keep("france_travail:ARQ"); // kept 16 days ago, no documents row: never queued
+    decide("france_travail:ARQ", 16);
+    keep("france_travail:OLD"); // kept yesterday but published 21 days ago: archived too
+    decide("france_travail:OLD", 1);
+    keep("france_travail:RE"); // kept 30 days ago, reactivated 2 days ago: live, queued
+    decide("france_travail:RE", 30);
+    db.raw.prepare("UPDATE applications SET reactivated_at = ? WHERE job_key = ?").run(ago(2), "france_travail:RE");
+    keep("france_travail:FRESH"); // kept 3 days ago: live, queued
+    decide("france_travail:FRESH", 3);
+    const offer = (k, extra = {}) => ({ ...OFFER, key: k, ...extra });
+    const jobs = [offer("france_travail:ARC"), offer("france_travail:ARQ"), offer("france_travail:OLD", { published_at: ago(21) }),
+      offer("france_travail:RE", { published_at: ago(40) }), offer("france_travail:FRESH")];
+    const api = anthropic([]);
+    idp.hosts["api.anthropic.com"] = api.handler;
+    const e = docEnv({ ASSETS: fakeAssets({ "/data.json": { jobs, tracked: [] } }) });
+    const r = await run(e);
+    assert.equal(row("france_travail:ARC").error_code, "archived");
+    assert.equal(row("france_travail:ARC").status, "failed");
+    const queued = db.raw.prepare("SELECT job_key FROM documents WHERE status != 'failed' ORDER BY job_key").all().map((x) => x.job_key);
+    assert.deepEqual(queued, ["france_travail:FRESH", "france_travail:RE"]);
+    assert.equal(r.counters.queued, 2);
+    // « Générer les manquants » applies the same rule
+    const missing = await requestMissingDocuments(e.DB, e, NOW);
+    assert.equal(missing.requested, 0);
+    assert.ok(ERROR_CODES.includes("archived"));
   });
 
   test("an offer kept but no longer listed is read from tracked[]", async () => {

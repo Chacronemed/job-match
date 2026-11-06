@@ -340,6 +340,12 @@
     }
     if (s !== "ignored") button("", function () { quickSet(row, "ignored"); }, "ghost record-drop", "Écarter l’offre").appendChild(JM.U.icon("x"));
     if (s !== "to_apply" && s !== "applied" && s !== "interview") button("Garder", function () { quickSet(row, "to_apply"); }, "primary").appendChild(JM.U.icon("arrow-right"));
+    else if (s === "to_apply" && JM.archiveStateOf(row.key)) {
+      /* Auto-archived (ADR 0028): back in the list for another kept_days from today. */
+      var react = button("Réactiver", function () {
+        JM.reactivate(row.key, react, function () { JM.openRecord(row, null, { quiet: true }); });
+      }, "primary", "Réactiver la candidature");
+    }
     else if (s === "to_apply") button("Candidature envoyée", function () { markApplied(row); }, "primary");
     return foot;
   }
@@ -738,6 +744,7 @@
     state.ai = AI_LEVELS.indexOf(p.ia) >= 0 ? p.ia : "";
     aiSelect.value = state.ai;
     if (parsed.params.view === "table" || parsed.params.view === "kanban") setAppsView(parsed.params.view, true);
+    V.showArchived = parsed.params.archived === "1";
     var min = parseInt(p.min, 10);
     state.minScore = min >= 0 && min <= 100 ? min : 0;
     minScoreInput.value = String(state.minScore);

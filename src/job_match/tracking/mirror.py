@@ -26,8 +26,11 @@ from job_match.tracking.constants import (
 )
 
 APPLICATION_FIELDS = (
-    "job_key", "status", "applied_at", "follow_up_at", "note", "cv_url", "updated_at"
+    "job_key", "status", "applied_at", "follow_up_at", "note", "cv_url", "updated_at",
+    "reactivated_at",
 )
+# Added by D1 migration 0009 (ADR 0028): an export taken before it has no such column.
+OPTIONAL_APPLICATION_FIELDS = ("reactivated_at",)
 DECISION_FIELDS = ("id", "job_key", "label", "score_at_decision", "created_at")
 SKILL_OVERRIDE_FIELDS = ("skill", "created_at")
 # The AI rerank tables (worker/migrations/0004_ai_verdicts.sql, ADR 0016).
@@ -110,8 +113,10 @@ def _is_timestamp(value) -> bool:
 
 
 def valid_application(row: dict) -> bool:
+    required = set(APPLICATION_FIELDS) - set(OPTIONAL_APPLICATION_FIELDS)
     return (
-        set(row) == set(APPLICATION_FIELDS)
+        required <= set(row) <= set(APPLICATION_FIELDS)
+        and (row.get("reactivated_at") is None or _is_timestamp(row["reactivated_at"]))
         and isinstance(row["job_key"], str) and JOB_KEY_RE.match(row["job_key"]) is not None
         and row["status"] in STATUSES
         and _is_date(row["applied_at"])

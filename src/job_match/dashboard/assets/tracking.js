@@ -225,11 +225,13 @@
      The Worker applies the same rule (KEEP_STATUSES, no row at all). */
   var KEEP_STATUSES = ["to_apply", "applied", "interview"];
   /* `postings` (key → offer, optional): an expired application gets none (the Worker skips a
-     closed offer the same way). */
-  function missingDocuments(apps, documents, postings) {
+     closed offer the same way). `decisions` (key → {label, created_at}) and `today`: an
+     auto-archived one gets none either (ADR 0028). */
+  function missingDocuments(apps, documents, postings, decisions, today) {
     return Object.keys(apps || {}).filter(function (k) {
+      var p = postings && postings[k];
       return KEEP_STATUSES.indexOf(statusOf(apps[k])) >= 0 && !(documents && documents[k]) &&
-        !isExpired(apps[k], postings && postings[k]);
+        !isExpired(apps[k], p) && !(today && isArchived(apps[k], p, decisions && decisions[k], today));
     }).sort();
   }
 
@@ -239,6 +241,51 @@
     return statusOf(app) === "to_apply" && !!posting && posting.closed === true;
   }
 
+  /* Auto-archive (ADR 0028): an « À candidater » application nobody handled leaves the lists
+     by itself, never deleted. Kept more than kept_days ago without being sent (the kept day:
+     the « Réactiver » date when there is one, else the « Garder » decision, i.e. the latest
+     decision when it is good_fit; no decision, no kept rule), or the offer published more than
+     published_days ago (not once reactivated; unknown publication: the kept rule alone).
+     « Expirée » wins. Not a stored
+     status: the page and the Worker (worker/src/archive.js, same values) derive it;
+     settings.yaml `archive:` repeats the two numbers, a test keeps them equal. */
+  var ARCHIVE = { kept_days: 15, published_days: 20 };
+  function dayOf(value) {
+    var d = typeof value === "string" ? value.slice(0, 10) : "";
+    return isDay(d) ? d : null;
+  }
+  function keptDay(app, decision) {
+    var reactivated = dayOf(app && app.reactivated_at);
+    if (reactivated) return reactivated;
+    return decision && decision.label === "good_fit" ? dayOf(decision.created_at) : null;
+  }
+  /* null, or {reason: "kept" | "published", days}. */
+  function archiveState(app, posting, decision, today, cfg) {
+    cfg = cfg || ARCHIVE;
+    if (statusOf(app) !== "to_apply" || isExpired(app, posting)) return null;
+    var kept = keptDay(app, decision);
+    if (kept) {
+      var days = daysBetween(kept, today);
+      if (days > cfg.kept_days) return { reason: "kept", days: days };
+    }
+    if (!dayOf(app.reactivated_at)) {
+      var published = dayOf(posting && posting.published_at);
+      if (published) {
+        var age = daysBetween(published, today);
+        if (age > cfg.published_days) return { reason: "published", days: age };
+      }
+    }
+    return null;
+  }
+  function isArchived(app, posting, decision, today, cfg) {
+    return archiveState(app, posting, decision, today, cfg) !== null;
+  }
+  /* « gardée il y a 17 jours » / « publiée il y a 23 jours ». */
+  function archiveReason(state) {
+    if (!state) return "";
+    return (state.reason === "kept" ? "gardée" : "publiée") + " il y a " + state.days + " jour" + (state.days !== 1 ? "s" : "");
+  }
+
   /* The forms `job-match apply` fills (src/job_match/apply/forms.py, ATS_HOSTS). */
   var APPLY_FORMS = ["greenhouse", "lever", "ashby"];
   function canPrefill(posting) {
@@ -246,11 +293,13 @@
   }
 
   /* The numbered list `job-match apply` prints without a key (src/job_match/apply/picker.py):
-     « À candidater », offer open and form supported, oldest kept first, then by key. */
-  function applyList(apps, postings) {
+     « À candidater », offer open and form supported, oldest kept first, then by key. With
+     `decisions` and `today`, an auto-archived application is left out (no « Postuler »). */
+  function applyList(apps, postings, decisions, today) {
     return Object.keys(apps || {}).filter(function (k) {
       var p = postings && postings[k];
-      return statusOf(apps[k]) === "to_apply" && p && p.closed !== true && canPrefill(p);
+      return statusOf(apps[k]) === "to_apply" && p && p.closed !== true && canPrefill(p) &&
+        !(today && isArchived(apps[k], p, decisions && decisions[k], today));
     }).sort(function (a, b) {
       var ua = String(apps[a].updated_at || ""), ub = String(apps[b].updated_at || "");
       if (ua !== ub) return ua < ub ? -1 : 1;
@@ -341,6 +390,8 @@
     return {
       list: function () { return call("GET", "applications"); },
       save: function (key, rec) { return call("PUT", "applications/" + encodeURIComponent(key), rec); },
+      /* « Réactiver » an auto-archived application (ADR 0028): the kept counter restarts today. */
+      reactivate: function (key) { return call("POST", "applications/" + encodeURIComponent(key) + "/reactivate"); },
       decide: function (key, label, score) {
         return call("POST", "decisions", { job_key: key, label: label, score_at_decision: score });
       },
@@ -392,6 +443,11 @@
     docBadge: docBadge,
     missingDocuments: missingDocuments,
     isExpired: isExpired,
+    ARCHIVE: ARCHIVE,
+    keptDay: keptDay,
+    archiveState: archiveState,
+    isArchived: isArchived,
+    archiveReason: archiveReason,
     canPrefill: canPrefill,
     applyList: applyList,
     APPLY_FORMS: APPLY_FORMS,

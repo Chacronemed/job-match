@@ -288,6 +288,20 @@ class FollowUp:
 
 
 @dataclass(frozen=True, slots=True)
+class ArchivedApplication:
+    """Read model: an « À candidater » application the archive rule (ADR 0028) puts aside as of
+    a day, with the reason as the page words it. `new_today`: not archived the day before."""
+
+    job_key: str
+    reason: str  # "kept" | "published"
+    days: int
+    text: str
+    new_today: bool
+    title: str | None = None
+    company: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class RunRecord:
     """Read model: one stored run, with its summary as the dict `RunRepository.save` wrote."""
 
@@ -316,6 +330,10 @@ class RunSummary:
     # said were gone. A check that got no clear answer counts in `errors`, never in `closed`.
     checked: int = 0
     closed: int = 0
+    # Auto-archived « À candidater » applications (ADR 0028) as of the run's day, and how many
+    # of them became archived that day. Counted from the tracking mirror, nothing written.
+    archived: int = 0
+    archived_today: int = 0
     # Raw source payloads written this run (new or changed only) and rows pruned by age.
     raw_stored: int = 0
     raw_pruned: int = 0

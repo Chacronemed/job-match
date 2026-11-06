@@ -429,3 +429,36 @@ describe("run now (POST /api/ai/run, /api/documents/run)", () => {
     assert.equal(rows("document_runs"), 0);
   });
 });
+
+describe("POST /api/applications/:key/reactivate (ADR 0028)", () => {
+  const REACT = `${PATH}/reactivate`;
+
+  test("an « À candidater » application gets reactivated_at = now, and the list carries it", async () => {
+    await call(PATH, { method: "PUT", body: { ...VALID, status: "to_apply" } });
+    const before = db.raw.prepare("SELECT updated_at FROM applications WHERE job_key = ?").get(KEY).updated_at;
+    const res = await call(REACT, { method: "POST" });
+    assert.equal(res.status, 200);
+    const { application } = await res.json();
+    assert.equal(application.job_key, KEY);
+    assert.equal(application.status, "to_apply");
+    assert.match(application.reactivated_at, /^\d{4}-\d{2}-\d{2}T/);
+    assert.ok(application.updated_at >= before);
+    assertNoCors(res);
+    const list = await (await call("/api/applications")).json();
+    assert.equal(list.applications[0].reactivated_at, application.reactivated_at);
+    // a later save keeps the date (the archive counter still restarts from it)
+    const saved = await (await call(PATH, { method: "PUT", body: { ...VALID, status: "to_apply", note: "x" } })).json();
+    assert.equal(saved.application.reactivated_at, application.reactivated_at);
+  });
+
+  test("unknown application -> 404, another status -> 409, GET -> 405, bad key -> 400", async () => {
+    assert.equal((await call(REACT, { method: "POST" })).status, 404);
+    await call(PATH, { method: "PUT", body: VALID }); // applied
+    const res = await call(REACT, { method: "POST" });
+    assert.equal(res.status, 409);
+    assert.equal(db.raw.prepare("SELECT reactivated_at FROM applications WHERE job_key = ?").get(KEY).reactivated_at, null);
+    assert.equal((await call(REACT, { method: "GET" })).status, 405);
+    assert.equal((await call("/api/applications/not%20a%20key/reactivate", { method: "POST" })).status, 400);
+    assert.equal((await call(REACT, { method: "POST", origin: "https://evil.example" })).status, 403);
+  });
+});
