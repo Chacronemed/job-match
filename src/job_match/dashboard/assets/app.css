@@ -247,8 +247,10 @@ body[data-density="comfortable"] table.data.jobs tbody tr.row { padding-top: 12p
 .why-top b { font-weight: 600; color: var(--green-11); }
 .why-top.down b { color: var(--amber-11); }
 /* A handled row stays in place, quieter: its status says why. */
-tr.row.is-handled td.col-title .title-text > span { color: var(--ink-2); }
-tr.row.st-ignored td.col-title .title-text > span, tr.row.st-rejected td.col-title .title-text > span { text-decoration: line-through; }
+tr.row.is-handled td.col-title .title-text > span:not(.status) { color: var(--ink-2); }
+tr.row.st-ignored td.col-title .title-text > span:not(.status), tr.row.st-rejected td.col-title .title-text > span:not(.status) { text-decoration: line-through; }
+/* On the violet selected row the small greys step up one level (AA in light mode). */
+tr.row.is-selected .row-meta, tr.row.is-selected .score-tag, tr.row.is-selected .score small, tr.row.is-selected .score-ai:not(.ai-fort):not(.ai-hors_sujet) { color: var(--ink-2); }
 tr.row.is-handled .score { opacity: 0.6; }
 /* The expanded row: the details under it, in a quieter box. */
 table.data.jobs tr.details { display: block; }
@@ -417,7 +419,7 @@ table.data.jobs tr.details td { display: block; padding: 0 17px 16px 17px; borde
 .scale-fill.band-strong { background: var(--green-9); }
 .scale-fill.band-stretch { background: var(--amber-9); }
 .scale-tick { position: absolute; top: 0; width: 1px; height: 13px; background: var(--slate-8); }
-.scale-tick span { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 10px; color: var(--ink-3); }
+.scale-tick span { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 10px; color: var(--ink-2); }
 .scale-tick:nth-child(3) { height: 25px; }
 .scale-tick:nth-child(3) span { top: 27px; }  /* the two thresholds are close: one label per line */
 .ledger-gap { margin: 0; color: var(--ink); font-weight: 500; }
@@ -867,7 +869,7 @@ html:active-view-transition-type(record)::view-transition-new(main) { animation:
   .list-panel { overflow: visible; }
   .list-tools { padding: 13px 13px 0; }
   .tabline .chip { min-height: 44px; }
-  .seg .chip { min-height: 40px; }
+  .seg .chip { min-height: 44px; }
   .controls-summary { min-height: 44px; padding: 0 13px; }
   .controls-grid { padding: 4px 13px 14px; }
   .list-panel .table-wrap { overflow: visible; }
@@ -893,8 +895,16 @@ html:active-view-transition-type(record)::view-transition-new(main) { animation:
   .save-state { margin-left: 0; flex-basis: 100%; }
   .verdict, .btn-retry, .btn-override, .link-btn, .posting-status, .chip-btn, .icon-btn, .button, .btn { min-height: 44px; }
   .icon-btn { min-width: 44px; }
-  .topbar .icon-btn, .record-bar .icon-btn { min-height: 40px; min-width: 40px; width: 40px; height: 40px; }
-  .btn-sm, .btn-small, .button.small { min-height: 40px; }
+  .topbar .icon-btn, .record-bar .icon-btn { min-height: 44px; min-width: 44px; width: 44px; height: 44px; }
+  .topbar .foot-btn { min-height: 44px; }
+  .btn-sm, .btn-small, .button.small { min-height: 44px; }
+  /* Every control a thumb can reach is at least 44 px (WCAG 2.5.5); text links get room. */
+  .tcard-open, .why-title, .record-desc > summary, .run-companies summary, .due-chip, .seg .chip, .kb-actions a, .kb-actions .link-btn,
+  .doc-links a, .link-btn, table.data.apps .kb-status, table.data.apps td.link-col a, .record .track select, .record .track input,
+  .record .track textarea, .inbox-correct select, .inbox-correct input, .postings select { min-height: 44px; }
+  .doc-links a, table.data.apps td.link-col a, table.data.leads td.link-col a, .kb-actions a, .lead-jump { display: inline-flex; align-items: center; padding: 0 8px; min-width: 44px; justify-content: center; }
+  .record-foot .button.ghost { min-width: 44px; }
+  .ledger-sum { min-height: 44px; }
   .posting { grid-template-columns: minmax(0, 1fr) auto; }
   select.posting-status { width: 100%; }
   /* Tri: a fixed-height column, the bar above the tab bar. */
@@ -929,7 +939,8 @@ html:active-view-transition-type(record)::view-transition-new(main) { animation:
   table.data.leads tr.row, table.data.apps tbody tr { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
   table.data.leads td, table.data.apps td { height: auto; width: auto; min-width: 0; padding: 0; border: 0; max-width: none; overflow: visible; white-space: normal; min-height: 24px; display: flex; align-items: center; gap: 6px; }
   table.data.leads td::before, table.data.apps td::before { content: attr(data-label); color: var(--ink-3); font-size: var(--fs-xs); flex: none; min-width: 64px; }
-  table.data.leads td.col-title, table.data.apps td.apps-title, table.data.apps td.apps-company, table.data.apps td.apps-status, table.data.apps td.apps-docs, table.data.apps td.link-col { grid-column: 1 / -1; }
+  table.data.leads td.col-title, table.data.apps td.apps-title, table.data.apps td.apps-company, table.data.apps td.apps-status, table.data.apps td.apps-docs, table.data.apps td.doc-cell, table.data.apps td.link-col { grid-column: 1 / -1; }
+  table.data.apps td.doc-cell .doc-links { flex-wrap: wrap; }
   table.data.leads td.col-title { font-weight: 500; }
   table.data.leads td.col-title::before, table.data.apps td.apps-title::before { display: none; }
   table.data.apps td.apps-title { display: block; }
@@ -948,7 +959,7 @@ html:active-view-transition-type(record)::view-transition-new(main) { animation:
   .record { top: 56px; left: 0; right: 0; bottom: calc(64px + env(safe-area-inset-bottom)); width: auto; border-radius: 0; border: 0; box-shadow: none; animation: none; }
   .record.closing { animation: none; }
   .record-bar { padding: 6px 6px 0 8px; }
-  .record-back { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 10px; border: 0; border-radius: var(--r-sm); background: none; color: var(--accent-ink); font-weight: 500; }
+  .record-back { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 10px; border: 0; border-radius: var(--r-sm); background: none; color: var(--accent-ink); font-weight: 500; }
   .record-back:hover { background: var(--hover); }
   .record-close { display: none; }
   .record-scroll { padding: 4px 16px 24px; }
