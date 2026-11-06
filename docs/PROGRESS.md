@@ -3,7 +3,23 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**Simpler apply + expired applications** (branch `ci/split-pipelines`, 2026-11-06, ADR 0024).
+**Focus dashboard redesign** (branch `design/job-match-focus-inputs`, 2026-11-06, ADR 0025,
+PR #21 in draft). **Done, pushed, not merged.** The art direction imposed by
+`docs/design/JOB_MATCH_FOCUS.md` and the five mockups, on the same vanilla stack, CSP and
+`window.JM` contracts: sidebar 232 px + 64 px top bar, page tops with counts from the data,
+Offres as a split view (Focus rows + the record at 420 px, a row click selects, the first
+offer selected quietly), Tri as one 745 px card (score first, quoted sentence, « Offre N sur
+T »), Candidatures with the four real columns and a quiet due line, a full-screen record with
+a back button on phones, 44 px targets, AA in both themes. `dashboard.css` deleted into
+`app.css`. Captures before/after in `docs/design/screenshots/focus/`, report
+`docs/design/FOCUS_DELIVERY.md` (gaps with the mockups and why), tests in
+`tests/unit/browser/test_focus.py`. Suite **1 722 passed, 3 skipped**, ruff clean, Worker
+313 pass.
+**Next step:** review the PR on the real data (a `job-match dashboard --out site` build),
+merge, deploy with the Daily run `site` stage; then decide the open points: single-choice
+section tabs, a « Garder et préparer » that would also request the documents.
+
+Before it: **Simpler apply + expired applications** (branch `ci/split-pipelines`, 2026-11-06, ADR 0024).
 Done locally, not committed.
 1. `job-match apply` with no key: numbered list (D1 `to_apply` × local jobs DB, open, form
    Greenhouse / Lever / Ashby, oldest first), I type a number (`apply/picker.py`).

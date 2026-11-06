@@ -23,7 +23,7 @@ typography:
   sizes: { xs: 11, sm: 12, ui: 13, md: 15, lg: 18, xl: 20 }
   tracking-titles: "-0.015em to -0.02em"
   numerals: tabular
-space: { unit: 4, row: 40, nav-row: 30, head: 48, panel: 440, sidebar: 232 }
+space: { unit: 4, row: 58, nav-row: 36, topbar: 64, panel: 420, sidebar: 232 }
 radius: { sm: 6, md: 8, lg: 12 }
 motion: { fast: 120ms, base: 160ms, slow: 200ms, easing: "cubic-bezier(0.16, 1, 0.3, 1)" }
 ---
@@ -259,7 +259,7 @@ Shipped (2026-11-04). `tokens.css` carries a second block, `:root[data-theme="li
 
 ## Migration status (phase 3)
 
-The views move to this system one at a time. Done: the shell (sidebar, tab bar, palette, help, record panel, toast), **Tri**, and the **Offres** rows (2026-11-04: one row per offer, 34 px dense / 44 px comfortable, keyboard triage). Still on `dashboard.css`: the Offres filters, Candidatures, Leads and Exécutions. That file's tokens are remapped onto `tokens.css` so the legacy views share the colours; it is deleted with the last view.
+Done (2026-11-06, ADR 0025, **Focus**): every view is on `app.css`; `dashboard.css` is deleted. The layout follows `docs/design/JOB_MATCH_FOCUS.md`: a flat canvas, a 232 px sidebar with the quick link to due follow-ups, a 64 px top bar (breadcrumb, snapshot, theme), page tops with an eyebrow and counts from the data, Offres as a split view (list panel + 420 px record at ≥ 1280 px, rows 58 px dense / 70 px comfortable), Tri as one 745 px card, Candidatures as the four real columns, a full-screen record with a back button on phones. Before/after captures: `docs/design/screenshots/focus/`, report: `docs/design/FOCUS_DELIVERY.md`.
 
 The JavaScript is one file per screen since 2026-11-04 (ADR 0021): `app.js` (core), `why.js`, `list.js`, `tri.js`, `board.js`, `leads.js`, `runs.js`, then `dashboard.js` boots. The page ships them without their comment lines (`render.strip_comments`).
 
