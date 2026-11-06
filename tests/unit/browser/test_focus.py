@@ -235,3 +235,70 @@ def test_tri_on_a_phone_keeps_its_actions_above_the_tab_bar(open_dashboard, job_
     page.wait_for_function(SECOND)
     assert page.locator("#tri-reasons-bar").is_visible()
     assert errors == []
+
+
+# ---------- Candidatures ----------
+
+BOARD_API = {"applications": [], "decisions": [], "skill_overrides": [], "ai_verdicts": [],
+             "ai_runs": [], "documents": [], "documents_budget": None}
+
+
+def _apps(keys):
+    day = "2026-10-01"
+    apps = []
+    for status, key in zip(["to_apply", "applied", "interview"], keys[:3]):
+        app = {"job_key": key, "status": status, "applied_at": None, "follow_up_at": None,
+               "note": None, "cv_url": None, "updated_at": "2026-10-02T08:00:00Z"}
+        if status == "applied":
+            app["applied_at"] = day
+            app["follow_up_at"] = "2026-10-08"  # long due
+        if status == "interview":
+            app["applied_at"] = day
+            app["interview_at"] = "2026-10-20"
+        apps.append(app)
+    return dict(BOARD_API, applications=apps)
+
+
+def test_board_says_its_counts_and_a_card_opens_the_record(open_dashboard, job_keys):
+    page, errors = open_dashboard(_apps(job_keys), hash_="#candidatures")
+    page.wait_for_function("document.querySelectorAll('#kb-board .kb-card').length === 3")
+    stats = page.locator("#apps-stats").inner_text()
+    assert "3 dossiers suivis" in stats and "1 relance en retard" in stats
+    assert "1 entretien" in stats
+    assert page.locator("#apps-due-chip").is_visible()
+    assert page.locator("[data-count=relances]").first.inner_text() == "1"
+    cols = page.locator("#kb-board .kb-col")
+    assert cols.count() == 4  # the board's own statuses, not the mockup's
+    assert [c.locator(".kb-col-title").inner_text().split()[0] for c in cols.all()] == \
+        ["À", "Envoyée", "Entretien", "Refus"]
+    # the due follow-up is a chip on its card and one quiet line above the board
+    due = page.locator("#kb-board .kb-card .kb-follow.is-due")
+    assert due.count() == 1 and "j de retard" in due.inner_text()
+    assert page.locator("#kb-due").bounding_box()["height"] < 60
+    page.locator("#apps-due-chip").click()
+    assert page.evaluate("document.activeElement.closest('#kb-due') !== null")
+    # « Voir la fiche » opens the record next to the board
+    card = page.locator("#kb-board .kb-card").first
+    card.locator(".kb-open").click()
+    page.wait_for_function("() => !document.getElementById('record').hidden")
+    assert page.locator("#record-title").inner_text() == card.locator(".kb-title").inner_text()
+    assert page.evaluate("document.getElementById('record').parentElement.className") == "app"
+    assert page.locator("#kb-board select.kb-status").count() == 3
+    assert errors == []
+
+
+def test_board_stacks_on_a_phone_without_overflow(open_dashboard, job_keys):
+    page, errors = open_dashboard(_apps(job_keys), hash_="#candidatures", viewport=(390, 844))
+    page.wait_for_function("document.querySelectorAll('#kb-board .kb-card').length === 3")
+    assert page.evaluate(OVERFLOW) <= 0
+    cols = page.locator("#kb-board .kb-col")
+    xs = [c.bounding_box()["x"] for c in cols.all()]
+    assert len(set(round(x) for x in xs)) == 1  # one under the other
+    for sel in ("#kb-board select.kb-status", "#kb-board .kb-open", "#apps-view-table"):
+        for node in page.locator(sel).all():
+            assert node.bounding_box()["height"] >= 40, sel
+    page.locator("#apps-view-table").click()
+    page.wait_for_selector("#kb-table table.data.apps")
+    assert page.evaluate(OVERFLOW) <= 0
+    assert page.locator("#kb-table td.apps-title .link-btn").first.is_visible()
+    assert errors == []

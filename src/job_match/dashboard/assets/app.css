@@ -867,6 +867,7 @@ html:active-view-transition-type(record)::view-transition-new(main) { animation:
   .list-panel { overflow: visible; }
   .list-tools { padding: 13px 13px 0; }
   .tabline .chip { min-height: 44px; }
+  .seg .chip { min-height: 40px; }
   .controls-summary { min-height: 44px; padding: 0 13px; }
   .controls-grid { padding: 4px 13px 14px; }
   .list-panel .table-wrap { overflow: visible; }
@@ -941,6 +942,8 @@ html:active-view-transition-type(record)::view-transition-new(main) { animation:
   .details-grid { grid-template-columns: 1fr; }
   .why-grid { grid-template-columns: 1fr; }
   .run { padding: 12px 14px; }
+  .runs-head { flex-wrap: wrap; justify-content: flex-start; }
+  .runs-grid { margin-bottom: 14px; }
   /* The record fills the screen above the tab bar; a back button restores the list. */
   .record { top: 56px; left: 0; right: 0; bottom: calc(64px + env(safe-area-inset-bottom)); width: auto; border-radius: 0; border: 0; box-shadow: none; animation: none; }
   .record.closing { animation: none; }
