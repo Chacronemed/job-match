@@ -234,7 +234,7 @@ window.JM = window.JM || {};
 
   /* Shared, reassigned across files: the current view and the hash guard. */
   /* statsPeriod: the Statistiques window, "30", "90" or "tout" (#statistiques?p=90). */
-  var V = JM.v = { tab: "", applyingHash: false, appsView: "kanban", statsPeriod: "30" };
+  var V = JM.v = { tab: "", applyingHash: false, appsView: "kanban", statsPeriod: "30", showArchived: false };
 
   /* The hash carries the tab and the Offres filters (#offres?q=...&hide=...), whatever the
      tab: switching to Tri and back, or reloading, keeps them. Every value is validated before
@@ -252,6 +252,7 @@ window.JM = window.JM || {};
       if (JM.state.status) parts.push("st=" + JM.state.status);
       if (JM.state.ai) parts.push("ia=" + JM.state.ai);
       if (V.tab === "candidatures" && V.appsView === "table") parts.push("view=table");
+      if (V.tab === "candidatures" && V.showArchived) parts.push("archived=1");
       if (V.tab === "statistiques" && V.statsPeriod !== "30") parts.push("p=" + V.statsPeriod);
       if (JM.state.minScore) parts.push("min=" + JM.state.minScore);
       if (JM.state.from) parts.push("from=" + JM.state.from);
@@ -803,7 +804,8 @@ window.JM = window.JM || {};
 
   /* One definition per counter, shared with the tests (triage.js sidebarCounts). */
   function updateCounts() {
-    var n = X.sidebarCounts(rows, track.apps, runAt, thresholds.min_score, leads, runs, track.ai);
+    var n = X.sidebarCounts(rows, track.apps, runAt, thresholds.min_score, leads, runs, track.ai,
+      track.status === "ready" ? JM.archivedSet() : null);
     Object.keys(n).forEach(function (view) { setCount(view, n[view]); });
     /* « Relances à faire » (sidebar): the due follow-ups, as Candidatures lists them. */
     setCount("relances", track.status === "ready" ? dueKeys(T.localDay()).length : "");
@@ -871,8 +873,13 @@ window.JM = window.JM || {};
   function recordBody(j) {
     var box = el("div", { class: "record-scroll" });
     var status = T.rowStatus(j, track.apps);
+    /* « Expirée » (ADR 0024) then « Archivée » with its reason (ADR 0028), as the board says. */
+    var expired = !!(j.key && track.status === "ready" && T.isExpired(track.apps[j.key], postingByKey[j.key]));
+    var archState = j.key && track.status === "ready" && !expired ? JM.archiveStateOf(j.key) : null;
     var tags = el("div", { class: "record-tags" }, [
       status !== "to_review" ? statusBadge(j) : null,
+      expired ? el("span", { class: "status-badge is-expired", text: "Expirée", title: "La source a retiré l’offre" }) : null,
+      archState ? el("span", { class: "status-badge is-archived", title: "Archivée automatiquement : « Réactiver » la remet dans la liste pour " + T.ARCHIVE.kept_days + " jours", text: "Archivée · " + T.archiveReason(archState) }) : null,
       el("span", { class: "pill", text: j.contract && j.contract !== "UNKNOWN" ? j.contract : "Contrat inconnu" }),
       el("span", { class: "pill", text: yearsText(j.required_years) }),
       el("span", { class: "pill", title: j.posted_at ? fmtDate(j.posted_at) : null, text: ageText(j.age_days) }),

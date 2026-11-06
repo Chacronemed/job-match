@@ -77,6 +77,13 @@
       if (r.api_calls) stats.appendChild(stat("appels API", r.api_calls));
       if (r.checked) stats.appendChild(stat("vérifiées à la source", r.checked));
       if (r.closed) stats.appendChild(stat("fermées", r.closed));
+      /* Auto-archived applications (ADR 0028): the day's new ones, the total in the title. */
+      if (r.archived_today || r.archived) {
+        var arch = stat("candidatures archivées aujourd’hui", r.archived_today || 0);
+        arch.title = (r.archived || 0) + " archivée(s) au total";
+        arch.className = "run-archived";
+        stats.appendChild(arch);
+      }
       if (r.self_links_dropped) stats.appendChild(stat("auto-liens supprimés", r.self_links_dropped));
       if (r.stale_links_dropped) stats.appendChild(stat("liens obsolètes supprimés", r.stale_links_dropped));
       card.appendChild(stats);

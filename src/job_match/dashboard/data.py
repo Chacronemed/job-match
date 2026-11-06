@@ -53,6 +53,8 @@ RUN_KEYS: tuple[str, ...] = (
     "api_calls",
     "checked",
     "closed",
+    "archived",
+    "archived_today",
     "by_source",
     "by_company",
 )

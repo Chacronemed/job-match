@@ -9,6 +9,7 @@ import yaml
 
 from job_match.config.schema import (
     AiConfig,
+    ArchiveConfig,
     AtsBoard,
     Candidate,
     ConfigError,
@@ -250,6 +251,7 @@ def load_settings(path: Path) -> Settings:
         digest=_parse_digest(raw.get("digest"), path),
         jobs=_parse_jobs(raw.get("jobs"), path),
         raw_payloads=_parse_raw_payloads(raw.get("raw_payloads"), path),
+        archive=_parse_archive(raw.get("archive"), path),
         ai=_parse_ai(raw.get("ai"), path),
         documents=_parse_documents(raw.get("documents"), path),
     )
@@ -480,6 +482,18 @@ def _parse_documents(value: object, path: Path) -> DocumentsConfig:
         else _str_list(phrases, "documents.forbidden_phrases", path)
     )
     return DocumentsConfig(**out)
+
+
+def _parse_archive(value: object, path: Path) -> ArchiveConfig:
+    raw = _mapping(value, "archive", path)
+    d = ArchiveConfig()
+    out: dict = {}
+    for key in ("kept_days", "published_days"):
+        v = raw.get(key, getattr(d, key))
+        if isinstance(v, bool) or not isinstance(v, int) or v <= 0:
+            raise ConfigError(f"archive.{key} must be a positive integer (in {path})")
+        out[key] = v
+    return ArchiveConfig(**out)
 
 
 def _parse_raw_payloads(value: object, path: Path) -> RawPayloadsConfig:

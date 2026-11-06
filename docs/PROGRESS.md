@@ -3,7 +3,40 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**Statistiques view** (branch `design/job-match-focus-inputs`, 2026-11-06, ADR 0026). Done
+**Auto-archive of stale applications** (branch `feat/auto-archive` from `main`, 2026-11-06,
+ADR 0028, PR in draft). An « À candidater » application I never handled leaves my lists by
+itself, nothing deleted.
+1. Rule (`archive:` in settings.yaml, `kept_days: 15`, `published_days: 20`; the page's
+   `tracking.js` `ARCHIVE` and the Worker's `worker/src/archive.js` repeat them, tests keep the
+   three equal): kept > 15 days ago (the `good_fit` decision date, or `reactivated_at`) without
+   « Envoyée », or offer published > 20 days ago (off once reactivated; unknown publication:
+   kept rule only). No decision (status menu) → published rule only. « Expirée » wins.
+2. « Archivée » is derived at display time, like « Expirée »: out of the Kanban, the table and
+   the sidebar count; « Afficher les archivées » (`#candidatures?archived=1`) folds them under
+   the view (grey badge, reason « gardée il y a 17 jours » / « publiée il y a 23 jours »,
+   documents still downloadable, « Réactiver »); no « Postuler », no « Générer », no follow-up.
+   Record panel: « Archivée · raison » + « Réactiver ».
+3. « Réactiver »: `POST /api/applications/:key/reactivate` writes `reactivated_at` (D1 migration
+   **0009**, Python mirror migration 0013, Daily export adds the column). Counter restarts.
+4. Worker: cron auto-queue, « Générer les manquants » and pending rows skip archived
+   applications (`error_code: archived`). Python: `ApplicationRepository.list_archived`,
+   follow-ups exclude them, `RunSummary.archived / archived_today` → job summary « N
+   candidatures archivées aujourd'hui » and the Exécutions card.
+5. Tests: `tests/unit/tracking/test_archive.py` (16 j → oui, 14 j → non, publiée 21 j + gardée
+   hier → oui, publication inconnue + 10 j → non, autres statuts jamais, réactivation, Expirée
+   prime, miroir, résumé), `worker/test/archive.test.mjs` (both JS copies on one table),
+   `documents.test.mjs`, `api.test.mjs`, `dashboard-tracking.test.mjs`, Playwright
+   `tests/unit/browser/test_archive.py` (filtre + hash, badge, Réactiver, compteur sidebar,
+   fiche, thèmes clair/sombre, 390 px). Fast suite **1 679 passed, 3 skipped**; browser +
+   worker **71 passed**; Node **337 pass**; ruff clean.
+**Next step (after merge):** the Daily run applies D1 migration 0009 (`reactivated_at`), then
+deploy the site stage; check the Candidatures count and the « Afficher les archivées » toggle
+on the real data. `docs/PROGRESS.md` conflicts with PR `fix/source-outage-guard` (ADR 0027):
+resolve by keeping both sections.
+**Known:** the Statistiques « Archivées » tile keeps its older meaning (tracked, no longer
+listed); an application kept without a Tri decision has no kept day.
+
+Before it: **Statistiques view** (branch `design/job-match-focus-inputs`, 2026-11-06, ADR 0026). Done
 locally, not committed. New view `#statistiques` (sidebar, tab bar « Stats », G S),
 `stats.js` (pure `JMStats.compute` + the view): cohort funnel on 30 / 90 days / Tout
 (`?p=90`), rates, delays garder → envoyer and envoyer → 1re réponse, expirées / archivées

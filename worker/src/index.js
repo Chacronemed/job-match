@@ -3,6 +3,8 @@
 //   GET  /api/applications       -> {applications, decisions, skill_overrides, ai_verdicts, ai_runs,
 //                                    documents, documents_budget}
 //   PUT  /api/applications/:key  -> {application}
+//   POST /api/applications/:key/reactivate -> {application}  (« Réactiver » an auto-archived
+//                                   « À candidater » application, ADR 0028: reactivated_at = now)
 //   POST /api/decisions          -> {decision}
 //   DELETE /api/decisions/:id    -> {deleted}  (undo in the triage view)
 //   PUT    /api/skill-overrides/:skill -> {skill_override}  ("je maîtrise", no body)
@@ -55,6 +57,8 @@ import {
 } from "./validate.js";
 
 const MAX_BODY = 8 * 1024;
+const APP_COLUMNS =
+  "job_key, status, applied_at, follow_up_at, interview_at, note, cv_url, updated_at, sent_documents_version, reactivated_at";
 const INBOX_MAX_BODY = 64 * 1024; // an email, cut to 4 000 characters before the model anyway
 // The routes a service token may call (ADR 0018); everything else is mine alone.
 const SERVICE_ROUTES = new Set(["/api/inbox", "/api/followups/due"]);
@@ -94,10 +98,7 @@ async function readJson(request, limit = MAX_BODY) {
 }
 
 async function listApplications(env) {
-  const apps = await env.DB.prepare(
-    "SELECT job_key, status, applied_at, follow_up_at, interview_at, note, cv_url, updated_at, sent_documents_version" +
-      " FROM applications ORDER BY updated_at DESC",
-  ).all();
+  const apps = await env.DB.prepare("SELECT " + APP_COLUMNS + " FROM applications ORDER BY updated_at DESC").all();
   // The latest verdict per job, enough for the dashboard to show it.
   const decisions = await env.DB.prepare(
     "SELECT job_key, label, created_at FROM decisions" +
@@ -153,7 +154,7 @@ async function putApplication(request, env, key) {
       " applied_at = excluded.applied_at, follow_up_at = excluded.follow_up_at," +
       " interview_at = excluded.interview_at," +
       " note = excluded.note, cv_url = excluded.cv_url, updated_at = excluded.updated_at" +
-      " RETURNING job_key, status, applied_at, follow_up_at, interview_at, note, cv_url, updated_at",
+      " RETURNING " + APP_COLUMNS,
   )
     .bind(key, a.status, a.applied_at, a.follow_up_at, a.interview_at, a.note, a.cv_url, new Date().toISOString())
     .first();
@@ -166,6 +167,22 @@ async function putApplication(request, env, key) {
       await env.DB.prepare("UPDATE applications SET sent_documents_version = ? WHERE job_key = ?").bind(v, key).run();
     }
   }
+  return json(200, { application: row });
+}
+
+// « Réactiver » (ADR 0028): an auto-archived « À candidater » application comes back for
+// another KEPT_DAYS from today; the published-age rule no longer applies to it. The archive
+// itself is never stored, so this is the only write: the date, and updated_at with it.
+async function reactivateApplication(env, key) {
+  const current = await env.DB.prepare("SELECT status FROM applications WHERE job_key = ?").bind(key).first();
+  if (!current) return fail(404, "application: not found");
+  if (current.status !== "to_apply") return fail(409, "application: not « À candidater »");
+  const now = new Date().toISOString();
+  const row = await env.DB.prepare(
+    "UPDATE applications SET reactivated_at = ?, updated_at = ? WHERE job_key = ? RETURNING " + APP_COLUMNS,
+  )
+    .bind(now, now, key)
+    .first();
   return json(200, { application: row });
 }
 
@@ -274,8 +291,11 @@ async function route(request, env, url, ctx) {
     return request.method === "GET" ? listApplications(env) : fail(405, "method not allowed");
   }
   if (path.startsWith("/api/applications/")) {
-    const key = decodeKey(path.slice("/api/applications/".length));
+    const rest = path.slice("/api/applications/".length);
+    const reactivate = rest.endsWith("/reactivate");
+    const key = decodeKey(reactivate ? rest.slice(0, -"/reactivate".length) : rest);
     if (!isJobKey(key)) return fail(400, "job_key: invalid");
+    if (reactivate) return request.method === "POST" ? reactivateApplication(env, key) : fail(405, "method not allowed");
     return request.method === "PUT" ? putApplication(request, env, key) : fail(405, "method not allowed");
   }
   if (path === "/api/decisions") {

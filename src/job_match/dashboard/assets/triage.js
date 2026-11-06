@@ -238,10 +238,14 @@
      candidatures = tracked offers whose status is on the board, listed or not;
      offres = listed rows (a group of postings counts once);
      leads, executions = what the snapshot carries. */
-  function sidebarCounts(rows, apps, runAt, minScore, leads, runs, ai) {
+  /* `exclude` (key → true, optional): the auto-archived applications (ADR 0028), out of the
+     Candidatures count as they are out of the board. */
+  function sidebarCounts(rows, apps, runAt, minScore, leads, runs, ai, exclude) {
     return {
       tri: triageQueue(rows, apps, runAt, minScore, ai).length,
-      candidatures: Object.keys(apps || {}).filter(function (k) { return BOARD.indexOf(T.statusOf(apps[k])) >= 0; }).length,
+      candidatures: Object.keys(apps || {}).filter(function (k) {
+        return BOARD.indexOf(T.statusOf(apps[k])) >= 0 && !(exclude && exclude[k]);
+      }).length,
       offres: rows.length,
       leads: (leads || []).length,
       executions: (runs || []).length
