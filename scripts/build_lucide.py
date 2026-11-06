@@ -20,7 +20,7 @@ NAMES = """layers briefcase-business list radar activity search x check undo-2 e
 calendar calendar-clock file-text chevron-down chevron-right keyboard kanban rows-3 map-pin clock
 building circle-dot arrow-left arrow-right corner-down-left circle-check circle-x loader-circle
 timer sliders-horizontal banknote users newspaper rotate-ccw triangle-alert wifi-off refresh-cw
-quote plus info git-branch link notebook-pen""".split()
+quote plus info git-branch link notebook-pen chart-column""".split()
 
 FOOTER = '''  };
   var NS = "http://www.w3.org/2000/svg";

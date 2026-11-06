@@ -751,6 +751,7 @@
     state.sortDir = sort[1] === "asc" ? "asc" : "desc";
     markSortHeader();
     renderJobs();
+    if (["30", "90", "tout"].indexOf(parsed.params.p) >= 0) V.statsPeriod = parsed.params.p;
     showTab(parsed.tab, false);
     var fiche = parsed.tab !== "tri" && parsed.params.fiche && rowByKey(parsed.params.fiche);
     if (fiche && (!R.open || R.job !== fiche)) openRecord(fiche, null);

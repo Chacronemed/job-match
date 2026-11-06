@@ -36,7 +36,7 @@ window.JM = window.JM || {};
   var whyPanel = function () { return JM.whyPanel.apply(null, arguments); };
 
   var SECTIONS = ["strong", "eligible", "stretch"];
-  var TABS = ["tri", "candidatures", "offres", "leads", "executions"];
+  var TABS = ["tri", "candidatures", "offres", "statistiques", "leads", "executions"];
   /* Hashes from before M23 still open the right view. */
   var TAB_ALIASES = { today: "tri", jobs: "offres", runs: "executions" };
   var HTTP = /^https?:\/\//i;
@@ -230,10 +230,11 @@ window.JM = window.JM || {};
       else if (focus) byId("main").focus({ preventScroll: true });
     }
   }
-  var VIEW_TITLE = { tri: "Tri", candidatures: "Candidatures", offres: "Offres", leads: "Leads", executions: "Exécutions" };
+  var VIEW_TITLE = { tri: "Tri", candidatures: "Candidatures", offres: "Offres", statistiques: "Statistiques", leads: "Leads", executions: "Exécutions" };
 
   /* Shared, reassigned across files: the current view and the hash guard. */
-  var V = JM.v = { tab: "", applyingHash: false, appsView: "kanban" };
+  /* statsPeriod: the Statistiques window, "30", "90" or "tout" (#statistiques?p=90). */
+  var V = JM.v = { tab: "", applyingHash: false, appsView: "kanban", statsPeriod: "30" };
 
   /* The hash carries the tab and the Offres filters (#offres?q=...&hide=...), whatever the
      tab: switching to Tri and back, or reloading, keeps them. Every value is validated before
@@ -251,6 +252,7 @@ window.JM = window.JM || {};
       if (JM.state.status) parts.push("st=" + JM.state.status);
       if (JM.state.ai) parts.push("ia=" + JM.state.ai);
       if (V.tab === "candidatures" && V.appsView === "table") parts.push("view=table");
+      if (V.tab === "statistiques" && V.statsPeriod !== "30") parts.push("p=" + V.statsPeriod);
       if (JM.state.minScore) parts.push("min=" + JM.state.minScore);
       if (JM.state.from) parts.push("from=" + JM.state.from);
       if (JM.state.to) parts.push("to=" + JM.state.to);
@@ -291,7 +293,7 @@ window.JM = window.JM || {};
 
   /* status: "off" (file:// or no fetch), "loading", "ready", "error". `apps` is what the page
      shows (optimistic), `confirmed` what the API last stored; a failed save goes back to it. */
-  var track = { status: "off", apps: {}, confirmed: {}, decisions: {}, overrides: {}, ai: {}, aiRuns: [], documents: {}, budget: null, inbox: { to_confirm: [], history: [] }, seq: {}, pending: 0 };
+  var track = { status: "off", apps: {}, confirmed: {}, decisions: {}, decisionAt: {}, overrides: {}, ai: {}, aiRuns: [], documents: {}, budget: null, inbox: { to_confirm: [], history: [] }, seq: {}, pending: 0 };
 
   /* Candidatures as a Kanban or as a table (ADR 0017 part 4): remembered per browser, and in
      the hash (#candidatures?view=table) so a link opens the same view. */
@@ -395,7 +397,13 @@ window.JM = window.JM || {};
       var apps = {};
       (res.applications || []).forEach(function (a) { if (a && a.job_key) apps[a.job_key] = a; });
       var decisions = {};
-      (res.decisions || []).forEach(function (d) { if (d && d.job_key) decisions[d.job_key] = d.label; });
+      /* decisionAt: when the latest verdict was given (Statistiques: the « gardée » date). */
+      var decisionAt = {};
+      (res.decisions || []).forEach(function (d) {
+        if (!d || !d.job_key) return;
+        decisions[d.job_key] = d.label;
+        if (typeof d.created_at === "string") decisionAt[d.job_key] = d.created_at;
+      });
       var overrides = {};
       (res.skill_overrides || []).forEach(function (o) { if (o && o.skill) overrides[o.skill] = true; });
       /* The AI verdicts (ADR 0016), one per key; triage.aiOf drops the ones whose hash is stale. */
@@ -414,6 +422,7 @@ window.JM = window.JM || {};
       track.apps = apps;
       track.confirmed = Object.assign({}, apps);
       track.decisions = decisions;
+      track.decisionAt = decisionAt;
       track.status = "ready";
       overlayPending();
       trackBanner();
@@ -612,7 +621,8 @@ window.JM = window.JM || {};
       track.decisions[key] = label;
       syncExtras();
       setVerdictState("saving", "Enregistrement de l’avis…");
-      api.decide(key, label, typeof j.score === "number" ? j.score : null).then(function () {
+      api.decide(key, label, typeof j.score === "number" ? j.score : null).then(function (res) {
+        if (res && res.decision && typeof res.decision.created_at === "string") track.decisionAt[key] = res.decision.created_at;
         setVerdictState("saved", "Avis enregistré");
       }).catch(function (err) {
         if (before) track.decisions[key] = before; else delete track.decisions[key];
@@ -998,8 +1008,8 @@ window.JM = window.JM || {};
   /* ---------- palette (Ctrl/Cmd+K) and shortcuts ---------- */
 
   var MOD = /Mac|iPhone|iPad/.test(navigator.platform || "") ? "⌘" : "Ctrl";
-  var GO_KEYS = { tri: "T", candidatures: "C", offres: "O", leads: "L", executions: "E" };
-  var VIEW_ICON = { tri: "layers", candidatures: "briefcase-business", offres: "list", leads: "radar", executions: "activity" };
+  var GO_KEYS = { tri: "T", candidatures: "C", offres: "O", statistiques: "S", leads: "L", executions: "E" };
+  var VIEW_ICON = { tri: "layers", candidatures: "briefcase-business", offres: "list", statistiques: "chart-column", leads: "radar", executions: "activity" };
 
   function paletteCommands(q) {
     var groups = [];
@@ -1029,13 +1039,14 @@ window.JM = window.JM || {};
 
   var HELP = [
     ["Général", [[[MOD, "K"], "Palette de commandes"], [["?"], "Cette aide"], [["G", "T"], "Aller au Tri"], [["G", "C"], "Aller aux Candidatures"],
-      [["G", "O"], "Aller aux Offres"], [["G", "L"], "Aller aux Leads"], [["G", "E"], "Aller aux Exécutions"], [["Échap"], "Fermer la fiche ou la palette"]]],
+      [["G", "O"], "Aller aux Offres"], [["G", "S"], "Aller aux Statistiques"], [["G", "L"], "Aller aux Leads"], [["G", "E"], "Aller aux Exécutions"], [["Échap"], "Fermer la fiche ou la palette"]]],
     ["Tri", [[["→"], "Garder"], [["←"], "Écarter"], [["Z"], "Annuler la dernière décision"], [["1–4"], "Raison de l’écart"], [["↵"], "Ouvrir la fiche"], [["↑", "↓"], "Faire défiler la carte"]]],
     ["Offres", [[["J", "K"], "Offre suivante / précédente"], [["X"], "Écarter (Ignorer)"], [["S"], "Garder (À candidater)"], [["A"], "Candidature envoyée"], [["↵"], "Ouvrir l’annonce"], [["Espace"], "Déplier / replier"], [["/"], "Rechercher"]]],
     ["Fiche", [[["Échap"], "Fermer"], [["Tab"], "Champ suivant"]]]
   ];
 
-  var gAt = 0;
+  /* -Infinity: no « G » yet (0 would make every key in the first 900 ms a G sequence). */
+  var gAt = -Infinity;
   document.addEventListener("keydown", function (ev) {
     if ((ev.metaKey || ev.ctrlKey) && !ev.altKey && (ev.key === "k" || ev.key === "K")) { ev.preventDefault(); P.toggle(); return; }
     if (P.isOpen() || ev.defaultPrevented) return;
@@ -1045,8 +1056,8 @@ window.JM = window.JM || {};
     if (ev.key === "?") { ev.preventDefault(); P.openHelp(); return; }
     if (ev.key === "g" || ev.key === "G") { gAt = performance.now(); return; }
     if (performance.now() - gAt < 900) {
-      gAt = 0;
-      var to = { t: "tri", c: "candidatures", o: "offres", l: "leads", e: "executions" }[ev.key.toLowerCase()];
+      gAt = -Infinity;
+      var to = { t: "tri", c: "candidatures", o: "offres", s: "statistiques", l: "leads", e: "executions" }[ev.key.toLowerCase()];
       if (to) { ev.preventDefault(); showTab(to, true, true); return; }
     }
     if (V.tab === "tri" && triKeys(ev)) { ev.preventDefault(); return; }
@@ -1058,9 +1069,10 @@ window.JM = window.JM || {};
     try {
       if (V.tab === "tri") renderTri();
       else if (V.tab === "candidatures") renderApps();
+      else if (V.tab === "statistiques") JM.renderStats();
     } catch (err) {
       console.error("affichage interrompu", V.tab, err);
-      var host = byId(V.tab === "tri" ? "tri-stage" : "kb-board");
+      var host = byId(V.tab === "tri" ? "tri-stage" : V.tab === "statistiques" ? "stats-body" : "kb-board");
       if (host) { clear(host); host.hidden = false; host.appendChild(el("p", { class: "kb-empty", text: "Affichage interrompu : recharge la page." })); }
     }
     updateCounts();
