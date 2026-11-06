@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 import httpx
 
 from job_match.adapters.http import HttpClient
-from job_match.adapters.jobs.base import OfferStatus, QueryStat, RawItem
+from job_match.adapters.jobs.base import OfferStatus, QueryStat, RawItem, RequestStats
 from job_match.config.schema import Profile
 from job_match.domain.models import ContractType, Job, WorkplaceType
 
@@ -73,10 +73,30 @@ class FranceTravailSource:
         self._last_request_time: float = 0.0
         self._api_calls: int = 0
         self._query_stats: list[QueryStat] = []
+        self._attempted = 0
+        self._failed = 0
 
     @property
     def api_calls_count(self) -> int:
         return self._api_calls
+
+    @property
+    def request_stats(self) -> RequestStats:
+        """Requests made and failed this run (token, search, detail), for the outage guard."""
+        return RequestStats(self._attempted, self._failed)
+
+    def _request(self, method: str, url: str, **kwargs) -> httpx.Response:
+        """One counted request: a transport error, a timeout or a 5xx after the client's
+        retries (all raised by the client as httpx errors) is a failed request."""
+        self._attempted += 1
+        try:
+            resp = getattr(self._http, method)(url, **kwargs)
+        except httpx.HTTPError:
+            self._failed += 1
+            raise
+        if resp.status_code >= 500:
+            self._failed += 1
+        return resp
 
     @property
     def query_stats(self) -> tuple[QueryStat, ...]:
@@ -86,7 +106,8 @@ class FranceTravailSource:
     def _ensure_token(self) -> str:
         if self._token and time.monotonic() < self._token_expires_at - 60:
             return self._token
-        resp = self._http.post(
+        resp = self._request(
+            "post",
             TOKEN_URL,
             data={
                 "grant_type": "client_credentials",
@@ -155,7 +176,8 @@ class FranceTravailSource:
                 end = min(start + PAGE_SIZE - 1, MAX_RANGE_END)
                 token = self._ensure_token()
                 self._throttle()
-                resp = self._http.get(
+                resp = self._request(
+                    "get",
                     SEARCH_URL,
                     headers={"Authorization": f"Bearer {token}"},
                     params={**params, "range": f"{start}-{end}"},
@@ -221,7 +243,8 @@ class FranceTravailSource:
         token = self._ensure_token()
         self._throttle()
         try:
-            resp = self._http.get(
+            resp = self._request(
+                "get",
                 DETAIL_URL.format(id=source_job_id),
                 headers={"Authorization": f"Bearer {token}"},
             )

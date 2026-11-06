@@ -3,7 +3,43 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**Auto-archive of stale applications** (branch `feat/auto-archive` from `main`, 2026-11-06,
+**Source outage guard** (branch `fix/source-outage-guard` from `main`, 2026-11-06, ADR 0027,
+PR in draft). Context: on 2026-11-06 France Travail was down (search → 0 offer, offer pages →
+« n'existe pas »); taken at face value the run would have closed every stored FT offer and
+expired my applications.
+1. `pipelines/outage.py`: a source is down for the run when it fetched 0 against a 7-run mean
+   ≥ 20, or > 50 % of its requests failed (`request_stats` on France Travail and ats), or the
+   closure check says "gone" for > 30 % of ≥ 10 offers asked; one ATS board at 0 after ≥ 5 on
+   the previous run (`by_board`, stored per run) is down alone. Thresholds:
+   `settings.yaml` → `outage_guard` (test `test_outage_guard_thresholds_are_read_from_settings`).
+2. `check_closed` skips the offers an outage covers and writes nothing for a source beyond the
+   closure ratio (no application turns « Expirée » because of it); per-source counters
+   `checked / closed / suspended` in `by_source`, `RunSummary.suspended` + `outages` stored in
+   `runs`. A source that cannot be asked now stops only itself.
+3. Visibility: GitHub job summary (per-source columns + « ⚠️ <source> indisponible — clôtures
+   suspendues : raison »), Exécutions card (`.run-outage` + counters), digest « <source>
+   indisponible aujourd'hui » instead of « 0 unnotified jobs », `ops check-sources` emails the
+   outage once a day per source (same `send_text`).
+4. **Repair:** `job-match ops reopen --since YYYY-MM-DD --source france_travail` (dry-run,
+   lists the runs marked down or beyond the threshold and the offers they closed), then
+   `… --apply` to clear `closed_at` / `last_checked_at`. Runs older than the ADR are judged on
+   their total closure ratio. On prod: Daily run → Run workflow → `stage: reopen`,
+   `reopen_since`, `reopen_source` (default france_travail), `reopen_apply` (false = dry run;
+   true = write, push the snapshot, rebuild + deploy the site). The job summary shows the
+   counts (`## Reopen`) and the stage table a `reopen` row. Branch merged with `main`
+   (auto-archive, ADR 0028) on 2026-11-06: both features kept, migrations D1 0009 / SQLite
+   0013 and ADR 0027 / 0028 distinct.
+5. Tests: `tests/unit/pipelines/test_outage.py` (FT at 0 everywhere, 50 % gone, one Workday
+   board at 0, normal 5 % run, reopen dry-run then apply), `test_ops.py` (alert once a day),
+   digest, settings, adapters' `request_stats`, Playwright banner. Fast suite **1 685 passed,
+   3 skipped**; browser + worker **68 passed**; ruff clean.
+**Next step (after merge):** the first Daily run stores `by_board`; check the job summary's
+new columns, then if the 2026-11-06 run closed FT offers: Daily run with `stage: reopen`,
+`reopen_since: 2026-11-06` (dry run), read the `## Reopen` block, then again with
+`reopen_apply: true`.
+**Known:** the digest only announces a whole source down, not a single board.
+
+Before it: **Auto-archive of stale applications** (branch `feat/auto-archive` from `main`, 2026-11-06,
 ADR 0028, PR in draft). An « À candidater » application I never handled leaves my lists by
 itself, nothing deleted.
 1. Rule (`archive:` in settings.yaml, `kept_days: 15`, `published_days: 20`; the page's

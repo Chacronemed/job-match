@@ -244,3 +244,20 @@ def test_render_text_empty_digest_no_crash():
     out = render_text(_data())
     assert "0 unnotified jobs" in out
     assert "(none)" in out
+
+
+def test_a_source_down_is_announced_instead_of_zero_jobs():
+    """ADR 0027: an empty digest on an outage day says why, in every rendering."""
+    data = DigestData(strong=(), eligible=(), generated_at=_TS, outages=("France Travail",))
+    text = render_text(data)
+    assert "France Travail indisponible aujourd'hui" in text
+    assert "0 unnotified jobs" not in text
+    assert "!! France Travail indisponible aujourd'hui : clôtures suspendues" in text
+    html = render_html(data)
+    assert "<p class='outage'>⚠️ France Travail indisponible aujourd&#x27;hui : clôtures" in html
+    # with offers from another source, both are said
+    with_jobs = DigestData(strong=(_job(1),), eligible=(), generated_at=_TS,
+                           outages=("France Travail",))
+    assert "1 unnotified job (1 strong), France Travail indisponible aujourd'hui" in render_text(
+        with_jobs)
+    assert "indisponible" not in render_text(_data())

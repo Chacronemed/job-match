@@ -311,11 +311,14 @@ def _eval(expr: str, ctx: dict) -> bool:
     return bool(_value(expr, ctx))
 
 
-def _simulate(stage: str | None, fail: frozenset[str] = frozenset()) -> list[str]:
-    """Names of the steps that run, in order, for `stage` (None: the cron, no inputs)."""
+def _simulate(stage: str | None, fail: frozenset[str] = frozenset(), **extra) -> list[str]:
+    """Names of the steps that run, in order, for `stage` (None: the cron, no inputs).
+    `extra`: other workflow_dispatch inputs (reopen_since, reopen_apply…)."""
     wf = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
     job = wf["jobs"]["run"]
-    inputs = _NS(stage=stage or "", reprocess_since="", reprocess_scope="jobs")
+    inputs = _NS({"stage": stage or "", "reprocess_since": "", "reprocess_scope": "jobs",
+                  "reopen_since": "", "reopen_source": "france_travail", "reopen_apply": False,
+                  **extra})
     funcs = {
         "contains": lambda seq, x: x in seq,
         "fromJSON": __import__("json").loads,
@@ -361,7 +364,7 @@ def test_stage_input_is_a_choice_defaulting_to_all():
     inp = triggers["workflow_dispatch"]["inputs"]["stage"]
     assert inp["type"] == "choice" and inp["required"] is False
     assert inp["default"] == "all"
-    assert inp["options"] == ["all", "jobs", "funding", "site"]
+    assert inp["options"] == ["all", "jobs", "funding", "site", "reopen"]
     assert triggers["schedule"]  # the cron, which runs all (below)
 
 
@@ -385,6 +388,7 @@ def test_all_runs_jobs_then_funding_then_site():
     assert ran.index("Deploy dashboard") < ran.index("Stage summary") == len(ran) - 1
     # manual-only steps stay off without their inputs
     assert "Reprocess jobs" not in ran and "Reprocess funding articles" not in ran
+    assert "Reopen closures" not in ran
 
 
 def test_jobs_stage_collects_scores_and_snapshots_without_funding_or_site():
@@ -440,7 +444,73 @@ def test_stage_summary_lists_played_and_skipped_stages_without_interpolation():
     step = _steps()[_index("Stage summary")]
     assert step["if"] == "always()"
     assert "${{" not in step["run"]
-    for stage in ("jobs:$RUN_JOBS", "funding:$RUN_FUNDING", "site:$RUN_SITE"):
+    for stage in ("jobs:$RUN_JOBS", "funding:$RUN_FUNDING", "reopen:$RUN_REOPEN", "site:$RUN_SITE"):
         assert stage in step["run"]
+    assert step["env"]["REOPEN_OUTCOME"] == "${{ steps.reopen.outcome }}"
+    assert "dry run, nothing written" in step["run"] and "**applied**" in step["run"]
     assert "played" in step["run"] and "skipped" in step["run"]
     assert '>> "$GITHUB_STEP_SUMMARY"' in step["run"]
+
+
+# ---------------------------------------------------------------------------
+# Repair stage (ADR 0027): `job-match ops reopen` on the restored snapshot, dry-run by default.
+# ---------------------------------------------------------------------------
+
+def test_reopen_inputs_are_optional_with_a_dry_run_default():
+    wf = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    inputs = wf.get("on", wf.get(True))["workflow_dispatch"]["inputs"]
+    assert inputs["reopen_since"]["type"] == "string" and inputs["reopen_since"]["default"] == ""
+    assert inputs["reopen_source"]["type"] == "string"
+    assert inputs["reopen_source"]["default"] == "france_travail"
+    assert inputs["reopen_apply"]["type"] == "boolean"
+    assert inputs["reopen_apply"]["default"] is False
+    for name in ("reopen_since", "reopen_source", "reopen_apply"):
+        assert inputs[name]["required"] is False, name
+
+
+def test_reopen_step_takes_its_inputs_by_env_and_adds_apply_only_when_asked():
+    step = _steps()[_index("Reopen closures")]
+    assert step["if"] == "env.RUN_REOPEN == 'true'"
+    assert step["env"] == {"REOPEN_SINCE": "${{ inputs.reopen_since }}",
+                           "REOPEN_SOURCE": "${{ inputs.reopen_source }}"}
+    run = step["run"]
+    assert "${{" not in run  # never interpolated into the shell script
+    assert 'job-match ops reopen --since "$REOPEN_SINCE" --source "$REOPEN_SOURCE" --apply' in run
+    assert 'job-match ops reopen --since "$REOPEN_SINCE" --source "$REOPEN_SOURCE"\n' in run
+    assert 'if [ "$REOPEN_APPLY" = "true" ]' in run  # the dry run is the default branch
+    assert 'if [ -z "$REOPEN_SINCE" ]' in run and "exit 1" in run  # a date is required
+    assert step.get("continue-on-error") is None  # a failed repair must show red
+    # on the restored snapshot, before the checkpoint that pushes it
+    assert _index("Restore DB") < _index("Reopen closures") < _index("WAL checkpoint and VACUUM")
+
+
+def test_reopen_stage_dry_run_reads_the_snapshot_and_writes_nothing_back():
+    ran = _simulate("reopen", reopen_since="2026-11-06")
+    for name in _COMMON + ("Reopen closures",):
+        assert name in ran, name
+    for name in _JOBS + _FUNDING + _SNAPSHOT_STEPS + _SITE + ("Apply D1 migrations",):
+        assert name not in ran, name
+    assert ran[-1] == "Stage summary"
+    # the same without a date: the step itself refuses (exit 1 inside the script)
+    assert "Reopen closures" in _simulate("reopen")
+
+
+def test_reopen_stage_with_apply_pushes_the_snapshot_and_redeploys_the_site_without_a_digest():
+    ran = _simulate("reopen", reopen_since="2026-11-06", reopen_apply=True)
+    written = ("Reopen closures", "WAL checkpoint and VACUUM", "Push DB to data repo")
+    for name in _COMMON + written + _SITE:
+        assert name in ran, name
+    for name in _JOBS + _FUNDING + ("Send digest",):
+        assert name not in ran, name
+    assert ran.index("Reopen closures") < ran.index("WAL checkpoint and VACUUM")
+    assert ran.index("Push DB to data repo") < ran.index("Build dashboard")
+    # a failed repair blocks the push and the deploy
+    failed = _simulate("reopen", fail=frozenset({"Reopen closures"}), reopen_since="2026-11-06",
+                       reopen_apply=True)
+    assert "Push DB to data repo" not in failed and "Deploy dashboard" not in failed
+    assert failed[-1] == "Stage summary"
+
+
+def test_reopen_apply_is_ignored_outside_the_reopen_stage():
+    assert "Reopen closures" not in _simulate("jobs", reopen_apply=True)
+    assert "Deploy dashboard" not in _simulate("jobs", reopen_apply=True)

@@ -219,6 +219,26 @@ class JobsConfig:
 
 
 @dataclass
+class OutageGuardConfig:
+    """Source outage guard (ADR 0027): when a source looks down for the day, none of its
+    offers is closed, so a dead API never expires live offers or applications.
+
+    A source is down this run when it fetched 0 while the mean of its last `history_runs`
+    stored runs is at least `min_average_fetched`; or when more than `max_failed_ratio` of
+    its collection requests failed (5xx after the retries, timeout, network error); or when
+    the closure check says "gone" for more than `max_closed_ratio` of at least
+    `min_checked` offers asked. One ATS board alone is down when it lists 0 postings after
+    at least `board_min_previous` on the previous run: only that board's closures stop."""
+
+    history_runs: int = 7
+    min_average_fetched: int = 20
+    max_failed_ratio: float = 0.5
+    max_closed_ratio: float = 0.3
+    min_checked: int = 10
+    board_min_previous: int = 5
+
+
+@dataclass
 class ArchiveConfig:
     """Auto-archive of stale « À candidater » applications (ADR 0028). Derived at display
     time, never written: kept more than `kept_days` ago (the « Garder » decision, or the
@@ -316,6 +336,7 @@ class Settings:
     eligibility: EligibilityConfig = field(default_factory=EligibilityConfig)
     jobs: JobsConfig = field(default_factory=JobsConfig)
     raw_payloads: RawPayloadsConfig = field(default_factory=RawPayloadsConfig)
+    outage_guard: OutageGuardConfig = field(default_factory=OutageGuardConfig)
     archive: ArchiveConfig = field(default_factory=ArchiveConfig)
     ai: AiConfig = field(default_factory=AiConfig)
     documents: DocumentsConfig = field(default_factory=DocumentsConfig)

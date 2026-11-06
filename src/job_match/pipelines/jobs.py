@@ -33,10 +33,15 @@ from job_match.persistence.repositories import (
     RunRepository,
 )
 from job_match.pipelines.closure import check_closed
+from job_match.pipelines.outage import banner, detect_collection_outages
 from job_match.scoring.engine import ScoringEngine
 from job_match.scoring.native import NativeRuleScorer
 
 logger = logging.getLogger(__name__)
+
+# Stored jobs runs read for the outage guard's history (it keeps the last
+# `outage_guard.history_runs` where the source was up; a few more cover down days).
+HISTORY_RUNS = 30
 
 
 def run_jobs(
@@ -85,6 +90,8 @@ def run_jobs(
     by_company: dict[str, dict[str, dict[str, int]]] = {}
     by_department: dict[str, int] = {}
     seen_ids: list[int] = []  # rows the search returned today: open by definition
+    # What "normal" looks like for each source (ADR 0027): read before this run is stored.
+    history = RunRepository(db.conn).list_recent(("jobs",), limit=HISTORY_RUNS)
 
     for source in source_list:
         counts = by_source.setdefault(
@@ -215,13 +222,32 @@ def run_jobs(
                 if saved.id is not None:
                     seen_ids.append(saved.id)
 
+    # Outage guard (ADR 0027): a source that fetched nothing against its history, or whose
+    # requests mostly failed, or one ATS board listing nothing after a full previous run, is
+    # down today; its offers are not asked about and nothing of it is closed.
+    by_board = _by_board(source_list)
+    request_stats = {
+        source.name: getattr(source, "request_stats", None) for source in source_list
+    }
+    outages = detect_collection_outages(
+        by_source, request_stats, by_board, history, settings.outage_guard
+    )
+    for outage in outages:
+        logger.warning("%s", banner(outage))
+
     # Closure check: what the search just returned is open, everything else still shown
     # is asked at its source. Check calls count as API calls of their source.
     now = datetime.now(UTC)
     if not dry_run:
         job_repo.mark_open(seen_ids, now)
-    closure = check_closed(source_list, settings, db, now, dry_run=dry_run)
+    closure = check_closed(source_list, settings, db, now, dry_run=dry_run, outages=outages)
     errors += closure.errors
+    outages = [*outages, *closure.outages]
+    for name, counts in by_source.items():
+        per = closure.by_source.get(name, {})
+        counts["checked"] = per.get("checked", 0)
+        counts["closed"] = per.get("closed", 0)
+        counts["suspended"] = per.get("suspended", 0)
     raw_pruned = 0
     if not dry_run:
         cutoff = now - timedelta(days=settings.raw_payloads.retention_days)
@@ -260,6 +286,8 @@ def run_jobs(
         rqth_end_client=rqth["end_client"],
         checked=closure.checked,
         closed=closure.closed,
+        suspended=closure.suspended,
+        outages=[o.as_dict() for o in outages],
         archived=len(archived_apps),
         archived_today=archived_today,
         raw_stored=raw_stored,
@@ -270,6 +298,7 @@ def run_jobs(
         by_keyword=by_keyword,
         by_department=by_department,
         by_source=by_source,
+        by_board=by_board,
         by_company=by_company,
         queries=len(stats),
     )
@@ -278,6 +307,20 @@ def run_jobs(
         RunRepository(db.conn).save(summary, started_at, datetime.now(UTC))
 
     return summary
+
+
+def _by_board(sources: list) -> dict[str, dict[str, int]]:
+    """source → "<ats>:<board id>" → postings fetched, for the sources made of named boards
+    (`reports_by_company`): their query stats are one per board (query=board id, area=ATS)."""
+    out: dict[str, dict[str, int]] = {}
+    for source in sources:
+        if not getattr(source, "reports_by_company", False):
+            continue
+        boards = out.setdefault(source.name, {})
+        for stat in getattr(source, "query_stats", ()):
+            key = f"{stat.area}:{stat.query}"
+            boards[key] = boards.get(key, 0) + stat.fetched
+    return out
 
 
 def _rejected_breakdown(

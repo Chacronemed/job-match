@@ -53,6 +53,8 @@ RUN_KEYS: tuple[str, ...] = (
     "api_calls",
     "checked",
     "closed",
+    "suspended",
+    "outages",
     "archived",
     "archived_today",
     "by_source",
@@ -281,7 +283,8 @@ def run_entry(run: RunRecord) -> dict:
     }
     for key in RUN_KEYS:
         mapping = key in ("rejected_by_reason", "by_source", "by_company")
-        entry[key] = s.get(key, {} if mapping else 0)
+        default: object = [] if key == "outages" else ({} if mapping else 0)
+        entry[key] = s.get(key, default)
     # Unique rejected jobs are not stored (the per-reason map may count a job twice),
     # but the funnel is exact: everything fetched is rejected, a duplicate, eligible or stretch.
     entry["rejected"] = max(

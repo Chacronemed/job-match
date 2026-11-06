@@ -125,3 +125,22 @@ def test_settings_funding_sources_must_be_list_of_strings(tmp_path):
     path.write_text("funding:\n  sources: maddyness\n", encoding="utf-8")
     with pytest.raises(ConfigError):
         load_settings(path)
+
+
+def test_outage_guard_thresholds_are_read_from_settings(tmp_path):
+    """ADR 0027: the guard's thresholds live in settings.yaml, and these are its values."""
+    from job_match.config.schema import OutageGuardConfig
+
+    guard = load_settings(SETTINGS_FILE).outage_guard
+    assert guard == OutageGuardConfig(history_runs=7, min_average_fetched=20,
+                                      max_failed_ratio=0.5, max_closed_ratio=0.3,
+                                      min_checked=10, board_min_previous=5)
+    path = tmp_path / "settings.yaml"
+    path.write_text("outage_guard:\n  min_checked: 3\n  max_closed_ratio: 0.25\n", encoding="utf-8")
+    custom = load_settings(path).outage_guard
+    assert custom.min_checked == 3 and custom.max_closed_ratio == 0.25 and custom.history_runs == 7
+    for bad in ("outage_guard:\n  max_closed_ratio: 1.5\n", "outage_guard:\n  min_checked: 0\n",
+                "outage_guard:\n  history_runs: true\n"):
+        path.write_text(bad, encoding="utf-8")
+        with pytest.raises(ConfigError):
+            load_settings(path)

@@ -58,6 +58,16 @@
       head.appendChild(el("span", { class: "run-fetched" }, [r.pipeline === "jobs_reprocess" ? "lues " : "récupérées ", el("b", { text: String(r.fetched) })]));
       card.appendChild(head);
 
+      /* Source outage guard (ADR 0027): the sources (or ATS boards) the run read as down, so
+         none of their offers was closed that day. One line each, the reason in full. */
+      (r.outages || []).forEach(function (o) {
+        var scope = (o.boards && o.boards.length) ? " (" + o.boards.length + " board(s))" : "";
+        card.appendChild(el("p", { class: "run-outage", role: "status", "data-source": o.source }, [
+          el("b", { text: (o.label || o.source) + scope + " indisponible — clôtures suspendues" }),
+          " : " + (o.reason || "")
+        ]));
+      });
+
       var total = r.fetched || 0;
       var funnel = el("div", { class: "funnel" });
       funnel.appendChild(seg("seg-rejected", r.rejected, total, "Rejetées"));
@@ -77,6 +87,7 @@
       if (r.api_calls) stats.appendChild(stat("appels API", r.api_calls));
       if (r.checked) stats.appendChild(stat("vérifiées à la source", r.checked));
       if (r.closed) stats.appendChild(stat("fermées", r.closed));
+      if (r.suspended) stats.appendChild(stat("clôtures suspendues", r.suspended));
       /* Auto-archived applications (ADR 0028): the day's new ones, the total in the title. */
       if (r.archived_today || r.archived) {
         var arch = stat("candidatures archivées aujourd’hui", r.archived_today || 0);
@@ -106,12 +117,19 @@
         var sp = el("p", { class: "run-sources" });
         sources.forEach(function (name) {
           var s = r.by_source[name] || {};
-          sp.appendChild(el("span", null, [
+          var parts = [
             name + ": ",
             el("b", { text: String(s.fetched || 0) }), " récupérées, ",
             el("b", { text: String(s.eligible || 0) }), " éligibles, ",
             el("b", { text: String(s.calls || 0) }), " appels"
-          ]));
+          ];
+          /* The closure counters per source (ADR 0027), on runs that stored them. */
+          if ("checked" in s) {
+            parts.push(", ", el("b", { text: String(s.checked || 0) }), " vérifiées, ",
+              el("b", { text: String(s.closed || 0) }), " fermées");
+            if (s.suspended) parts.push(", ", el("b", { text: String(s.suspended) }), " clôtures suspendues");
+          }
+          sp.appendChild(el("span", { class: "run-source", "data-source": name }, parts));
         });
         card.appendChild(sp);
       }

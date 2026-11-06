@@ -76,7 +76,7 @@ from typing import Any, NamedTuple
 from urllib.parse import urlsplit
 
 from job_match.adapters.http import HttpClient
-from job_match.adapters.jobs.base import OfferStatus, QueryStat, RawItem
+from job_match.adapters.jobs.base import OfferStatus, QueryStat, RawItem, RequestStats
 from job_match.config.schema import AtsBoard
 from job_match.domain.models import Job, WorkplaceType
 from job_match.normalization.contract import parse_contract_type
@@ -159,6 +159,8 @@ class AtsBoardSource:
         self._clock = clock
         self._last_request: dict[str, float] = {}  # host → monotonic time of its last call
         self._api_calls = 0
+        self._attempted = 0
+        self._failed = 0
         self._query_stats: list[QueryStat] = []
         # "<ats>:<board id>" → (ids listed, listing complete), or None when unreadable.
         self._board_ids: dict[str, tuple[set[str], bool] | None] = {}
@@ -171,6 +173,12 @@ class AtsBoardSource:
     def query_stats(self) -> tuple[QueryStat, ...]:
         """One entry per board, in execution order: query=board id, area=ATS name."""
         return tuple(self._query_stats)
+
+    @property
+    def request_stats(self) -> RequestStats:
+        """Requests made and failed this run, every board and detail call included (ADR
+        0026). A 404 is an answer (the board or the posting is gone), not a failure."""
+        return RequestStats(self._attempted, self._failed)
 
     # ------------------------------------------------------------------ HTTP
 
@@ -186,6 +194,7 @@ class AtsBoardSource:
     def _call(self, method: str, url: str, label: str, **kwargs: Any) -> tuple[int | None, Any]:
         """(HTTP status, decoded body): (None, None) on a network error, (404, None) for a
         404, (status, None) for any other error status. Logged, never raised."""
+        self._attempted += 1
         try:
             self._throttle(url)
             headers = {"Accept": "application/json"}
@@ -200,6 +209,7 @@ class AtsBoardSource:
             resp.raise_for_status()
             return resp.status_code, resp.json()
         except Exception as exc:
+            self._failed += 1
             logger.warning("%s: %s unreachable: %s", self.name, label, type(exc).__name__)
             status = getattr(getattr(exc, "response", None), "status_code", None)
             return status, None
