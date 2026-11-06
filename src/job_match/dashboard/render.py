@@ -41,9 +41,8 @@ _IMPORTS = {
         "const { PDFDocument, rgb } = globalThis.PDFLib;",
 }
 THEME = "#111113"  # DESIGN.md --bg (Radix slate-1, dark)
-# Inlined in this order: tokens first, the legacy sheet of the views not yet ported, then the
-# system's own rules so they win.
-STYLESHEETS = ("tokens.css", "dashboard.css", "app.css")
+# Inlined in this order: the tokens, then the components (Focus, docs/design/JOB_MATCH_FOCUS.md).
+STYLESHEETS = ("tokens.css", "app.css")
 # Each script needs the ones before it (tracking -> triage; icons -> score -> ui -> palette).
 # They are inlined as one `<script>` each, and the CSP allows exactly those eight by their
 # sha256 (`script_hash`): no 'unsafe-inline', so a script that reached the markup would not

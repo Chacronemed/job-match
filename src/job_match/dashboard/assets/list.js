@@ -1,7 +1,9 @@
-/* Offres: one scannable row per offer (score, title, company, city, contract, age, the single
-   strongest reason), everything else behind one expand; dense by default; the filters and the
-   sort live in the hash and outlive a reload; keyboard-first triage (j/k/x/s/a/Enter/Space, see
-   listKeys). Every string from the data lands in the DOM through textContent. */
+/* Offres (Focus, docs/design/JOB_MATCH_FOCUS.md): one row per offer (monogram, title, the quiet
+   facts on one line, the score and its band), a click selects it and shows its record next to
+   the list (≥ 1280 px) or over it; the expand (Space, the chevron) keeps the inline details with
+   the actions and the full why ledger. Dense by default; the filters and the sort live in the
+   hash and outlive a reload; keyboard-first triage (j/k/x/s/a/Enter/Space/o, see listKeys).
+   Every string from the data lands in the DOM through textContent. */
 (function (JM) {
   "use strict";
 
@@ -48,6 +50,7 @@
   var fromInput = byId("f-from");
   var toInput = byId("f-to");
   var chips = Array.prototype.slice.call(document.querySelectorAll(".chip[data-section]"));
+  var allChip = byId("section-all");
   var jobsBody = byId("jobs-body");
   var controls = byId("jobs-controls");
 
@@ -183,20 +186,28 @@
     return loc || (j.department ? j.department : "");
   }
 
+  /* « 85 /100 » in the band's hue, the band's word under it, the AI's score when it has one. */
   function scoreCell(j) {
-    var wrap = el("span", { class: "score score-" + j.section });
-    var bar = el("span", { class: "score-bar", "aria-hidden": "true" });
-    var fill = el("i");
-    fill.style.width = (j.score === null ? 0 : Math.max(0, Math.min(100, j.score))) + "%";
-    bar.appendChild(fill);
-    wrap.appendChild(bar);
-    wrap.appendChild(el("span", { class: "score-n num", text: j.score === null ? "—" : String(j.score) }));
+    var wrap = el("span", { class: "score-cell" });
+    var score = el("span", { class: "score score-" + j.section, title: j.score === null ? "Score inconnu" : j.score + " sur 100" }, [
+      el("span", { class: "score-n num", text: j.score === null ? "—" : String(j.score) })
+    ]);
+    if (j.score !== null) score.appendChild(el("small", { text: "/100" }));
+    wrap.appendChild(score);
+    wrap.appendChild(el("span", { class: "score-tag", text: S.band(j).label }));
     var v = aiOf(j);
     if (v) {
       var band = S.aiBand(v.level);
-      wrap.appendChild(el("span", { class: "score-ai" + (band ? " ai-" + band.key : ""), title: band ? "Selon l’IA : " + band.label : "Selon l’IA", text: "IA " + v.score }));
+      wrap.appendChild(el("span", { class: "score-ai num" + (band ? " ai-" + band.key : ""), title: band ? "Selon l’IA : " + band.label : "Selon l’IA", text: "IA " + v.score }));
     }
     return wrap;
+  }
+
+  /* Two letters from the company's name (its first two words), a « ? » without one. */
+  function monogram(j) {
+    var words = String(j.company || "").trim().split(/[\s\-–·,/]+/).filter(Boolean);
+    var text = words.length > 1 ? words[0].charAt(0) + words[1].charAt(0) : (words[0] || "?").slice(0, 2);
+    return el("span", { class: "logo", "aria-hidden": "true", text: text.toUpperCase() });
   }
 
   /* The single strongest reason, from the scorer's own lines (score.js): the biggest positive
@@ -225,11 +236,15 @@
   var COLUMNS = {
     score: function (j) { return cell("num col-score", "Score", scoreCell(j)); },
     title: function (j, prefix, expanded) {
-      var td = cell("col-title", "Titre", el("span", { class: "title-text", text: j.title || "—", title: j.title || null }));
-      if (statusOfJob(j) !== "to_review") td.appendChild(statusBadge(j));
-      /* On a phone the quiet columns fold into one line under the title (CSS shows one or the other). */
-      var age = typeof j.age_days === "number" ? j.age_days + " j" : "";
-      td.appendChild(el("span", { class: "row-meta", "aria-hidden": "true", text: [j.company, cityOf(j), j.contract !== "UNKNOWN" ? j.contract : "", age].filter(Boolean).join(" · ") }));
+      var td = cell("col-title", "Titre");
+      td.appendChild(monogram(j));
+      var line = el("span", { class: "title-text" }, [el("span", { text: j.title || "—", title: j.title || null })]);
+      if (statusOfJob(j) !== "to_review") line.appendChild(statusBadge(j));
+      td.appendChild(line);
+      /* The quiet facts on one line under the title; the sortable cells stay in the row for the
+         sort and the tests, hidden. */
+      var age = typeof j.age_days === "number" ? (j.age_days === 0 ? "aujourd’hui" : j.age_days + " j") : "";
+      td.appendChild(el("span", { class: "row-meta", "aria-hidden": "true", text: [j.company || "Entreprise non communiquée", cityOf(j), j.contract !== "UNKNOWN" ? j.contract : "", sourceText(j), age].filter(Boolean).join(" · ") }));
       return td;
     },
     company: function (j) {
@@ -305,6 +320,28 @@
     fiche.addEventListener("click", function (ev) { ev.stopPropagation(); openRecord(row, fiche); });
     bar.appendChild(fiche);
     return bar;
+  }
+
+  /* The record's footer (app.js): the offer on its site, then the one next step for its status
+     (keep, mark as sent), and the way out (dismiss). Nothing when the tracking is off. */
+  function recordActions(row) {
+    var foot = document.createDocumentFragment();
+    if (row.url && HTTP.test(row.url)) {
+      foot.appendChild(el("a", { class: "button ghost", href: row.url, target: "_blank", rel: "noopener noreferrer",
+        "aria-label": "Voir l’annonce « " + (row.title || "offre") + " » sur le site source" }, ["Voir l’annonce", JM.U.icon("external-link")]));
+    }
+    if (!canWrite() || !row.key) return foot;
+    var s = T.rowStatus(row, track.apps);
+    function button(text, run, cls, label) {
+      var b = el("button", { type: "button", class: "button " + (cls || ""), "aria-label": label || null, text: text });
+      b.addEventListener("click", run);
+      foot.appendChild(b);
+      return b;
+    }
+    if (s !== "ignored") button("", function () { quickSet(row, "ignored"); }, "ghost record-drop", "Écarter l’offre").appendChild(JM.U.icon("x"));
+    if (s !== "to_apply" && s !== "applied" && s !== "interview") button("Garder", function () { quickSet(row, "to_apply"); }, "primary").appendChild(JM.U.icon("arrow-right"));
+    else if (s === "to_apply") button("Candidature envoyée", function () { markApplied(row); }, "primary");
+    return foot;
   }
 
   /* A grouped row's postings: each keeps its own status. */
@@ -397,9 +434,13 @@
       }
       row.toggleDetails = toggle;
       row.jmRow = j;
+      if (R.open && R.job === j) row.classList.add("is-selected");
+      /* A click selects the offer: its record opens next to the list (or over it). The chevron
+         expands the inline details instead; a link stays a link. */
       row.addEventListener("click", function (ev) {
-        if (ev.target.closest("a, .qa, .status")) return;
-        toggle();
+        if (ev.target.closest("a, .status")) return;
+        if (ev.target.closest(".expand")) { toggle(); return; }
+        openRecord(j, row);
       });
       row.addEventListener("keydown", function (ev) {
         if (ev.target !== row) return;
@@ -437,11 +478,14 @@
     var shown = rows.filter(matches).sort(compare);
     var counts = { strong: 0, eligible: 0, stretch: 0 };
     rows.forEach(function (j) { counts[j.section] += 1; });
+    byId("kpi-all").textContent = rows.length;
     byId("kpi-strong").textContent = counts.strong;
     byId("kpi-eligible").textContent = counts.eligible;
     byId("kpi-stretch").textContent = counts.stretch;
+    allChip.setAttribute("aria-pressed", SECTIONS.every(function (s) { return state.sections[s]; }) ? "true" : "false");
     byId("jobs-rowcount").textContent = shown.length + " sur " + rows.length + " · tri par " +
       SORT_TEXT[state.sortKey] + (state.sortDir === "asc" ? " ↑" : " ↓");
+    renderSub(counts);
     dropBadges(jobsBody);
     clear(jobsBody);
     setEmpty(shown.length);
@@ -451,6 +495,35 @@
       var again = rowByKeyNode(focusedKey);
       if (again) again.focus({ preventScroll: true });
     }
+    if (!V.applyingHash) ensureSelection();
+  }
+
+  /* Under the title: the counts, from the data (the snapshot's date is in the top bar). */
+  function renderSub(counts) {
+    var sub = byId("offres-sub");
+    clear(sub);
+    sub.appendChild(el("span", { class: "view-n num", "data-count": "offres", text: String(rows.length) }));
+    sub.appendChild(document.createTextNode(rows.length > 1 ? " offres pertinentes · " : " offre pertinente · "));
+    sub.appendChild(el("b", { class: "num", text: String(counts.strong) }));
+    sub.appendChild(document.createTextNode(counts.strong > 1 ? " fortes correspondances · " : " forte correspondance · "));
+    sub.appendChild(el("b", { class: "num", text: String(counts.stretch) }));
+    sub.appendChild(document.createTextNode(" à tenter"));
+  }
+
+  /* The selected row, by the record's job: one strongly marked row. */
+  function markSelected() {
+    Array.prototype.forEach.call(jobsBody.querySelectorAll("tr.row"), function (row) {
+      row.classList.toggle("is-selected", !!(R.open && R.job === row.jmRow));
+    });
+  }
+
+  /* On a wide screen the split shows the first listed offer when nothing is selected, without
+     moving the focus (j/k keep working from the list). Nothing on a phone: the record would
+     cover the list. */
+  function ensureSelection() {
+    if (V.tab !== "offres" || V.applyingHash || R.open || !JM.wideScreen()) return;
+    var first = jobsBody.querySelector("tr.row");
+    if (first) openRecord(first.jmRow, null, { quiet: true });
   }
 
   function rowByKeyNode(key) {
@@ -478,7 +551,7 @@
      controls' own. */
   function listKeys(ev) {
     if (R.open && !JM.wideScreen()) return false;
-    if (ev.key === "/") { controls.open = true; searchInput.focus(); searchInput.select(); return true; }
+    if (ev.key === "/") { searchInput.focus(); searchInput.select(); return true; }
     if (ev.key === "j" || ev.key === "ArrowDown") { moveFocus(1); return true; }
     if (ev.key === "k" || ev.key === "ArrowUp") { moveFocus(-1); return true; }
     var row = focusedRow();
@@ -545,6 +618,13 @@
       renderJobs();
       syncHash();
     });
+  });
+  /* « Toutes »: every section back on. */
+  allChip.addEventListener("click", function () {
+    SECTIONS.forEach(function (s) { state.sections[s] = true; });
+    chips.forEach(function (c) { c.setAttribute("aria-pressed", "true"); });
+    renderJobs();
+    syncHash();
   });
 
   sourceSelect.addEventListener("change", function () {
@@ -676,6 +756,7 @@
     if (fiche && (!R.open || R.job !== fiche)) openRecord(fiche, null);
     else if (!parsed.params.fiche && R.open) closeRecord(false);
     V.applyingHash = false;
+    ensureSelection();
     syncHash();
   }
 
@@ -689,6 +770,11 @@
 
   /* Shared with the other files. */
   JM.applyHash = applyHash;
+  JM.ensureSelection = ensureSelection;
+  JM.listedCount = function () { return jobsBody.querySelectorAll("tr.row").length; };
+  JM.sourceText = sourceText;
+  JM.markSelected = markSelected;
+  JM.recordActions = recordActions;
   JM.fillDepartments = fillDepartments;
   JM.fillSources = fillSources;
   JM.fillStatuses = fillStatuses;

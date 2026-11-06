@@ -57,9 +57,10 @@
 
   /* space (4 px grid) and shape */
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 20px; --s6: 24px; --s8: 32px;
-  --row: 40px; --nav-row: 30px; --head: 48px;
-  --r-sm: 6px; --r: 8px; --r-lg: 12px;
-  --panel-w: 440px;
+  --row: 40px; --nav-row: 36px; --head: 48px;
+  --r-sm: 6px; --r: 8px; --r-lg: 11px;
+  /* Focus layout: sidebar, top bar, the record column, one Offres row (dense) */
+  --sidebar-w: 232px; --topbar-h: 64px; --panel-w: 420px; --row-h: 58px;
 
   /* motion */
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
@@ -89,6 +90,8 @@
   --accent-soft: rgba(110, 86, 207, 0.12);
   --overlay-shadow: 0 16px 48px rgba(28, 32, 36, 0.18);
 }
+
+body[data-density="comfortable"] { --row-h: 70px; }
 
 @media (prefers-reduced-motion: reduce) {
   :root { --d-fast: 0ms; --d: 0ms; --d-slow: 0ms; }

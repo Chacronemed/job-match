@@ -335,13 +335,18 @@
     return Math.max(0, T.daysBetween(at, today));
   }
 
+  /* The hue of a card's company dot: the column's own. */
+  var STATUS_DOT = { to_apply: "var(--accent-ink)", applied: "var(--blue-11)", interview: "var(--green-11)", rejected: "var(--red-11)" };
+
   function appCard(key, today) {
     var app = track.apps[key];
     var status = T.statusOf(app);
     var j = postingByKey[key];
     var card = el("article", { class: "kb-card", "data-key": key, tabindex: "-1" });
     card.appendChild(el("h4", { class: "kb-title", text: j ? (j.title || "—") : key }));
-    card.appendChild(el("p", { class: "kb-meta", text: j ? [j.company || "—", j.location || ""].filter(Boolean).join(" · ") : "offre plus affichée" }));
+    var meta = el("p", { class: "kb-meta", text: j ? [j.company || "Entreprise non communiquée", j.location || ""].filter(Boolean).join(" · ") : "offre plus affichée" });
+    meta.style.setProperty("--hue", STATUS_DOT[status] || "var(--ink-3)");
+    card.appendChild(meta);
     var dates = [];
     var since = daysInStatus(app, today);
     if (since !== null) dates.push(since === 0 ? "Aujourd’hui" : "Depuis " + since + " j");
@@ -367,6 +372,11 @@
       actions.appendChild(applied);
     }
     if (j && j.url && HTTP.test(j.url)) actions.appendChild(el("a", { href: j.url, target: "_blank", rel: "noopener noreferrer", "aria-label": "Voir l’offre : " + (j.title || key), text: "Offre" }));
+    if (j) {
+      var open = el("button", { type: "button", class: "link-btn kb-open", "aria-label": "Voir la fiche : " + (j.title || key) }, [JM.U.icon("external-link"), "Voir la fiche"]);
+      open.addEventListener("click", function () { openRecord(j, open); });
+      actions.appendChild(open);
+    }
     card.appendChild(actions);
     if (window.matchMedia("(pointer: fine)").matches) attachDrag(card, key);
     return card;
@@ -517,6 +527,36 @@
     card.addEventListener("pointercancel", end);
   }
 
+  /* The follow-ups due today or before, soonest first (expired offers excluded). */
+  function dueKeys(today) {
+    return Object.keys(track.apps).filter(function (k) { return T.isDue(track.apps[k], today) && !T.isExpired(track.apps[k], postingByKey[k]); })
+      .sort(function (a, b) { return track.apps[a].follow_up_at < track.apps[b].follow_up_at ? -1 : 1; });
+  }
+
+  /* Under the title: the counts the board shows, nothing else. */
+  function renderStats(keys, dueCount) {
+    var stats = byId("apps-stats");
+    clear(stats);
+    var interviews = keys.filter(function (k) { return T.statusOf(track.apps[k]) === "interview"; }).length;
+    [[keys.length, keys.length > 1 ? "dossiers suivis" : "dossier suivi"],
+      [dueCount, dueCount > 1 ? "relances en retard" : "relance en retard"],
+      [interviews, interviews > 1 ? "entretiens" : "entretien"]].forEach(function (pair) {
+      stats.appendChild(el("span", null, [el("b", { class: "num", text: String(pair[0]) }), " " + pair[1]]));
+    });
+    var chip = byId("apps-due-chip");
+    chip.hidden = dueCount === 0;
+    clear(chip);
+    chip.appendChild(JM.U.icon("calendar-clock"));
+    chip.appendChild(document.createTextNode(dueCount + (dueCount > 1 ? " relances en retard" : " relance en retard")));
+  }
+  byId("apps-due-chip").addEventListener("click", function () {
+    var due = byId("kb-due");
+    if (due.hidden) return;
+    due.scrollIntoView({ block: "start" });
+    var first = due.querySelector("button");
+    if (first) first.focus({ preventScroll: true });
+  });
+
   function renderApps() {
     var today = T.localDay();
     var board = byId("kb-board");
@@ -528,8 +568,8 @@
     byId("kb-off").hidden = canTriage() || track.status === "loading";
     renderInbox();
     var keys = boardKeys();
-    var dueKeys = Object.keys(track.apps).filter(function (k) { return T.isDue(track.apps[k], today) && !T.isExpired(track.apps[k], postingByKey[k]); })
-      .sort(function (a, b) { return track.apps[a].follow_up_at < track.apps[b].follow_up_at ? -1 : 1; });
+    var dueKeys = JM.dueKeys(today);
+    renderStats(keys, dueKeys.length);
     due.hidden = dueKeys.length === 0;
     if (dueKeys.length) {
       due.appendChild(el("h3", { class: "kb-due-title", icon: "calendar-clock", text: dueKeys.length + (dueKeys.length > 1 ? " relances en retard" : " relance en retard") }));
@@ -769,6 +809,7 @@
 
   /* Shared with the other files. */
   JM.documentsBlock = documentsBlock;
+  JM.dueKeys = dueKeys;
   JM.preloadRenderer = preloadRenderer;
   JM.renderApps = renderApps;
   JM.setRecord = setRecord;

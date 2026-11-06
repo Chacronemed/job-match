@@ -163,7 +163,8 @@
   var ledgerOpen = null;
   function readLedgerOpen() {
     if (ledgerOpen === null) {
-      try { ledgerOpen = root.localStorage.getItem(LEDGER_KEY) === "1"; } catch (e) { ledgerOpen = false; }
+      /* Open until closed once (Focus shows the lines on the card). */
+      try { ledgerOpen = root.localStorage.getItem(LEDGER_KEY) !== "0"; } catch (e) { ledgerOpen = true; }
     }
     return ledgerOpen;
   }
@@ -335,7 +336,7 @@
 
   var api = {
     el: el, clear: clear, kbd: kbd, dot: dot, icon: I.icon, reduced: reduced, transition: transition, flip: flip,
-    draggable: draggable, flyOut: flyOut, flyIn: flyIn, rise: rise, ledger: ledger, skeletonRows: skeletonRows
+    draggable: draggable, flyOut: flyOut, flyIn: flyIn, rise: rise, ledger: ledger, aiBlock: aiBlock, skeletonRows: skeletonRows
   };
   root.JMUI = api;
 })(this);
