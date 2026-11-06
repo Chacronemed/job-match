@@ -131,3 +131,21 @@ def test_the_url_carries_the_offer_id_and_no_query():
     _source().check_offer(OFFER_ID)
     url = str(route.calls[0].request.url)
     assert url.endswith("/offres/" + OFFER_ID) and "?" not in url
+
+
+@respx.mock
+def test_request_stats_count_failed_requests_for_the_outage_guard():
+    """ADR 0027: a 5xx after the retries, a timeout or a transport error is a failed request;
+    a clear answer (200, 204, 404) is not. The token call counts as a request too."""
+    from job_match.adapters.jobs.base import RequestStats
+
+    _mock_detail(httpx.Response(503), httpx.Response(503), httpx.Response(503),
+                 httpx.Response(503), httpx.Response(204), httpx.ConnectError("boom"))
+    source = _source()
+    assert source.request_stats == RequestStats(0, 0)
+    assert source.check_offer(OFFER_ID) is OfferStatus.UNKNOWN  # 4 × 503: one failed request
+    assert source.request_stats == RequestStats(attempted=2, failed=1)  # token + detail
+    assert source.check_offer(OFFER_ID) is OfferStatus.CLOSED
+    assert source.check_offer(OFFER_ID) is OfferStatus.UNKNOWN
+    assert source.request_stats == RequestStats(attempted=4, failed=2)
+    assert source.request_stats.failure_ratio == 0.5

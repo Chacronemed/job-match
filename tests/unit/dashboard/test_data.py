@@ -25,7 +25,7 @@ RUN_KEYS = {
     "id", "pipeline", "started_at", "finished_at", "fetched", "normalized",
     "rejected_by_reason", "duplicates", "self_links_dropped", "stale_links_dropped",
     "eligible", "strong", "stretch", "errors", "api_calls", "checked", "closed",
-    "by_source", "by_company", "rejected",
+    "suspended", "outages", "by_source", "by_company", "rejected",
 }
 
 

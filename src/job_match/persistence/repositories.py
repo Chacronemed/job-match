@@ -564,6 +564,26 @@ class JobRepository:
             job_ids, "closed_at = NULL, last_checked_at = ?", [seen_at.isoformat()]
         )
 
+    def list_closed_between(
+        self, source: str, start: datetime, end: datetime
+    ) -> list[tuple[int, str]]:
+        """`(id, source_job_id)` of the source's jobs marked closed inside [start, end]:
+        what one run closed, for `ops reopen` (ADR 0027)."""
+        rows = self._conn.execute(
+            """
+            SELECT id, source_job_id FROM jobs
+            WHERE source_id = ? AND closed_at IS NOT NULL AND closed_at >= ? AND closed_at <= ?
+            ORDER BY closed_at, id
+            """,
+            (source, start.isoformat(), end.isoformat()),
+        ).fetchall()
+        return [(r["id"], r["source_job_id"]) for r in rows]
+
+    def reopen(self, job_ids: list[int]) -> None:
+        """Undo a closure the guard should have withheld: the offer shows again and is asked
+        about on the next run (`last_checked_at` cleared). Nothing else changes."""
+        self._set_lifecycle(job_ids, "closed_at = NULL, last_checked_at = NULL", [])
+
     def _set_lifecycle(self, job_ids: list[int], assignment: str, values: list) -> None:
         if not job_ids:
             return
@@ -852,6 +872,8 @@ class RunRepository:
                         "stretch": summary.stretch,
                         "checked": summary.checked,
                         "closed": summary.closed,
+                        "suspended": summary.suspended,
+                        "outages": summary.outages,
                         "raw_stored": summary.raw_stored,
                         "raw_pruned": summary.raw_pruned,
                         "articles": summary.articles,
@@ -864,6 +886,7 @@ class RunRepository:
                         "funding_no_company": summary.funding_no_company,
                         "leads_deduped": summary.leads_deduped,
                         "by_source": summary.by_source,
+                        "by_board": summary.by_board,
                         "by_company": summary.by_company,
                         "queries": summary.queries,
                         "by_area": summary.by_area,

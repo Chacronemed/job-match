@@ -173,3 +173,21 @@ def test_runs_show_fetched_and_eligible_per_company_board(open_dashboard, job_ke
     assert box.locator("li").all_inner_texts() == [
         "Gamma : 7 récupérées, 2 éligibles", "Dataiku : 3 récupérées, 0 éligibles"]
     assert errors == []
+
+
+def test_runs_show_the_source_down_and_its_closure_counters(open_dashboard, job_keys):
+    """ADR 0027: the newest jobs run of the seed read France Travail as down."""
+    page, errors = open_dashboard(_api(job_keys), hash_="#executions")
+    page.wait_for_selector("#runs-list .run-outage")
+    banner = page.locator("#runs-list .run-outage").first
+    assert banner.inner_text() == (
+        "France Travail indisponible — clôtures suspendues : 0 offre récupérée, contre 143 en "
+        "moyenne sur les 7 derniers runs")
+    assert banner.get_attribute("data-source") == "france_travail"
+    card = page.locator("#runs-list .run", has=page.locator(".run-outage"))
+    assert "clôtures suspendues 12" in card.locator(".run-stats").inner_text()
+    source = card.locator(".run-source[data-source='france_travail']")
+    assert source.inner_text().endswith("13 appels, 0 vérifiées, 0 fermées, 12 clôtures suspendues")
+    # the card before it (no outage) has neither the banner nor the counters
+    assert page.locator("#runs-list .run-outage").count() == 1
+    assert errors == []

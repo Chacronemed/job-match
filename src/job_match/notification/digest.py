@@ -37,6 +37,9 @@ class DigestData:
     # Tracked applications whose follow-up date is today or past ("Relances du jour"). Listed
     # every day until the date or the status changes; never marked as notified.
     followups: tuple[FollowUp, ...] = ()
+    # Labels of the sources today's run read as down (ADR 0027): the digest says so instead
+    # of announcing 0 new offers.
+    outages: tuple[str, ...] = ()
 
 
 def _e(text: str | None) -> str:
@@ -110,12 +113,22 @@ def _followup_label(followup: FollowUp) -> str:
     return f"{followup.job_key} (offer no longer stored)"
 
 
+def outage_sentence(outages: tuple[str, ...]) -> str:
+    """« France Travail indisponible aujourd'hui », for every view of the digest."""
+    return f"{', '.join(outages)} indisponible aujourd'hui"
+
+
 def _subtitle(data: DigestData) -> str:
     total = len(data.strong) + len(data.eligible) + len(data.stretch)
     tiers = f"{len(data.strong)} strong"
     if data.stretch:
         tiers += f", {len(data.stretch)} stretch"
-    text = f"{total} unnotified job{'s' if total != 1 else ''} ({tiers})"
+    if total == 0 and data.outages:
+        text = outage_sentence(data.outages)
+    else:
+        text = f"{total} unnotified job{'s' if total != 1 else ''} ({tiers})"
+        if data.outages:
+            text += f", {outage_sentence(data.outages)}"
     if data.leads:
         n = len(data.leads)
         text += f", {n} funding lead{'s' if n != 1 else ''}"
@@ -160,6 +173,8 @@ def render_html(data: DigestData) -> str:
         "font-size:.85rem;line-height:1.8}"
         ".empty{color:#888;font-style:italic}"
         ".due{font-size:.82rem;color:#9a3412;margin-top:5px}"
+        ".outage{background:#fef3c7;color:#78350f;padding:10px 14px;border-radius:6px;"
+        "font-size:.9rem}"
         "</style>"
         "</head><body>"
     )
@@ -171,6 +186,11 @@ def render_html(data: DigestData) -> str:
     )
 
     today = data.generated_at.date()
+    if data.outages:
+        parts.append(
+            f"<p class='outage'>⚠️ {_e(outage_sentence(data.outages))} : clôtures suspendues, "
+            "aucune nouvelle offre de cette source n'était attendue.</p>"
+        )
     if data.followups:
         parts.append(f"<h2>Relances du jour ({len(data.followups)})</h2>")
         for f in data.followups:
@@ -294,6 +314,10 @@ def render_text(data: DigestData) -> str:
     lines.append("")
 
     today = data.generated_at.date()
+    if data.outages:
+        lines.append(f"!! {outage_sentence(data.outages)} : clôtures suspendues, aucune "
+                     "nouvelle offre de cette source n'était attendue.")
+        lines.append("")
     if data.followups:
         lines.append(f"=== Relances du jour ({len(data.followups)}) ===")
         for f in data.followups:

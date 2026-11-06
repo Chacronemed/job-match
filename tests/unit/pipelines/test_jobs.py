@@ -419,9 +419,11 @@ def test_by_source_reports_fetched_eligible_duplicates_and_calls(db):
         _profile(), _settings(), db, {},
     )
 
+    # checked / closed / suspended: the closure check's counters (ADR 0027), none here.
+    closure = {"checked": 0, "closed": 0, "suspended": 0}
     assert summary.by_source == {
-        "france_travail": {"fetched": 2, "eligible": 2, "duplicates": 0, "calls": 98},
-        "jooble": {"fetched": 1, "eligible": 0, "duplicates": 1, "calls": 7},
+        "france_travail": {"fetched": 2, "eligible": 2, "duplicates": 0, "calls": 98, **closure},
+        "jooble": {"fetched": 1, "eligible": 0, "duplicates": 1, "calls": 7, **closure},
     }
     assert summary.api_calls == 105  # summed across sources
 

@@ -3,7 +3,37 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**Statistiques view** (branch `design/job-match-focus-inputs`, 2026-11-06, ADR 0026). Done
+**Source outage guard** (branch `fix/source-outage-guard` from `main`, 2026-11-06, ADR 0027,
+PR in draft). Context: on 2026-11-06 France Travail was down (search → 0 offer, offer pages →
+« n'existe pas »); taken at face value the run would have closed every stored FT offer and
+expired my applications.
+1. `pipelines/outage.py`: a source is down for the run when it fetched 0 against a 7-run mean
+   ≥ 20, or > 50 % of its requests failed (`request_stats` on France Travail and ats), or the
+   closure check says "gone" for > 30 % of ≥ 10 offers asked; one ATS board at 0 after ≥ 5 on
+   the previous run (`by_board`, stored per run) is down alone. Thresholds:
+   `settings.yaml` → `outage_guard` (test `test_outage_guard_thresholds_are_read_from_settings`).
+2. `check_closed` skips the offers an outage covers and writes nothing for a source beyond the
+   closure ratio (no application turns « Expirée » because of it); per-source counters
+   `checked / closed / suspended` in `by_source`, `RunSummary.suspended` + `outages` stored in
+   `runs`. A source that cannot be asked now stops only itself.
+3. Visibility: GitHub job summary (per-source columns + « ⚠️ <source> indisponible — clôtures
+   suspendues : raison »), Exécutions card (`.run-outage` + counters), digest « <source>
+   indisponible aujourd'hui » instead of « 0 unnotified jobs », `ops check-sources` emails the
+   outage once a day per source (same `send_text`).
+4. **Repair:** `job-match ops reopen --since YYYY-MM-DD --source france_travail` (dry-run,
+   lists the runs marked down or beyond the threshold and the offers they closed), then
+   `… --apply` to clear `closed_at` / `last_checked_at`. Runs older than the ADR are judged on
+   their total closure ratio. Never on prod without the dry-run first.
+5. Tests: `tests/unit/pipelines/test_outage.py` (FT at 0 everywhere, 50 % gone, one Workday
+   board at 0, normal 5 % run, reopen dry-run then apply), `test_ops.py` (alert once a day),
+   digest, settings, adapters' `request_stats`, Playwright banner. Fast suite **1 685 passed,
+   3 skipped**; browser + worker **68 passed**; ruff clean.
+**Next step (after merge):** the first Daily run stores `by_board`; check the job summary's
+new columns, then if the 2026-11-06 run closed FT offers:
+`job-match ops reopen --since 2026-11-06 --source france_travail` (then `--apply`).
+**Known:** the digest only announces a whole source down, not a single board.
+
+Before it: **Statistiques view** (branch `design/job-match-focus-inputs`, 2026-11-06, ADR 0026). Done
 locally, not committed. New view `#statistiques` (sidebar, tab bar « Stats », G S),
 `stats.js` (pure `JMStats.compute` + the view): cohort funnel on 30 / 90 days / Tout
 (`?p=90`), rates, delays garder → envoyer and envoyer → 1re réponse, expirées / archivées

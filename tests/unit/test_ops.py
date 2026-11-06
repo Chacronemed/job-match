@@ -147,3 +147,92 @@ def test_check_sources_without_a_database_says_so(tmp_path, monkeypatch, capsys)
     _cmd_check_sources(argparse.Namespace(days=3))
     assert "nothing to check" in capsys.readouterr().out
     assert not Path("data").exists()
+
+
+# ---------------------------------------------------------------- outage alerts (ADR 0027)
+
+def _down(source="france_travail", boards=()):
+    return {"source": source, "label": source, "kind": "no_results", "reason": "0 offre",
+            "boards": list(boards)}
+
+
+def _run_at(at: datetime, by_source: dict, outages=(), run_id=1) -> RunRecord:
+    return RunRecord(id=run_id, pipeline="jobs", started_at=at, finished_at=at,
+                     summary={"by_source": by_source, "outages": list(outages)})
+
+
+def test_outage_alerts_fire_once_a_day_per_source():
+    from job_match.ops.summary import outage_alert_text, outage_alerts
+
+    first = _run_at(NOW, {"france_travail": {"fetched": 0}}, [_down()], run_id=2)
+    yesterday = _run_at(NOW - timedelta(days=1), {"france_travail": {"fetched": 0}}, [_down()])
+    assert [o.source for o in outage_alerts([first, yesterday])] == ["france_travail"]
+    # the same day replayed (a second run): already announced, no second email
+    replay = _run_at(NOW + timedelta(hours=2), {"france_travail": {"fetched": 0}}, [_down()], 3)
+    assert outage_alerts([replay, first, yesterday]) == []
+    # a new source down in the replay is announced; a healthy latest run says nothing
+    both = _run_at(NOW + timedelta(hours=2), {}, [_down(), _down("ats")], 3)
+    assert [o.source for o in outage_alerts([both, first])] == ["ats"]
+    assert outage_alerts([_run_at(NOW, {"france_travail": {"fetched": 50}}), first]) == []
+    assert outage_alerts([]) == []
+    subject, body = outage_alert_text(outage_alerts([first]), "2026-11-06")
+    assert subject == "[job-match] France Travail indisponible — clôtures suspendues (2026-11-06)"
+    assert "France Travail indisponible — clôtures suspendues : 0 offre" in body
+    assert "job-match ops reopen --since 2026-11-06 --source <source> --apply" in body
+    assert "Expirée" in body
+
+
+def _seed_outage_run(db_path: str) -> None:
+    with Database(path=db_path) as db:
+        repo = RunRepository(db.conn)
+        for i in range(3, 0, -1):
+            at = NOW - timedelta(days=i)
+            repo.save(RunSummary(pipeline="jobs", fetched=30,
+                                 by_source={"france_travail": {"fetched": 30, "calls": 3}}),
+                      started_at=at, finished_at=at)
+        repo.save(RunSummary(pipeline="jobs", fetched=0, suspended=12, outages=[_down()],
+                             by_source={"france_travail": {"fetched": 0, "calls": 14,
+                                                           "checked": 0, "closed": 0,
+                                                           "suspended": 12}}),
+                  started_at=NOW, finished_at=NOW)
+
+
+def test_check_sources_emails_the_outage_once_and_writes_the_summary(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+    db_path = str(tmp_path / "data" / "jobs.sqlite")
+    _seed_outage_run(db_path)
+    target = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(target))
+    notifier = MagicMock()
+    notifier.send_text.return_value = True
+    with patch("job_match.notification.email_notifier.EmailNotifier") as cls:
+        cls.from_env.return_value = notifier
+        _cmd_check_sources(argparse.Namespace(days=3))
+    assert notifier.send_text.call_count == 1  # one day at 0 is not "silent for 3 runs"
+    subject = notifier.send_text.call_args.args[0]
+    assert subject.startswith("[job-match] France Travail indisponible — clôtures suspendues (")
+    summary = target.read_text(encoding="utf-8")
+    assert "## ⚠️ Source indisponible" in summary
+    assert "- France Travail indisponible — clôtures suspendues : 0 offre" in summary
+    assert "::warning title=Source down::" in capsys.readouterr().out
+
+    # the same day again (a replay of the daily run): no second email
+    with Database(path=db_path) as db:
+        later = NOW + timedelta(hours=1)
+        RunRepository(db.conn).save(
+            RunSummary(pipeline="jobs", outages=[_down()],
+                       by_source={"france_travail": {"fetched": 0}}), later, later)
+    notifier.reset_mock()
+    with patch("job_match.notification.email_notifier.EmailNotifier") as cls:
+        cls.from_env.return_value = notifier
+        _cmd_check_sources(argparse.Namespace(days=3))
+    assert not notifier.send_text.called
+    assert "none down on the last run" in capsys.readouterr().out
+
+
+def test_digest_markdown_names_the_source_down_instead_of_zero_jobs():
+    md = digest_markdown(jobs=0, strong=0, leads=0, followups=0, sent=False,
+                         outages=("France Travail",))
+    assert "⚠️ **France Travail indisponible aujourd'hui** : clôtures suspendues" in md
+    assert "outages" not in digest_markdown(jobs=0, strong=0, leads=0, followups=0, sent=False)

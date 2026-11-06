@@ -32,6 +32,22 @@ class OfferStatus(StrEnum):
     UNKNOWN = "UNKNOWN"
 
 
+class RequestStats(NamedTuple):
+    """How many HTTP requests a source made this run and how many failed.
+
+    A failure is a request that got no usable answer: 5xx after the client's retries, a
+    timeout, a transport error, a refused token. A clear negative (404 on a board, 204 on
+    an offer) is an answer, not a failure. The outage guard (ADR 0027) reads the ratio.
+    """
+
+    attempted: int = 0
+    failed: int = 0
+
+    @property
+    def failure_ratio(self) -> float | None:
+        return self.failed / self.attempted if self.attempted else None
+
+
 class QueryStat(NamedTuple):
     """One source query and how many items it returned. Aggregates only, never job content."""
 
@@ -45,8 +61,9 @@ class QueryStat(NamedTuple):
 class JobSource(Protocol):
     """A job source.
 
-    `api_calls_count`, `query_stats` and `check_offer` are optional: the pipeline reads
-    them with `getattr` so a source (or a test fake) can leave them out. A source without
+    `api_calls_count`, `query_stats`, `request_stats` and `check_offer` are optional: the
+    pipeline reads them with `getattr` so a source (or a test fake) can leave them out.
+    `request_stats -> RequestStats` feeds the outage guard (ADR 0027). A source without
     `check_offer(source_job_id) -> OfferStatus` never has its stored offers re-checked;
     only the posting-age cut-off hides them.
     """

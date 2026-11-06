@@ -22,6 +22,7 @@ from job_match.config.schema import (
     JMSConfig,
     JobsConfig,
     LeadFilterConfig,
+    OutageGuardConfig,
     Profile,
     RawPayloadsConfig,
     RelevanceConfig,
@@ -250,6 +251,7 @@ def load_settings(path: Path) -> Settings:
         digest=_parse_digest(raw.get("digest"), path),
         jobs=_parse_jobs(raw.get("jobs"), path),
         raw_payloads=_parse_raw_payloads(raw.get("raw_payloads"), path),
+        outage_guard=_parse_outage_guard(raw.get("outage_guard"), path),
         ai=_parse_ai(raw.get("ai"), path),
         documents=_parse_documents(raw.get("documents"), path),
     )
@@ -480,6 +482,23 @@ def _parse_documents(value: object, path: Path) -> DocumentsConfig:
         else _str_list(phrases, "documents.forbidden_phrases", path)
     )
     return DocumentsConfig(**out)
+
+
+def _parse_outage_guard(value: object, path: Path) -> OutageGuardConfig:
+    raw = _mapping(value, "outage_guard", path)
+    d = OutageGuardConfig()
+    out: dict = {}
+    for key in ("history_runs", "min_average_fetched", "min_checked", "board_min_previous"):
+        v = raw.get(key, getattr(d, key))
+        if isinstance(v, bool) or not isinstance(v, int) or v <= 0:
+            raise ConfigError(f"outage_guard.{key} must be a positive integer (in {path})")
+        out[key] = v
+    for key in ("max_failed_ratio", "max_closed_ratio"):
+        v = raw.get(key, getattr(d, key))
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 < v < 1:
+            raise ConfigError(f"outage_guard.{key} must be a number between 0 and 1 (in {path})")
+        out[key] = float(v)
+    return OutageGuardConfig(**out)
 
 
 def _parse_raw_payloads(value: object, path: Path) -> RawPayloadsConfig:

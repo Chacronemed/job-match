@@ -267,3 +267,18 @@ def test_check_offer_is_unknown_for_dead_or_unconfigured_boards():
     assert src.check_offer("greenhouse:dataiku:7") is OfferStatus.UNKNOWN
     assert src.check_offer("lever:elsewhere:7") is OfferStatus.UNKNOWN
     assert src.check_offer("garbage") is OfferStatus.UNKNOWN
+
+
+@respx.mock
+def test_request_stats_count_unreachable_boards_not_gone_ones():
+    """ADR 0027: a 5xx or a network error is a failed request; a board answering 404 (the
+    company left the ATS) is an answer, not a failure."""
+    from job_match.adapters.jobs.base import RequestStats
+
+    respx.get(board_url(GH)).mock(return_value=httpx.Response(404))
+    respx.get(board_url(LV)).mock(side_effect=httpx.ConnectError("down"))
+    respx.get(board_url(AB)).mock(return_value=httpx.Response(200, json={"jobs": [_ashby_job()]}))
+    source = _source(GH, LV, AB)
+    assert source.request_stats == RequestStats(0, 0)
+    assert len(list(source.fetch())) == 1
+    assert source.request_stats == RequestStats(attempted=3, failed=1)

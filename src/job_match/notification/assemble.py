@@ -16,7 +16,9 @@ from job_match.persistence.repositories import (
     FundingEventRepository,
     JobRepository,
     LeadRepository,
+    RunRepository,
 )
+from job_match.pipelines.outage import outages_of
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +71,7 @@ def build_digest(db: Database, settings: Settings, now: datetime) -> DigestBatch
     followups = ApplicationRepository(db.conn).list_followups_due(now.date())
 
     data = DigestData(
+        outages=today_outages(db, now),
         strong=strong,
         eligible=eligible,
         stretch=stretch,
@@ -85,3 +88,14 @@ def build_digest(db: Database, settings: Settings, now: datetime) -> DigestBatch
         leads_filtered=selection.filtered,
         leads_overflow=selection.overflow,
     )
+
+
+def today_outages(db: Database, now: datetime) -> tuple[str, ...]:
+    """The labels of the sources today's jobs run read as down (ADR 0027), so the digest says
+    « <source> indisponible aujourd'hui » rather than « 0 new offers ». A whole source only:
+    one ATS board down does not change what the digest says."""
+    runs = RunRepository(db.conn).list_recent(("jobs",), limit=1)
+    if not runs or runs[0].started_at.date() != now.date():
+        return ()
+    labels = {o.label for o in outages_of(runs[0].summary) if o.whole_source}
+    return tuple(sorted(labels))

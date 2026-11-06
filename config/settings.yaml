@@ -320,6 +320,27 @@ digest:
 jobs:
   max_age_days: 45
 
+# Source outage guard (ADR 0027). On 2026-11-06 France Travail was down: the search answered 0
+# offers and every offer page "does not exist", which would have closed every stored France
+# Travail offer and expired my applications. A source is read as down for the run when it
+# fetched 0 while the mean of its last history_runs stored runs is >= min_average_fetched, or
+# when more than max_failed_ratio of its collection requests failed (5xx after the retries,
+# timeout, network error), or when the closure check says "gone" for more than
+# max_closed_ratio of at least min_checked offers asked. Then none of its offers is closed
+# that day (closures -> UNKNOWN, nothing written, no application turns « Expirée »), the other
+# sources run as usual, the run summary and the Exécutions page say « <source> indisponible —
+# clôtures suspendues », and `ops check-sources` emails it once a day. One ATS board listing 0
+# postings after >= board_min_previous on the previous run is down alone: only its closures
+# stop. `job-match ops reopen --since DATE --source NAME` undoes closures made during a run
+# marked down (dry-run by default).
+outage_guard:
+  history_runs: 7
+  min_average_fetched: 20
+  max_failed_ratio: 0.5
+  max_closed_ratio: 0.3
+  min_checked: 10
+  board_min_previous: 5
+
 # Raw source payloads, kept as the API sent them in the private DB only (never logged, never
 # in the dashboard). Stored when new or changed since the last copy of the same offer, since
 # the 3-day window refetches most offers daily; rows older than retention_days are pruned

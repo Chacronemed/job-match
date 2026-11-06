@@ -174,12 +174,23 @@ def _seed(db: Database) -> DashboardSeed:
     for i in range(32):
         started = (datetime(2026, 9, 1 + i, 7, 0, tzinfo=UTC) if i < 28
                    else datetime(2026, 10, 1 + i - 28, 7, 0, tzinfo=UTC))
+        # The newest jobs run (i == 31) read France Travail as down (ADR 0027): the page
+        # shows the banner and the per-source closure counters on that card.
+        down = i == 31
+        ft = {"fetched": 90 + i, "eligible": 18, "calls": 13}
+        if down:
+            ft.update({"checked": 0, "closed": 0, "suspended": 12})
         runs.save(
             RunSummary(
                 pipeline="jobs", fetched=100 + i, duplicates=5, eligible=20, strong=8,
                 stretch=3, errors=1 if i == 0 else 0, api_calls=13,
                 rejected_by_reason={"EXPERIENCE": 50, "CONTRACT": 30, "NOT_RELEVANT": 10},
-                by_source={"france_travail": {"fetched": 90 + i, "eligible": 18, "calls": 13},
+                suspended=12 if down else 0,
+                outages=[{"source": "france_travail", "label": "France Travail",
+                          "kind": "no_results", "boards": [],
+                          "reason": "0 offre récupérée, contre 143 en moyenne sur les 7 "
+                                    "derniers runs"}] if down else [],
+                by_source={"france_travail": ft,
                            "ats": {"fetched": 10, "eligible": 2, "calls": 2}},
                 by_company={"ats": {"Gamma": {"fetched": 7, "eligible": 2},
                                     "Dataiku": {"fetched": 3, "eligible": 0}}},

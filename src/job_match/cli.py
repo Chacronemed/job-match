@@ -120,14 +120,28 @@ def main() -> None:
     cal_p.add_argument("--since", metavar="YYYY-MM-DD",
                        help="Only verdicts given on/after this date")
 
-    ops_p = sub.add_parser("ops", help="Operations: the silent-source alert")
+    ops_p = sub.add_parser("ops", help="Operations: source alerts, outage repair")
     ops_sub = ops_p.add_subparsers(dest="ops_command", metavar="SUBCOMMAND")
     check_p = ops_sub.add_parser(
         "check-sources",
-        help="Email an alert when a source returned 0 results N days in a row (never fails)",
+        help="Email an alert when a source returned 0 results N days in a row, or when the "
+             "last run read a source as down (ADR 0027); never fails",
     )
     check_p.add_argument("--days", type=int, default=3, metavar="N",
                          help="Consecutive runs with 0 results that trigger the alert (default: 3)")
+    reopen_p = ops_sub.add_parser(
+        "reopen",
+        help="Reopen the offers a source closed during a run marked down or beyond the "
+             "closure threshold (ADR 0027). Dry-run unless --apply.",
+    )
+    reopen_p.add_argument("--since", required=True, metavar="YYYY-MM-DD",
+                          help="First run date to consider")
+    reopen_p.add_argument("--source", required=True, metavar="NAME",
+                          help="Source name (france_travail, ats, jooble, adzuna)")
+    reopen_p.add_argument("--dry-run", action="store_true", default=True,
+                          help="List what would be reopened (the default)")
+    reopen_p.add_argument("--apply", action="store_true",
+                          help="Write the reopenings to the database")
 
     companies_p = sub.add_parser(
         "companies", help="Target companies (config/companies.yaml): which ATS serves them"
@@ -223,6 +237,8 @@ def main() -> None:
     elif args.command == "ops":
         if args.ops_command == "check-sources":
             _cmd_check_sources(args)
+        elif args.ops_command == "reopen":
+            _cmd_reopen(args)
         else:
             ops_p.print_help()
             sys.exit(1)
@@ -614,8 +630,13 @@ def _cmd_digest(args: argparse.Namespace) -> None:
         return
 
     if batch.is_empty:
+        if data.outages:
+            print(f"  {', '.join(data.outages)} indisponible aujourd'hui: no new offer from "
+                  "that source was expected.")
         print("  No new jobs, leads or follow-ups to send.")
-        append_step_summary(digest_markdown(jobs=0, strong=0, leads=0, followups=0, sent=False))
+        append_step_summary(digest_markdown(
+            jobs=0, strong=0, leads=0, followups=0, sent=False, outages=data.outages,
+        ))
         return
 
     try:
@@ -636,7 +657,7 @@ def _cmd_digest(args: argparse.Namespace) -> None:
     print(f"  Sent. {len(batch.job_ids)} jobs and {len(batch.lead_ids)} leads marked as notified.")
     append_step_summary(digest_markdown(
         jobs=len(batch.job_ids), strong=len(data.strong), leads=len(batch.lead_ids),
-        followups=len(data.followups), sent=True,
+        followups=len(data.followups), sent=True, outages=data.outages,
     ))
 
 
@@ -757,34 +778,77 @@ def _cmd_companies_detect(args: argparse.Namespace) -> None:
 
 
 def _cmd_check_sources(args: argparse.Namespace) -> None:
-    """`job-match ops check-sources`: alert on a source silent for N runs. Exit 0 always."""
+    """`job-match ops check-sources`: alert on a source silent for N runs, and on a source
+    the last run read as down (ADR 0027, once a day per source). Exit 0 always."""
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
 
-    from job_match.notification.email_notifier import EmailNotifier, SmtpConfigError
-    from job_match.ops.summary import alert_text, silent_sources
+    from job_match.ops.summary import alert_text, outage_alert_text, outage_alerts, silent_sources
     from job_match.persistence.db import Database
     from job_match.persistence.repositories import RunRepository
+    from job_match.pipelines.outage import banner
 
     db_path = _data_dir() / "jobs.sqlite"
     if not db_path.exists():
         print(f"No database at {db_path}: nothing to check.")
         return
     with Database(path=str(db_path)) as db:
-        runs = RunRepository(db.conn).list_recent(("jobs",), limit=args.days)
-    names = silent_sources(runs, days=args.days)
-    if not names:
-        print(f"Sources: none silent for {args.days} runs.")
+        # Enough runs for the silent check and for "already announced today" (a replay).
+        runs = RunRepository(db.conn).list_recent(("jobs",), limit=max(args.days, 10))
+    names = silent_sources(runs[:args.days], days=args.days)
+    outages = outage_alerts(runs)
+    if not names and not outages:
+        print(f"Sources: none silent for {args.days} runs, none down on the last run.")
         return
-    subject, body = alert_text(names, args.days)
-    print(f"ALERT: {subject}")
-    print(f"::warning title=Silent source::{subject}")
-    append_step_summary(f"## ⚠️ Silent source\n\n{subject}")
+    if names:
+        subject, body = alert_text(names, args.days)
+        print(f"ALERT: {subject}")
+        print(f"::warning title=Silent source::{subject}")
+        append_step_summary(f"## ⚠️ Silent source\n\n{subject}")
+        _email_alert(subject, body)
+    if outages:
+        day = runs[0].started_at.date().isoformat()
+        subject, body = outage_alert_text(outages, day)
+        print(f"ALERT: {subject}")
+        print(f"::warning title=Source down::{subject}")
+        lines = "\n".join(f"- {banner(o)}" for o in outages)
+        append_step_summary(f"## ⚠️ Source indisponible\n\n{lines}")
+        _email_alert(subject, body)
+
+
+def _email_alert(subject: str, body: str) -> None:
+    from job_match.notification.email_notifier import EmailNotifier, SmtpConfigError
+
     try:
         sent = EmailNotifier.from_env().send_text(subject, body)
     except SmtpConfigError as exc:
         print(f"  alert not emailed, SMTP not configured: {exc}", file=sys.stderr)
         return
     print("  alert emailed." if sent else "  alert email failed (see log).")
+
+
+def _cmd_reopen(args: argparse.Namespace) -> None:
+    """`job-match ops reopen --since D --source S [--apply]` (ADR 0027)."""
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+
+    from datetime import date
+
+    from job_match.config.loader import load_settings
+    from job_match.ops.reopen import format_report, reopen
+    from job_match.persistence.db import Database
+
+    try:
+        since = date.fromisoformat(args.since)
+    except ValueError:
+        print(f"Invalid date {args.since!r} — expected YYYY-MM-DD", file=sys.stderr)
+        sys.exit(1)
+    settings = load_settings(_config_dir() / "settings.yaml")
+    db_path = _data_dir() / "jobs.sqlite"
+    if not db_path.exists():
+        print(f"No database at {db_path}: nothing to reopen.", file=sys.stderr)
+        sys.exit(1)
+    with Database(path=str(db_path)) as db:
+        report = reopen(db, args.source, since, settings.outage_guard, apply=bool(args.apply))
+    print(format_report(report))
 
 
 def _build_funding_sources(names: list[str]) -> list:
@@ -1151,6 +1215,11 @@ def _print_summary(summary: RunSummary, *, dry_run: bool = False) -> None:
     if summary.pipeline == "jobs":
         print(f"  checked:    {summary.checked}  (stored offers re-checked at the source)")
         print(f"  closed:     {summary.closed}  (hidden from the digest and the dashboard)")
+        if summary.suspended:
+            print(f"  suspended:  {summary.suspended}  (closures withheld: source down)")
+        for o in summary.outages:
+            print(f"  ⚠️ {o.get('label', o.get('source'))} indisponible — clôtures suspendues : "
+                  f"{o.get('reason', '')}")
         print(f"  raw payloads: stored {summary.raw_stored} (new or changed),"
               f" pruned {summary.raw_pruned}")
     if summary.api_calls:

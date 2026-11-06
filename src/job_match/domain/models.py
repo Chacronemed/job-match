@@ -316,6 +316,13 @@ class RunSummary:
     # said were gone. A check that got no clear answer counts in `errors`, never in `closed`.
     checked: int = 0
     closed: int = 0
+    # Closures the outage guard (ADR 0027) withheld: offers of a source read as down that
+    # were not asked, plus "gone" answers not applied because too many offers of one source
+    # were gone at once. Nothing was written for them; they are asked again next run.
+    suspended: int = 0
+    # The sources (or single ATS boards) read as down this run, as `SourceOutage.as_dict()`:
+    # {source, label, kind, reason, boards}. Empty on a healthy run.
+    outages: list[dict] = field(default_factory=list)
     # Raw source payloads written this run (new or changed only) and rows pruned by age.
     raw_stored: int = 0
     raw_pruned: int = 0
@@ -333,7 +340,12 @@ class RunSummary:
     # corrupt self-references, `stale_links_dropped` links the current rules no longer make.
     self_links_dropped: int = 0
     stale_links_dropped: int = 0
+    # source → {fetched, eligible, duplicates, calls, checked, closed, suspended}: the last
+    # three are the closure check's counters per source (ADR 0027).
     by_source: dict[str, dict[str, int]] = field(default_factory=dict)
+    # source → "<ats>:<board id>" → postings listed, for the sources made of named boards
+    # (ats): the outage guard compares each board with the previous run.
+    by_board: dict[str, dict[str, int]] = field(default_factory=dict)
     # source → company → {fetched, eligible}, for the sources that read named company
     # boards (ats); the others parse the employer from the posting and are not broken down.
     by_company: dict[str, dict[str, dict[str, int]]] = field(default_factory=dict)

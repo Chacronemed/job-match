@@ -5,6 +5,8 @@
 - `jobs_markdown`, `digest_markdown`, `failure_markdown`: the blocks the CLI commands append.
 - `silent_sources`: the sources that returned nothing in each of the last N jobs runs, the
   condition for the alert email (`job-match ops check-sources`).
+- `outage_alerts`: the sources the latest run read as down (ADR 0027) and not yet announced
+  today, the condition for the second alert email of the same command.
 """
 from __future__ import annotations
 
@@ -12,6 +14,7 @@ import os
 from pathlib import Path
 
 from job_match.domain.models import RunRecord, RunSummary
+from job_match.pipelines.outage import SourceOutage, banner, outages_of
 
 DEFAULT_SILENT_DAYS = 3
 
@@ -35,18 +38,24 @@ def jobs_markdown(summary: RunSummary, elapsed_s: float) -> str:
         f"{summary.api_calls} API calls"
         + (f" · ⚠️ {summary.errors} error(s)" if summary.errors else ""),
         "",
-        "| Source | Fetched | Eligible | Duplicates | API calls |",
-        "|---|---:|---:|---:|---:|",
+        "| Source | Fetched | Eligible | Duplicates | API calls | Checked | Closed | Suspended |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
+    down = {o["source"] for o in summary.outages if not o.get("boards")}
     for name in sorted(summary.by_source):
         c = summary.by_source[name]
-        flag = " ⚠️ 0" if c.get("fetched", 0) == 0 else ""
+        flag = " ⚠️ down" if name in down else (" ⚠️ 0" if c.get("fetched", 0) == 0 else "")
         lines.append(
             f"| {name}{flag} | {c.get('fetched', 0)} | {c.get('eligible', 0)} | "
-            f"{c.get('duplicates', 0)} | {c.get('calls', 0)} |"
+            f"{c.get('duplicates', 0)} | {c.get('calls', 0)} | {c.get('checked', 0)} | "
+            f"{c.get('closed', 0)} | {c.get('suspended', 0)} |"
         )
     if not summary.by_source:
-        lines.append("| (no source ran) | 0 | 0 | 0 | 0 |")
+        lines.append("| (no source ran) | 0 | 0 | 0 | 0 | 0 | 0 | 0 |")
+    if summary.outages:
+        lines.append("")
+        for o in summary.outages:
+            lines.append(f"⚠️ **{banner(SourceOutage.from_dict(o))}**")
     lines += [
         "",
         "| Gate | Rejected |",
@@ -60,7 +69,8 @@ def jobs_markdown(summary: RunSummary, elapsed_s: float) -> str:
         "",
         f"**Scored: {scored}** ({summary.eligible} eligible of which {summary.strong} strong, "
         f"{summary.stretch} stretch) · {summary.duplicates} duplicates · "
-        f"{summary.checked} re-checked, {summary.closed} closed",
+        f"{summary.checked} re-checked, {summary.closed} closed"
+        + (f", {summary.suspended} closures suspended" if summary.suspended else ""),
     ]
     return "\n".join(lines)
 
@@ -73,12 +83,20 @@ def funding_markdown(summary: RunSummary, elapsed_s: float) -> str:
     )
 
 
-def digest_markdown(*, jobs: int, strong: int, leads: int, followups: int, sent: bool) -> str:
+def digest_markdown(
+    *, jobs: int, strong: int, leads: int, followups: int, sent: bool,
+    outages: tuple[str, ...] | list[str] = (),
+) -> str:
+    """`outages`: the labels of the sources down today (ADR 0027): an empty digest then says
+    so instead of « 0 jobs »."""
     state = "**Emailed**" if sent else "Nothing to send"
-    return (
-        f"## Digest\n\n{state}: {jobs} jobs ({strong} strong), {leads} leads, "
-        f"{followups} follow-ups due"
-    )
+    text = f"## Digest\n\n{state}: {jobs} jobs ({strong} strong), {leads} leads, "
+    text += f"{followups} follow-ups due"
+    if outages:
+        names = ", ".join(outages)
+        text += f"\n\n⚠️ **{names} indisponible aujourd'hui** : clôtures suspendues, "
+        text += "aucune nouvelle offre de cette source n'était attendue."
+    return text
 
 
 def failure_markdown(step: str, exc: BaseException) -> str:
@@ -115,3 +133,45 @@ def alert_text(names: list[str], days: int) -> tuple[str, str]:
         "the run logs under Actions → Daily run.\n"
     )
     return subject, body
+
+
+def outage_alerts(runs: list[RunRecord]) -> list[SourceOutage]:
+    """The outages of the newest jobs run that no earlier jobs run of the same UTC day already
+    carried: one alert per source and per day, however many times the run is replayed.
+    `runs` newest first, as `RunRepository.list_recent` returns them."""
+    jobs_runs = [r for r in runs if r.pipeline == "jobs"]
+    if not jobs_runs:
+        return []
+    latest = jobs_runs[0]
+    today = latest.started_at.date()
+    announced = {
+        (o.source, o.boards)
+        for r in jobs_runs[1:]
+        if r.started_at.date() == today
+        for o in outages_of(r.summary)
+    }
+    return [o for o in outages_of(latest.summary) if (o.source, o.boards) not in announced]
+
+
+def outage_alert_text(outages: list[SourceOutage], day: str) -> tuple[str, str]:
+    """Subject and body of the outage alert email (ADR 0027)."""
+    names = ", ".join(sorted({o.label for o in outages}))
+    subject = f"[job-match] {names} indisponible — clôtures suspendues ({day})"
+    lines = [
+        f"Le run du {day} a lu une ou plusieurs sources comme indisponibles. Aucune offre de "
+        "ces sources n'a été fermée aujourd'hui et aucune candidature n'est passée « Expirée » "
+        "à cause d'elles ; les autres sources ont tourné normalement.",
+        "",
+    ]
+    for o in outages:
+        lines.append(f"- {banner(o)}")
+    lines += [
+        "",
+        "Si des offres ont été fermées à tort pendant une panne (un run antérieur à la garde, "
+        "ou au-delà du seuil), les rouvrir avec :",
+        f"  job-match ops reopen --since {day} --source <source>        (dry-run)",
+        f"  job-match ops reopen --since {day} --source <source> --apply",
+        "",
+        "Détail : Actions → Daily run → résumé du job, et la page Exécutions du site.",
+    ]
+    return subject, "\n".join(lines) + "\n"
