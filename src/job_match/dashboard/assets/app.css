@@ -146,6 +146,7 @@ kbd.kbd-i .i { width: 12px; height: 12px; }
 .split { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; flex: 1; min-height: 0; }
 .list-panel { display: flex; flex-direction: column; min-width: 0; min-height: 0; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); overflow: hidden; }
 .list-tools { flex: none; padding: 16px 18px 0; border-bottom: 1px solid var(--line); }
+.sort-m { display: none; }
 .searchbox { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 10px 0 12px; border: 1px solid var(--line-3); border-radius: 7px; background: var(--raised); color: var(--ink-3); }
 .searchbox:focus-within { border-color: var(--focus); outline: 2px solid var(--focus); outline-offset: 0; }
 .searchbox input { flex: 1; min-width: 0; height: 100%; border: 0; background: none; outline: none; color: var(--ink); font-size: var(--fs); padding: 0; }
@@ -213,6 +214,8 @@ table.data.jobs tbody tr.row {
   position: relative; cursor: pointer; outline-offset: -2px;
 }
 table.data.jobs tbody tr.row:hover { background: var(--hover); }
+/* O6: no « Trier les nouvelles » when nothing waits in the Tri (its count is empty at zero). */
+#offres-to-tri:has(.btn-n:empty) { display: none; }
 /* The selected row: the --active overlay, no side stripe; the keyboard cursor adds the focus ring. */
 table.data.jobs tbody tr.row.is-selected, table.data.jobs tbody tr.row.is-selected:hover { background: var(--active); }
 table.data.jobs tbody tr.row[aria-expanded="true"] { border-bottom-color: transparent; }
@@ -516,7 +519,7 @@ table.data.jobs tr.details td { display: block; padding: 0 17px 16px 17px; borde
 .verdicts { display: flex; gap: 6px; flex-wrap: wrap; }
 .verdict { min-height: 30px; padding: 0 11px; border: 1px solid var(--line-3); border-radius: 6px; background: var(--raised); color: var(--ink-2); font-size: var(--fs-sm); font-weight: 500; cursor: pointer; }
 .verdict:hover { color: var(--ink); background: var(--slate-4); }
-.verdict[aria-pressed="true"] { color: #fff; background: var(--accent); border-color: var(--accent); }
+.verdict[aria-pressed="true"] { color: var(--accent-ink); background: var(--accent-soft); border-color: var(--accent); }
 
 /* ---------- record panel: the selected offer ---------- */
 .record {
@@ -538,7 +541,9 @@ table.data.jobs tr.details td { display: block; padding: 0 17px 16px 17px; borde
 .record-back { display: none; }
 .record-scroll { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 4px 21px 24px; display: flex; flex-direction: column; gap: 20px; scrollbar-width: thin; scrollbar-color: var(--slate-6) transparent; }
 .record-head h2:focus { outline: none; }  /* focused on open so reading starts here; not a control */
-.record-head h2 { overflow-wrap: anywhere; margin: 0; font-size: 21px; font-weight: 650; letter-spacing: -0.04em; line-height: 1.25; }
+.record-head h2 { overflow-wrap: anywhere; margin: 0; font-size: 21px; font-weight: 650; letter-spacing: -0.04em; line-height: 1.25;
+  /* Three lines at most: the score stays above the fold; the full title is its tooltip (AUDIT O5). */
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
 .record-sub { margin: 8px 0 0; color: var(--ink-2); font-size: var(--fs-sm); }
 .record-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0 0; }
 .record-tags .status { min-height: 24px; }
@@ -561,9 +566,10 @@ table.data.jobs tr.details td { display: block; padding: 0 17px 16px 17px; borde
 .record-desc-body { display: flex; flex-direction: column; gap: 12px; padding: 2px 12px 14px; }
 .record-desc .desc-title { font-size: var(--fs); }
 .record .track, .record .why { margin: 0; }
-.record-foot { display: flex; gap: 9px; flex: none; padding: 14px 20px 16px; border-top: 1px solid var(--line); background: var(--surface); }
+.record-foot { display: flex; flex-wrap: wrap; gap: 9px; flex: none; padding: 14px 20px 16px; border-top: 1px solid var(--line); background: var(--surface); }
 .record-foot .button { flex: none; }
-.record-foot .button.primary { flex: 1; }
+/* The primary takes the rest of the row, and its own row when the three do not fit. */
+.record-foot .button.primary { flex: 1 0 auto; }
 .record-foot .button.ghost { padding: 0 11px; }
 .record-foot:empty { display: none; }
 .props { display: flex; flex-direction: column; gap: 2px; margin: 0; }
@@ -979,7 +985,13 @@ html:active-view-transition-type(record)::view-transition-new(main) { animation:
   table.data.jobs thead tr { position: static; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding: 2px 8px; }
   table.data.jobs thead tr::before { flex: none; }
   .tabline .chip { padding: 0 6px; }
-  .sort { min-height: 36px; }
+  .sort { min-height: 44px; }
+  /* O8: the select replaces the header bar on phones. */
+  table.data.jobs thead { display: none; }
+  .sort-m { display: flex; align-items: center; gap: 10px; padding: 8px 18px; border-bottom: 1px solid var(--line); color: var(--ink-3); font-size: var(--fs-sm); }
+  .sort-m select { flex: 1; min-height: 44px; }
+  .searchbox { height: 46px; }  /* the input inside is 44 px, the label around it too */
+  #offres-to-tri { min-height: 44px; }
   table.data.jobs tbody tr.row { padding: 11px 10px 11px 13px; min-height: 74px; }
   table.data.jobs td.col-title { grid-template-columns: 29px minmax(0, 1fr); }
   .logo { width: 29px; height: 29px; font-size: var(--fs-xs); border-radius: 8px; }

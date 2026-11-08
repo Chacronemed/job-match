@@ -131,8 +131,15 @@
       });
     }
     /* Skills with a stored weight but no explanation line (rows scored before the ledger). */
-    w.skills.concat(w.lowered).forEach(function (s) {
+    /* A lowered skill is a malus even when its weight was not stored (AUDIT O11). */
+    w.skills.forEach(function (s) {
       if (!seen[s.name]) ledger.appendChild(line(typeof s.weight === "number" && s.weight < 0 ? "down" : "up", s.name, s.weight, s.snippet));
+    });
+    w.lowered.forEach(function (s) {
+      if (seen[s.name]) return;
+      var l = line("down", s.name, s.weight, s.snippet);
+      if (typeof s.weight !== "number") l.querySelector(".why-w").textContent = "malus";
+      ledger.appendChild(l);
     });
     if (!ledger.childNodes.length) ledger.appendChild(el("p", { class: "note", text: "Aucune compétence de ton profil trouvée dans l’offre." }));
     ledger.appendChild(experienceLine(w.experience, j));

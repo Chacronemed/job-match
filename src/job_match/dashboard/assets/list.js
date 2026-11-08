@@ -203,9 +203,10 @@
     return wrap;
   }
 
-  /* Two letters from the company's name (its first two words), a « ? » without one. */
+  /* Two letters from the company's name (its first two words made of letters), a « ? »
+     without one: no punctuation or digits (« Beta <b>Corp</b> » → BC, AUDIT O7). */
   function monogram(j) {
-    var words = String(j.company || "").trim().split(/[\s\-–·,/]+/).filter(Boolean);
+    var words = String(j.company || "").replace(/<[^>]*>/g, " ").match(/[A-Za-zÀ-ÖØ-öø-ÿ]+/g) || [];
     var text = words.length > 1 ? words[0].charAt(0) + words[1].charAt(0) : (words[0] || "?").slice(0, 2);
     return el("span", { class: "logo", "aria-hidden": "true", text: text.toUpperCase() });
   }
@@ -338,7 +339,7 @@
       foot.appendChild(b);
       return b;
     }
-    if (s !== "ignored") button("", function () { quickSet(row, "ignored"); }, "ghost record-drop", "Écarter l’offre").appendChild(JM.U.icon("x"));
+    if (s !== "ignored") button("Écarter", function () { quickSet(row, "ignored"); }, "ghost record-drop", "Écarter l’offre").insertBefore(JM.U.icon("x"), null);
     if (s !== "to_apply" && s !== "applied" && s !== "interview") button("Garder", function () { quickSet(row, "to_apply"); }, "primary").appendChild(JM.U.icon("arrow-right"));
     else if (s === "to_apply" && JM.archiveStateOf(row.key)) {
       /* Auto-archived (ADR 0028): back in the list for another kept_days from today. */
@@ -465,14 +466,30 @@
     });
   }
 
+  /* Why the list is empty, from the latest collection run (IMPECCABLE_AUDIT O4): never a
+     claim the data does not back. */
+  function emptyListText() {
+    var last = null;
+    (JM.runs || []).forEach(function (r) {
+      if (r && r.pipeline === "jobs" && (!last || String(r.started_at) > String(last.started_at))) last = r;
+    });
+    if (!last) return "Aucune collecte dans cet instantané : les offres arrivent avec la prochaine exécution.";
+    var down = (last.outages || []).map(function (o) { return o && (o.label || o.source); }).filter(Boolean);
+    if (down.length) return "Source indisponible à la dernière collecte (" + down.join(", ") + ") : aucune offre ouverte pour l’instant.";
+    var n = typeof last.fetched === "number" ? last.fetched : null;
+    return n === null ? "Aucune offre ouverte : voir Exécutions pour la dernière collecte."
+      : "La dernière collecte a lu " + n + (n > 1 ? " offres" : " offre") + " ; aucune n’a passé les filtres (expérience, contrat, lieu, sujet).";
+  }
+
   function setEmpty(shown) {
     var empty = byId("jobs-empty");
     empty.hidden = shown > 0;
     if (shown > 0) return;
     var n = activeFilters();
-    byId("jobs-empty-text").textContent = rows.length === 0
-      ? "Le run de ce matin n’a rien collecté : la prochaine exécution tourne demain matin (voir Exécutions)."
-      : "Le run de ce matin n’a rien trouvé pour ces filtres.";
+    byId("jobs-empty-text").textContent = rows.length === 0 ? emptyListText() : "Aucune offre ne correspond à ces filtres.";
+    /* O6: nothing to select, nothing to triage from here. */
+    byId("detail-empty-text").textContent = rows.length === 0 ? "Aucune offre ouverte dans cet instantané." : "Sélectionne une offre pour lire son relevé du score.";
+    byId("detail-empty-hint").hidden = rows.length === 0;
     byId("jobs-empty-reset").hidden = n === 0;
   }
 
@@ -728,7 +745,22 @@
     });
   });
 
+  /* Phones: one native select instead of the scrolling header bar (IMPECCABLE_AUDIT O8). */
+  var sortM = byId("f-sort-m");
+  sortM.addEventListener("change", function () {
+    var v = sortM.value.split("-");
+    state.sortKey = v[0];
+    state.sortDir = v[1] === "asc" ? "asc" : "desc";
+    markSortHeader();
+    renderJobs();
+    syncHash();
+  });
+
   function markSortHeader() {
+    var want = state.sortKey + "-" + state.sortDir;
+    if (sortM.querySelector('option[value="' + want + '"]')) sortM.value = want;
+    else if (!sortM.querySelector('option[value="custom"]')) sortM.appendChild(el("option", { value: "custom", text: "Tri personnalisé", disabled: "disabled" }));
+    if (sortM.value !== want) sortM.value = "custom";
     headers.forEach(function (h) {
       var b = h.querySelector(".sort");
       h.setAttribute("aria-sort", b && b.getAttribute("data-key") === state.sortKey

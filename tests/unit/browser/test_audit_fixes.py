@@ -142,3 +142,36 @@ def test_a_long_title_is_clamped_on_the_tri_card(open_dashboard, job_keys):
                          "'#tri-stage .tcard:not(.is-next) .tcard-open')).lineHeight)")
     assert box["height"] <= line * 3 + 2
     assert errors == []
+
+
+# ---------- Offres (IMPECCABLE_AUDIT O2, O3, O4, O6, O7, O8, O11, O12) ----------
+
+def test_offres_has_one_primary_and_says_the_drop(open_dashboard, job_keys):
+    page, errors = open_dashboard(_empty_api(), hash_="#offres")
+    page.wait_for_selector(ROWS)
+    page.wait_for_function("() => !document.getElementById('record').hidden")
+    visible_primaries = page.locator(
+        "#panel-offres .button.primary:visible, #record .button.primary:visible")
+    assert visible_primaries.count() == 1
+    assert "primary" not in page.locator("#offres-to-tri").get_attribute("class")
+    drop = page.locator("#record .record-foot .record-drop")
+    assert drop.inner_text().strip() == "Écarter"
+    # monograms come from letters only: « Beta <b>Corp</b> » reads BC
+    beta = page.locator(f"{ROWS}", has_text="Ingénieur DevOps").first
+    assert beta.locator(".logo").inner_text() == "BC"
+    assert errors == []
+
+
+def test_offres_on_a_phone_sorts_with_a_select_and_44px_targets(open_dashboard, job_keys):
+    page, errors = open_dashboard(_empty_api(), hash_="#offres", viewport=(390, 844))
+    page.wait_for_selector(ROWS)
+    assert page.locator("#jobs-table thead").is_hidden()
+    sort = page.locator("#f-sort-m")
+    assert sort.is_visible() and sort.input_value() == "score-desc"
+    for sel in ("#panel-offres .searchbox", "#f-sort-m", "#offres-to-tri"):
+        assert page.locator(sel).bounding_box()["height"] >= 44, sel
+    sort.select_option("company-asc")
+    page.wait_for_function("() => location.hash.includes('company')")
+    companies = page.locator(f"{ROWS} .row-meta").all_inner_texts()
+    assert companies == sorted(companies, key=str.lower)
+    assert errors == []

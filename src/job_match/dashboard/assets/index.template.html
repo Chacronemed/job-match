@@ -126,7 +126,7 @@ __CSS__
         <button type="button" class="chip chip-plain" id="density-dense" data-density="dense" aria-pressed="true">Dense</button>
         <button type="button" class="chip chip-plain" id="density-comfortable" data-density="comfortable" aria-pressed="false">Confortable</button>
       </div>
-      <button type="button" class="button primary" id="offres-to-tri">Trier les nouvelles <span class="num btn-n" data-count="tri"></span></button>
+      <button type="button" class="button" id="offres-to-tri">Trier les nouvelles <span class="num btn-n" data-count="tri"></span></button>
     </div>
   </header>
 
@@ -145,6 +145,7 @@ __CSS__
           <button type="button" class="chip chip-stretch" data-section="stretch" aria-pressed="true">À tenter <span class="num" id="kpi-stretch">0</span></button>
         </div>
       </div>
+      <label class="sort-m"><span>Trier par</span><select id="f-sort-m" aria-label="Trier les offres"><option value="score-desc">Score, du plus haut</option><option value="score-asc">Score, du plus bas</option><option value="age_days-asc">Les plus récentes</option><option value="title-asc">Titre, A → Z</option><option value="company-asc">Entreprise, A → Z</option><option value="department-asc">Ville</option><option value="contract-asc">Contrat</option><option value="source-asc">Source</option></select></label>
 
       <details class="controls" id="jobs-controls">
         <summary class="controls-summary">Filtres<span id="filters-count"></span><span class="controls-hint" id="jobs-rowcount" aria-live="polite"></span></summary>
@@ -202,14 +203,14 @@ __CSS__
           <tbody id="jobs-body"></tbody>
         </table>
         <div class="empty" id="jobs-empty" hidden>
-          <p id="jobs-empty-text">Le run de ce matin n’a rien trouvé pour ces filtres.</p>
+          <p id="jobs-empty-text">Aucune offre ne correspond à ces filtres.</p>
           <button type="button" class="button" id="jobs-empty-reset">Réinitialiser les filtres</button>
         </div>
       </div>
     </div>
     <div class="detail-empty" id="offres-detail-empty" aria-hidden="true">
-      <p>Sélectionne une offre pour lire son relevé du score.</p>
-      <p class="empty-hint">J et K parcourent la liste, O ouvre la fiche.</p>
+      <p id="detail-empty-text">Sélectionne une offre pour lire son relevé du score.</p>
+      <p class="empty-hint" id="detail-empty-hint">J et K parcourent la liste, O ouvre la fiche.</p>
     </div>
   </div>
 </section>

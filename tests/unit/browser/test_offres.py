@@ -108,7 +108,8 @@ def test_the_empty_state_says_what_to_do_and_resets(open_dashboard, job_keys):
     page.locator("#jobs-controls summary").click()
     page.locator("#f-search").fill("rien-ne-correspond")
     page.wait_for_selector("#jobs-empty:not([hidden])")
-    assert "rien trouvé pour ces filtres" in page.locator("#jobs-empty-text").inner_text()
+    empty = page.locator("#jobs-empty-text").inner_text()
+    assert empty == "Aucune offre ne correspond à ces filtres."
     page.locator("#jobs-empty-reset").click()
     page.wait_for_function(f"() => document.querySelectorAll('{ROWS}').length > 1")
     assert page.locator("#f-search").input_value() == ""

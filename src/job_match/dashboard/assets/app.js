@@ -888,7 +888,7 @@ window.JM = window.JM || {};
       el("span", { class: "pill", title: j.source === "ats" ? "Page carrière de " + (j.company || "l’entreprise") : null, text: sourceText(j) || "Source inconnue" })
     ]);
     box.appendChild(el("header", { class: "record-head" }, [
-      el("h2", { id: "record-title", tabindex: "-1", text: j.title || "—" }),
+      el("h2", { id: "record-title", tabindex: "-1", title: j.title || null, text: j.title || "—" }),
       el("p", { class: "record-sub", text: [j.company || "Entreprise non communiquée", j.location].filter(Boolean).join(" · ") }),
       tags
     ]));
