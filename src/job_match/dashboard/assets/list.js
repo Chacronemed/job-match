@@ -519,7 +519,9 @@
   /* The selected row, by the record's job: one strongly marked row. */
   function markSelected() {
     Array.prototype.forEach.call(jobsBody.querySelectorAll("tr.row"), function (row) {
-      row.classList.toggle("is-selected", !!(R.open && R.job === row.jmRow));
+      var on = !!(R.open && R.job === row.jmRow);
+      row.classList.toggle("is-selected", on);
+      row.setAttribute("aria-selected", on ? "true" : "false");
     });
   }
 
@@ -551,7 +553,34 @@
     i = Math.max(0, Math.min(list.length - 1, i));
     list[i].focus({ preventScroll: true });
     list[i].scrollIntoView({ block: "nearest", behavior: U.reduced() ? "auto" : "smooth" });
+    followCursor(list[i]);
   }
+
+  /* The split's record follows the keyboard cursor (IMPECCABLE_AUDIT O10): what X / S / A act
+     on is always the offer on screen. Drawn after 90 ms of rest so a held J does not rebuild the
+     record on every row; an action key draws it at once first (flushFollow). */
+  var followTimer = null;
+  var followRow = null;
+  function followCursor(row) {
+    clearTimeout(followTimer);
+    followRow = null;
+    if (!row || V.tab !== "offres" || !JM.wideScreen() || (R.open && R.job === row.jmRow)) return;
+    followRow = row;
+    followTimer = setTimeout(flushFollow, 90);
+  }
+  function flushFollow() {
+    clearTimeout(followTimer);
+    var row = followRow;
+    followRow = null;
+    if (row && document.contains(row) && !(R.open && R.job === row.jmRow)) {
+      openRecord(row.jmRow, null, { quiet: true });
+    }
+  }
+  /* Tab into a row is a keyboard move too; a click opens the record on its own. */
+  jobsBody.addEventListener("focusin", function (ev) {
+    var row = ev.target;
+    if (row && row.classList && row.classList.contains("row") && row.matches(":focus-visible")) followCursor(row);
+  });
 
   /* True when the key was handled. Inside the row's details (a form, a chip) the keys are the
      controls' own. */
@@ -562,6 +591,7 @@
     if (ev.key === "k" || ev.key === "ArrowUp") { moveFocus(-1); return true; }
     var row = focusedRow();
     if (!row) return false;
+    if (followRow) flushFollow();
     var j = row.jmRow;
     if (ev.key === "x" && canWrite()) { quickSet(j, "ignored"); return true; }
     if (ev.key === "s" && canWrite()) { quickSet(j, "to_apply"); return true; }

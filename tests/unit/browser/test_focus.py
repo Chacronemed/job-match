@@ -5,6 +5,7 @@ record's footer actions, the section chips, the unknown experience said as such,
 tracking error state."""
 
 import json
+from urllib.parse import unquote
 
 ROWS = "#jobs-body tr.row"
 READY = "() => document.querySelector('#track-banner').hidden && window.JM.track.status === 'ready'"
@@ -138,6 +139,37 @@ def test_the_record_footer_keeps_the_offer_and_follows_its_status(open_dashboard
     foot.get_by_role("button", name="Écarter l’offre").click()
     page.wait_for_selector(f'{ROWS}[data-key="{key}"].st-ignored')
     assert foot.get_by_role("button", name="Garder").count() == 1
+    assert errors == []
+
+
+def test_j_and_k_move_the_record_with_the_cursor_and_s_acts_on_the_shown_offer(
+        open_dashboard, job_keys):
+    """IMPECCABLE_AUDIT O10: at >= 1280 px the split's record follows the keyboard cursor, so
+    X / S / A always act on the offer the record shows."""
+    page, errors = _open(open_dashboard)
+    page.wait_for_function("() => !document.getElementById('record').hidden")
+    puts = []
+    page.on("request", lambda r: puts.append(r.url.rsplit("/", 1)[1])
+            if r.method == "PUT" and "/api/applications/" in r.url else None)
+    page.keyboard.press("j")
+    page.keyboard.press("j")
+    rows = page.locator(ROWS)
+    second = rows.nth(1)
+    key = second.get_attribute("data-key")
+    page.wait_for_function(f"() => decodeURIComponent(location.hash).includes('fiche={key}')")
+    assert page.evaluate("document.activeElement.getAttribute('data-key')") == key
+    shown = second.locator(".title-text > span").inner_text()
+    assert page.locator("#record-title").inner_text() == shown
+    assert page.locator(f"{ROWS}.is-selected").count() == 1
+    assert second.get_attribute("aria-selected") == "true"
+    page.keyboard.press("k")
+    first_key = rows.nth(0).get_attribute("data-key")
+    page.wait_for_function(f"() => decodeURIComponent(location.hash).includes('fiche={first_key}')")
+    page.keyboard.press("j")
+    page.keyboard.press("s")  # straight after the move: no wait, the record must already be there
+    page.wait_for_function(f"() => document.querySelectorAll('{ROWS}.st-to_apply').length > 0")
+    page.wait_for_timeout(100)
+    assert [unquote(p) for p in puts] == [key]
     assert errors == []
 
 
