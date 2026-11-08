@@ -1151,3 +1151,8 @@ html:active-view-transition-type(record)::view-transition-new(main) { animation:
   .tab-due:empty { display: none; }
   .tab-due { position: absolute; top: 7px; left: calc(50% + 7px); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--amber-9); color: #000; font-size: var(--fs-xs); line-height: 18px; text-align: center; }
 }
+
+/* Phones: keyboard focus never lands under the sticky top bar or the tab bar. */
+@media (max-width: 760px) {
+  html { scroll-padding: 56px 0 calc(64px + env(safe-area-inset-bottom)); }
+}

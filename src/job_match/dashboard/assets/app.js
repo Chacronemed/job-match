@@ -111,12 +111,12 @@ window.JM = window.JM || {};
     });
   }
 
+  var YEARS_NUM = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 1 });
   function fmtYears(y) {
     if (y === null || y === undefined) return null;
-    return Number.isInteger(y) ? String(y) : String(y);
+    return YEARS_NUM.format(y);  /* « 1,5 », not « 1.5 » */
   }
 
-  var YEARS_NUM = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 1 });
   /* The triage card's experience fact: "3 ans requis", "1,5 an requis" (French: singular
      below 2), or that the posting states no number. */
   function yearsText(y) {
@@ -132,7 +132,7 @@ window.JM = window.JM || {};
     if (n >= 1e9) { n = n / 1e9; unit = " Md"; }
     else if (n >= 1e6) { n = n / 1e6; unit = " M"; }
     else if (n >= 1e3) { n = n / 1e3; unit = " k"; }
-    var s = (Math.round(n * 10) / 10).toString();
+    var s = YEARS_NUM.format(Math.round(n * 10) / 10);  /* « 1,5 M€ » */
     var cur = currency === "EUR" ? "€" : currency === "USD" ? "$" : currency === "GBP" ? "£" : (currency || "");
     return s + unit + (cur ? (cur.length === 1 ? cur : " " + cur) : "");
   }
@@ -174,7 +174,6 @@ window.JM = window.JM || {};
     if (DARK_ONLY) theme = "dark";
     document.documentElement.setAttribute("data-theme", theme);
     themeBtn.textContent = theme === "dark" ? "Mode clair" : "Mode sombre";
-    themeBtn.setAttribute("aria-pressed", theme === "light" ? "true" : "false");
     byId("theme-color").setAttribute("content", THEME_COLOR[theme]);
     if (persist) {
       try { localStorage.setItem("job-match-theme", theme); } catch (e) { /* private window */ }
@@ -811,7 +810,10 @@ window.JM = window.JM || {};
     /* Unknown, not zero, while the tracking is not loaded (IMPECCABLE_AUDIT C1). */
     if (track.status === "error" || track.status === "off") setCount("candidatures", "—");
     /* « Relances à faire » (sidebar): the due follow-ups, as Candidatures lists them. */
-    setCount("relances", track.status === "ready" ? dueKeys(T.localDay()).length : "");
+    var due = track.status === "ready" ? dueKeys(T.localDay()).length : "";
+    setCount("relances", due);
+    var tab = document.querySelector('.tab-item[data-tab="candidatures"]');
+    if (tab) tab.setAttribute("aria-label", "Candidatures" + (due ? ", " + due + (due > 1 ? " relances dues" : " relance due") : ""));
   }
 
   /* ---------- record panel (Attio): split at ≥ 1280 px, overlay below ---------- */

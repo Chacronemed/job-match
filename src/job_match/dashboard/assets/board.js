@@ -357,7 +357,7 @@
     card.appendChild(meta);
     var dates = [];
     var since = daysInStatus(app, today);
-    if (since !== null) dates.push(since === 0 ? "Dans cette colonne depuis aujourd’hui" : "Dans cette colonne depuis " + since + " j");
+    if (since !== null) dates.push(since === 0 ? "Dans cette colonne depuis aujourd’hui" : "Dans cette colonne depuis " + since + "\u00a0j");
     if (app.applied_at) dates.push("Envoyée le " + shortDay(app.applied_at));
     if (app.interview_at) dates.push("Entretien le " + shortDay(app.interview_at));
     if (dates.length) card.appendChild(el("p", { class: "kb-dates", text: dates.join(" · ") }));

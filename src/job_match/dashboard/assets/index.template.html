@@ -49,7 +49,7 @@ __CSS__
   <span class="fill"></span>
   <span class="snapshot" id="generated-at"></span>
   <button type="button" class="icon-btn topbar-search" id="palette-btn-m" aria-label="Rechercher partout"></button>
-  <button class="foot-btn theme-toggle" id="theme-toggle" type="button" aria-pressed="false">Mode clair</button>
+  <button class="foot-btn theme-toggle" id="theme-toggle" type="button">Mode clair</button>
 </header>
 
 <main id="main" class="main" tabindex="-1">
@@ -135,7 +135,7 @@ __CSS__
       <div class="list-tools">
         <label class="searchbox">
           <span class="sr-only">Recherche</span>
-          <input type="search" id="f-search" name="q" placeholder="ex. orbital kubernetes" aria-label="Rechercher une offre, une entreprise, une compétence" autocomplete="off" spellcheck="false">
+          <input type="search" id="f-search" name="q" placeholder="ex. orbital kubernetes…" aria-label="Rechercher une offre, une entreprise, une compétence" autocomplete="off" spellcheck="false">
           <kbd aria-hidden="true">/</kbd>
         </label>
         <div class="tabline" role="group" aria-label="Sections">
@@ -145,7 +145,7 @@ __CSS__
           <button type="button" class="chip chip-stretch" data-section="stretch" aria-pressed="true">À tenter <span class="num" id="kpi-stretch">0</span></button>
         </div>
       </div>
-      <label class="sort-m"><span>Trier par</span><select id="f-sort-m" aria-label="Trier les offres"><option value="score-desc">Score, du plus haut</option><option value="score-asc">Score, du plus bas</option><option value="age_days-asc">Les plus récentes</option><option value="title-asc">Titre, A → Z</option><option value="company-asc">Entreprise, A → Z</option><option value="department-asc">Ville</option><option value="contract-asc">Contrat</option><option value="source-asc">Source</option></select></label>
+      <label class="sort-m"><span>Trier par</span><select id="f-sort-m" name="sort"><option value="score-desc">Score, du plus haut</option><option value="score-asc">Score, du plus bas</option><option value="age_days-asc">Les plus récentes</option><option value="title-asc">Titre, A → Z</option><option value="company-asc">Entreprise, A → Z</option><option value="department-asc">Ville</option><option value="contract-asc">Contrat</option><option value="source-asc">Source</option></select></label>
 
       <details class="controls" id="jobs-controls">
         <summary class="controls-summary">Filtres<span id="filters-count"></span><span class="controls-hint" id="jobs-rowcount" aria-live="polite"></span></summary>
@@ -270,12 +270,12 @@ __CSS__
   </header>
   <div class="runs-grid">
     <section class="ai-runs card" aria-labelledby="h-ai-runs">
-      <div class="section-head"><h2 id="h-ai-runs" class="section-title">Rerank IA</h2><button type="button" class="button small" id="ai-run-now" aria-label="Lancer le rerank IA maintenant" disabled>Lancer maintenant</button></div>
+      <div class="section-head"><h2 id="h-ai-runs" class="section-title">Rerank IA</h2><button type="button" class="button small" id="ai-run-now" aria-label="Lancer maintenant le rerank IA" disabled>Lancer maintenant</button></div>
       <div class="runs" id="ai-runs-list"></div>
       <p class="empty empty-sm" id="ai-runs-empty" hidden>Aucun passage de l’IA.</p>
     </section>
     <section class="ai-runs card" aria-labelledby="h-docs-runs">
-      <div class="section-head"><h2 id="h-docs-runs" class="section-title">Documents</h2><button type="button" class="button small" id="docs-run-now" aria-label="Lancer la génération des documents maintenant" disabled>Lancer maintenant</button></div>
+      <div class="section-head"><h2 id="h-docs-runs" class="section-title">Documents</h2><button type="button" class="button small" id="docs-run-now" aria-label="Lancer maintenant la génération des documents" disabled>Lancer maintenant</button></div>
       <p class="empty empty-sm">Génération des CV et lettres en attente, toutes les dix minutes ; l’état de chaque offre est dans sa fiche.</p>
     </section>
   </div>
@@ -288,7 +288,7 @@ __CSS__
     <span class="legend-item"><i class="swatch sw-stretch"></i>À tenter</span>
   </div></div>
   <div class="runs" id="runs-list"></div>
-  <p class="empty" id="runs-empty" hidden>Aucune exécution enregistrée : la première arrive avec le run quotidien, ou `job-match run` à la main.</p>
+  <p class="empty" id="runs-empty" hidden>Aucune exécution enregistrée : la première arrive avec le run quotidien, ou <code translate="no">job-match run</code> à la main.</p>
 </section>
 </main>
 </div>
@@ -297,7 +297,7 @@ __CSS__
 <nav class="tabbar" id="tabbar" aria-label="Vues (barre du bas)">
   <a class="tab-item" href="#tri" data-tab="tri" data-icon="layers"><span class="nav-label">Tri</span><span class="nav-n num" data-count="tri"></span></a>
   <a class="tab-item" href="#offres" data-tab="offres" data-icon="list"><span class="nav-label">Offres</span><span class="nav-n num" data-count="offres"></span></a>
-  <a class="tab-item" href="#candidatures" data-tab="candidatures" data-icon="briefcase-business"><span class="nav-label">Candidatures</span><span class="nav-n num" data-count="candidatures"></span><span class="tab-due num" data-count="relances" aria-label="relances dues"></span></a>
+  <a class="tab-item" href="#candidatures" data-tab="candidatures" data-icon="briefcase-business"><span class="nav-label">Candidatures</span><span class="nav-n num" data-count="candidatures"></span><span class="tab-due num" data-count="relances" aria-hidden="true"></span></a>
   <button type="button" class="tab-item tab-more" id="tab-more" aria-expanded="false" aria-controls="tab-more-menu"><span class="nav-label">Plus</span></button>
   <div class="tab-more-menu" id="tab-more-menu" hidden>
     <a class="tab-more-item" href="#statistiques" data-tab="statistiques" data-icon="chart-column"><span class="nav-label">Statistiques</span></a>

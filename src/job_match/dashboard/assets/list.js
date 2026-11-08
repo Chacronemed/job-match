@@ -244,7 +244,7 @@
       td.appendChild(line);
       /* The quiet facts on one line under the title; the sortable cells stay in the row for the
          sort and the tests, hidden. */
-      var age = typeof j.age_days === "number" ? (j.age_days === 0 ? "aujourd’hui" : j.age_days + " j") : "";
+      var age = typeof j.age_days === "number" ? (j.age_days === 0 ? "aujourd’hui" : j.age_days + "\u00a0j") : "";
       td.appendChild(el("span", { class: "row-meta", "aria-hidden": "true", text: [j.company || "Entreprise non communiquée", cityOf(j), j.contract !== "UNKNOWN" ? j.contract : "", sourceText(j), age].filter(Boolean).join(" · ") }));
       return td;
     },
@@ -267,7 +267,7 @@
     },
     age_days: function (j) {
       var age = typeof j.age_days === "number" ? j.age_days : null;
-      var td = cell("num col-age", "Âge", el("span", { class: age === null ? "unknown" : "", text: age === null ? "—" : age + " j" }));
+      var td = cell("num col-age", "Âge", el("span", { class: age === null ? "unknown" : "", text: age === null ? "—" : age + "\u00a0j" }));
       if (j.posted_at) td.title = "Publiée le " + fmtDate(j.posted_at);
       return td;
     },

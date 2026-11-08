@@ -234,7 +234,7 @@
   var REASON_TEXT = { none: "Sans raison donnée" };
 
   /* A rate between 0 and 1 % is « < 1 % », never « 0 % » (IMPECCABLE_AUDIT S3). */
-  function pct(r) { return r === null ? "—" : r > 0 && r < 0.005 ? "< 1 %" : Math.round(r * 100) + " %"; }
+  function pct(r) { return r === null ? "—" : r > 0 && r < 0.005 ? "<\u00a01\u00a0%" : Math.round(r * 100) + "\u00a0%"; }
   function plural(n, one, many) { return n + " " + (n > 1 ? many : one); }
   function fmtDay(iso) {
     var d = new Date(iso);

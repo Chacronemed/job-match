@@ -104,7 +104,7 @@ def _funnel(page):
     return page.eval_on_selector_all(
         "#stats-body .funnel-row",
         "rows => rows.map(r => [r.dataset.stage, r.querySelector('.funnel-n').textContent,"
-        " r.querySelector('.funnel-rate').textContent])")
+        " r.querySelector('.funnel-rate').textContent.replace(/\\u00a0/g, ' ')])")
 
 
 def _tile(page, key):
