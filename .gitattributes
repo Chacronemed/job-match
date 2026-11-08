@@ -1,1 +1,3 @@
 * text=auto eol=lf
+# Windows batch launcher of the Impeccable skill: cmd.exe needs CRLF
+*.cmd text eol=crlf

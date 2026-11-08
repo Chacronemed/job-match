@@ -282,3 +282,31 @@ The JavaScript is one file per screen since 2026-11-04 (ADR 0021): `app.js` (cor
 - Use monospace for labels.
 - Animate hover.
 - Put content behind a gesture with no button or key.
+
+## Product context and recorded drift (Impeccable pass, 2026-11-07)
+
+Added by the `design/impeccable-pass` diagnostic; nothing above was changed. The product record
+(users, the three key tasks, constraints, principles) now lives in `PRODUCT.md` at the repository
+root, where Impeccable reads it; this file stays the visual source of truth. Findings and their
+priority are in `docs/design/IMPECCABLE_AUDIT.md`; none of them is fixed yet.
+
+**Missing from the sections above (already shipped):**
+- **Statistiques** (ADR 0026) is the sixth view: `#statistiques`, sidebar and tab bar « Stats »,
+  `G` then `S`. Its numbers are computed by `stats.js JMStats.compute` from the snapshot and the
+  tracking, never from the sidebar counters.
+- **Light mode** shipped (see Light mode): the frontmatter `description` still says "Dark only
+  for now"; read it as "dark by default".
+
+**Measured drift between this file and the code** (to resolve during the fix pass, either by
+changing the code or by amending the rule here, not silently):
+- *Don't use all-caps eyebrows* — the code ships ten uppercase, letter-spaced micro-labels
+  (`.eyebrow`, `.side-label`, `.record-crumb`, `.controls-summary`, the « Trier par » bar and
+  `.sort`, `table.data th`, `.tcard-desc-title`, `.cmd-group-title`, `.help-cols h3`).
+- *Type scale xs = 11 px* — twelve rules use 10 px outside the scale (`.eyebrow`, `.side-label`,
+  `.record-crumb`, `.score small`, `.score-tag`, `.score-ai`, `.scale-tick span`, `.tab-item`,
+  the tab badge, and on phones `.row-meta` and `.logo`).
+- *One primary button per screen* — Offres at ≥ 1280 px shows « Trier les nouvelles » and the
+  record's « Candidature envoyée » (or « Garder ») as two primaries; Candidatures shows one
+  « J’ai postulé » primary per « À candidater » card.
+- *Targets ≥ 44 px below 768 px* — the Offres search field and the « Trier par » buttons are
+  36 px tall at 390 px, « Trier les nouvelles » 40 px.

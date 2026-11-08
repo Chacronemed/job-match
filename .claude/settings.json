@@ -1,5 +1,16 @@
 {
   "enabledPlugins": {
-    "frontend-design@claude-plugins-official": true
+    "frontend-design@claude-plugins-official": false
+  },
+  "permissions": {
+    "deny": [
+      "Skill(design-taste-frontend)",
+      "Skill(frontend-design)",
+      "Skill(frontend-design:frontend-design)"
+    ]
+  },
+  "env": {
+    "IMPECCABLE_LIVE_COPY_AGENT": "off",
+    "IMPECCABLE_NO_TELEMETRY": "1"
   }
 }
