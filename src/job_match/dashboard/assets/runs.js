@@ -2,6 +2,13 @@
 (function (JM) {
   "use strict";
 
+  /* RejectionReason (domain/models.py) and the source keys, as the rest of the page says them. */
+  var REASON_TEXT = {
+    EXPERIENCE: "trop d’expérience demandée", CONTRACT: "contrat", LOCATION: "lieu", TITLE: "intitulé",
+    NOT_RELEVANT: "hors sujet", RESERVED_RQTH: "réservée RQTH"
+  };
+  var SOURCE_TEXT = { france_travail: "France Travail", adzuna: "Adzuna", jooble: "Jooble", ats: "Pages carrière" };
+
   /* From the other files (app.js first; the screens after it): values are read once,
      functions through the namespace at call time, so the load order never matters. */
   var S = JM.S;
@@ -99,6 +106,7 @@
       if (r.stale_links_dropped) stats.appendChild(stat("liens obsolètes supprimés", r.stale_links_dropped));
       card.appendChild(stats);
 
+      /* The pipeline's codes in the page's words (IMPECCABLE_AUDIT E1); an unknown code shows as is. */
       var reasons = Object.keys(r.rejected_by_reason || {}).sort(function (a, b) {
         return r.rejected_by_reason[b] - r.rejected_by_reason[a];
       });
@@ -106,7 +114,7 @@
         var p = el("p", { class: "run-reasons" }, ["Rejets par motif (une offre peut échouer à plusieurs filtres) : "]);
         reasons.forEach(function (k, i) {
           if (i) p.appendChild(document.createTextNode(" · "));
-          p.appendChild(document.createTextNode(k.toLowerCase() + " "));
+          p.appendChild(document.createTextNode((REASON_TEXT[k] || k.toLowerCase()) + " "));
           p.appendChild(el("b", { text: String(r.rejected_by_reason[k]) }));
         });
         card.appendChild(p);
@@ -118,7 +126,7 @@
         sources.forEach(function (name) {
           var s = r.by_source[name] || {};
           var parts = [
-            name + ": ",
+            (SOURCE_TEXT[name] || name) + " : ",
             el("b", { text: String(s.fetched || 0) }), " récupérées, ",
             el("b", { text: String(s.eligible || 0) }), " éligibles, ",
             el("b", { text: String(s.calls || 0) }), " appels"
