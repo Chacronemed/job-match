@@ -172,8 +172,8 @@ kbd.kbd-i .i { width: 12px; height: 12px; }
 .controls { flex: none; border-bottom: 1px solid var(--line); }
 .controls-summary { display: flex; align-items: center; gap: 4px 10px; min-height: 36px; padding: 0 18px; cursor: pointer; list-style: none; color: var(--ink-3); font-size: var(--fs-xs); font-weight: 600; }
 .controls-summary::-webkit-details-marker { display: none; }
-.controls-summary::after { content: ""; width: 5px; height: 5px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); margin: -3px 0 0 -2px; transition: transform var(--d-fast) var(--ease); }
-.controls[open] .controls-summary::after { transform: rotate(-135deg); margin-top: 3px; }
+.controls-summary::after { content: ""; width: 5px; height: 5px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-3px) rotate(45deg); margin: 0 0 0 -2px; transition: transform var(--d-fast) var(--ease); }
+.controls[open] .controls-summary::after { transform: translateY(3px) rotate(-135deg); }
 .controls-summary:hover { color: var(--ink); }
 .controls-summary:focus-visible { outline-offset: -2px; }
 .controls-hint { margin-left: auto; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--ink-3); }
@@ -293,7 +293,7 @@ table.data.jobs tr.details td { display: block; padding: 0 17px 16px 17px; borde
 .tri-count:empty + .tri-left { margin-left: auto; }
 .tri-left { color: var(--ink-3); }
 .progress { display: block; width: 100%; height: 5px; margin: 0 0 16px; border-radius: 8px; background: var(--slate-5); overflow: hidden; flex: none; }
-.progress i { display: block; height: 100%; background: var(--accent); transform-origin: left; transform: scaleX(0); transition: transform var(--d-slow) var(--ease); }
+.progress i { display: block; height: 100%; background: var(--accent); transform-origin: left; transform: scaleX(0); transition: transform var(--duration-quick) var(--ease); }
 .tri-pending { display: flex; align-items: center; gap: var(--s3); margin: 0 0 12px; padding: var(--s2) var(--s3); border-radius: var(--r); background: var(--red-3); color: var(--red-11); }
 .tri-stack { flex: 1; min-height: 0; display: flex; flex-direction: column; padding-bottom: 12px; }
 .tri-stack:empty { display: none; }
@@ -469,10 +469,10 @@ table.data.jobs tr.details td { display: block; padding: 0 17px 16px 17px; borde
 .ledger-count:hover { color: var(--ink); }
 .ledger-count-note { color: var(--ink-3); }
 .ledger-pills, .ledger-unlisted { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; color: var(--ink-3); font-size: var(--fs-sm); }
-.ledger.enter .ledger-line { animation: line-in var(--d-slow) var(--ease) both; animation-delay: calc(var(--i) * 45ms + 60ms); }
-.ledger.enter .scale-fill { animation: fill-in var(--d-slow) var(--ease) both; animation-delay: 300ms; }
-.ledger.enter .ledger-gap { animation: fade-in var(--d-slow) ease-out both; animation-delay: 380ms; }
-@keyframes line-in { from { opacity: 0; transform: translateY(4px); } }
+.ledger.enter .ledger-line { animation: line-in var(--duration-quick) var(--ease) both; animation-delay: calc(var(--i) * var(--duration-stagger)); }
+.ledger.enter .scale-fill { animation: fill-in var(--duration-fast) var(--ease) both; animation-delay: 120ms; }
+.ledger.enter .ledger-gap { animation: fade-in var(--duration-quick) var(--ease) both; }
+@keyframes line-in { from { opacity: 0; transform: translateY(var(--distance-micro)); } }
 @keyframes fill-in { from { transform: scaleX(0); } }
 @keyframes fade-in { from { opacity: 0; } }
 
@@ -534,7 +534,7 @@ table.data.jobs tr.details td { display: block; padding: 0 17px 16px 17px; borde
     position: fixed; top: var(--s2); right: var(--s2); bottom: var(--s2); z-index: 20; width: min(var(--panel-w), calc(100vw - 16px)); margin: 0;
     border-color: var(--line-3); box-shadow: var(--overlay-shadow); animation: slide-in var(--d-slow) var(--ease);
   }
-  .record.closing { animation: slide-out var(--d) ease-out forwards; }
+  .record.closing { animation: slide-out var(--d) var(--ease) forwards; }
 }
 @keyframes slide-in { from { transform: translateX(calc(100% + 16px)); } }
 @keyframes slide-out { to { transform: translateX(calc(100% + 16px)); } }
@@ -645,7 +645,7 @@ select.posting-status { min-height: 32px; }
 .kb-due-list .link-btn { min-width: 0; max-width: 46ch; text-align: left; font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kb-due-late { font-size: var(--fs-xs); color: var(--amber-11); font-variant-numeric: tabular-nums; }
 .kb-board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; align-items: stretch; flex: 1; min-height: 0; }
-.kb-col { display: flex; flex-direction: column; min-width: 0; min-height: 200px; padding: 13px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); transition: background var(--d-fast); }
+.kb-col { display: flex; flex-direction: column; min-width: 0; min-height: 200px; padding: 13px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); transition: background-color var(--d-fast) var(--ease); }
 .kb-col.is-over { background: var(--accent-soft); }
 .kb-col-title { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; padding: 0 2px 12px; border-bottom: 1px solid var(--line); font-size: var(--fs-sm); font-weight: 650; }
 .kb-col-title::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--ink-3); flex: none; }
@@ -811,11 +811,10 @@ dialog { color: var(--ink); overscroll-behavior: contain; }
   padding: 0; margin: 12vh auto auto; width: min(640px, calc(100vw - 32px)); max-height: 76vh;
   background: var(--surface); border: 1px solid var(--line-3); border-radius: 11px; box-shadow: var(--overlay-shadow);
 }
-.palette[open], .help[open] { animation: pal-in var(--d) var(--ease); }
-.palette.closing, .help.closing { animation: pal-out var(--d-fast) ease-out forwards; }
-.palette::backdrop, .help::backdrop { background: rgba(0, 0, 0, 0.45); animation: fade-in var(--d) ease-out; }
-@keyframes pal-in { from { opacity: 0; transform: scale(0.98) translateY(-4px); } }
-@keyframes pal-out { to { opacity: 0; transform: scale(0.98) translateY(-4px); } }
+/* The palette opens on ⌘K, many times a day: no animation (review-animations). The help keeps a fade. */
+.help[open] { animation: fade-in var(--duration-quick) var(--ease); }
+.help.closing { animation: vt-out var(--duration-quick) var(--ease) forwards; }
+.palette::backdrop, .help::backdrop { background: rgba(0, 0, 0, 0.45); }
 .cmd-search { display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 var(--s3) 0 var(--s4); border-bottom: 1px solid var(--line); }
 .cmd-search-icon { color: var(--ink-3); }
 .cmd-input { flex: 1; min-width: 0; height: 100%; background: none; border: 0; outline: none; font-size: var(--fs-md); caret-color: var(--accent-ink); }
@@ -853,14 +852,14 @@ dialog { color: var(--ink); overscroll-behavior: contain; }
   padding: 6px 8px 6px var(--s3); background: var(--raised); border: 1px solid var(--line-3); border-radius: 9px; box-shadow: var(--overlay-shadow);
 }
 .toast.is-in { animation: toast-in var(--d-slow) var(--ease); }
-.toast.leaving { animation: toast-out var(--d) ease-out forwards; }
+.toast.leaving { animation: toast-out var(--d) var(--ease) forwards; }
 .toast-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
 .toast .link-btn { min-height: 28px; }
 .toast input[type="date"] { min-height: 28px; width: auto; padding: 2px 8px; }
-@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 12px); } }
-@keyframes toast-out { to { opacity: 0; transform: translate(-50%, 8px); } }
-@keyframes toast-in-top { from { opacity: 0; transform: translate(-50%, -12px); } }
-@keyframes toast-out-top { to { opacity: 0; transform: translate(-50%, -8px); } }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, var(--distance-base)); } }
+@keyframes toast-out { to { opacity: 0; transform: translate(-50%, var(--distance-base)); } }
+@keyframes toast-in-top { from { opacity: 0; transform: translate(-50%, calc(-1 * var(--distance-base))); } }
+@keyframes toast-out-top { to { opacity: 0; transform: translate(-50%, calc(-1 * var(--distance-base))); } }
 
 /* ---------- skeletons ---------- */
 .sk { display: block; background: var(--slate-4); border-radius: 4px; animation: sk 1.4s ease-in-out infinite; }
@@ -873,12 +872,12 @@ dialog { color: var(--ink); overscroll-behavior: contain; }
 
 /* ---------- View Transitions ---------- */
 ::view-transition-group(*) { animation-duration: var(--d-slow); animation-timing-function: var(--ease); }
-::view-transition-old(main) { animation: vt-out var(--d-fast) ease-out both; }
+::view-transition-old(main) { animation: vt-out var(--d-fast) var(--ease) both; }
 ::view-transition-new(main) { animation: vt-in var(--d-slow) var(--ease) both; }
 html:active-view-transition-type(record)::view-transition-old(main),
 html:active-view-transition-type(record)::view-transition-new(main) { animation: none; mix-blend-mode: normal; height: 100%; object-fit: none; object-position: left top; }
 ::view-transition-new(record):only-child { animation: vt-slide-in var(--d-slow) var(--ease); }
-::view-transition-old(record):only-child { animation: vt-slide-out var(--d) ease-out both; }
+::view-transition-old(record):only-child { animation: vt-slide-out var(--d) var(--ease) both; }
 @keyframes vt-out { to { opacity: 0; } }
 @keyframes vt-in { from { opacity: 0; transform: translateY(6px); } }
 @keyframes vt-slide-in { from { transform: translateX(40px); opacity: 0; } }
@@ -1113,10 +1112,16 @@ html:active-view-transition-type(record)::view-transition-new(main) { animation:
 @media (pointer: coarse) { .kbd-group { display: none; } }
 @media (pointer: fine) { html { overscroll-behavior: none; } }
 
+/* Reduced motion: gentler, not nothing (review-animations). Movement goes; short fades stay,
+   so a state change is still seen. Dragging is direct manipulation and follows the finger. */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after, ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) {
-    animation: none !important; transition: none !important;
-  }
+  *, *::before, *::after { transition-property: opacity, color, background-color, border-color !important; }
+  .ledger.enter .ledger-line, .ledger.enter .scale-fill, .ledger.enter .ledger-gap, .sk { animation: none; }
+  .record, .toast.is-in, .help[open] { animation-name: fade-in; }
+  .record.closing, .toast.leaving, .help.closing { animation-name: vt-out; }
+  ::view-transition-group(*) { animation: none; }
+  ::view-transition-new(*), ::view-transition-new(record):only-child { animation: fade-in var(--duration-quick) var(--ease) both; }
+  ::view-transition-old(*), ::view-transition-old(record):only-child { animation: vt-out var(--duration-quick) var(--ease) both; }
 }
 
 /* Phones: the column with a follow-up due comes first, not under every « À candidater » (C5). */

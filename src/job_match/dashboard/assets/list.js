@@ -618,7 +618,7 @@
       else row.toggleDetails();
       return true;
     }
-    if (ev.key === "o") { openRecord(j, row); return true; }
+    if (ev.key === "o") { openRecord(j, row, { instant: true }); return true; }
     return false;
   }
 

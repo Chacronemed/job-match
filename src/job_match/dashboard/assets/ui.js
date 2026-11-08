@@ -6,7 +6,8 @@
   "use strict";
   var I = root.JMIcons;
   var S = root.JMScore;
-  var EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
+  /* --ease-smooth-out (tokens.css, the transitions.dev scale), for the Web Animations. */
+  var EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
 
   function reduced() {
     return !!(root.matchMedia && root.matchMedia("(prefers-reduced-motion: reduce)").matches);
@@ -57,7 +58,8 @@
   /* A view change or a layout change through the View Transitions API; a plain update when the
      API is missing or motion is reduced. `types` lets the CSS style one kind of transition. */
   function transition(update, types) {
-    if (!document.startViewTransition || reduced()) { update(); return Promise.resolve(); }
+    /* under reduced motion the CSS turns the transition into a short cross-fade */
+    if (!document.startViewTransition) { update(); return Promise.resolve(); }
     var vt;
     try { vt = document.startViewTransition({ update: update, types: types || [] }); }
     catch (e) { vt = document.startViewTransition(update); }  /* browsers without `types` */
@@ -89,9 +91,17 @@
      opts.onDecide(dir, release) takes over the flight. */
   function draggable(card, opts) {
     var s = null;
+    var settle = null;  /* the spring-back in flight: a new grab starts from where it is */
     card.addEventListener("pointerdown", function (ev) {
       if (ev.button !== 0 || ev.target.closest("a, button, input, select, textarea") || (opts.canStart && !opts.canStart())) return;
-      s = { id: ev.pointerId, x: ev.clientX, y: ev.clientY, dx: 0, dy: 0, samples: [[ev.timeStamp, ev.clientX]] };
+      var ox = 0, oy = 0;
+      if (settle) {
+        var m = new DOMMatrix(getComputedStyle(card).transform);
+        ox = m.e; oy = m.f * 4;  /* the drag paints dy × 0.25 */
+        settle.cancel();
+        settle = null;
+      }
+      s = { id: ev.pointerId, x: ev.clientX - ox, y: ev.clientY - oy, dx: 0, dy: 0, samples: [[ev.timeStamp, ev.clientX]] };
       card.setPointerCapture(ev.pointerId);
       card.classList.add("is-dragging");
     });
@@ -119,7 +129,10 @@
       var from = card.style.transform;
       card.style.transform = "";
       if (opts.onMove) opts.onMove(0);
-      if (from && !reduced()) card.animate([{ transform: from }, { transform: "none" }], { duration: 200, easing: EASE });
+      if (from && !reduced()) {
+        settle = card.animate([{ transform: from }, { transform: "none" }], { duration: 200, easing: EASE });
+        settle.onfinish = function () { settle = null; };
+      }
     }
     card.addEventListener("pointerup", end);
     card.addEventListener("pointercancel", end);
@@ -128,11 +141,11 @@
   /* The card leaves at the release speed (inertia); a keyboard or button decision uses a
      default speed. Returns the Animation, or null when motion is reduced. */
   function flyOut(card, dir, release) {
-    if (reduced()) return null;
+    if (reduced()) return card.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 150, easing: EASE, fill: "forwards" });
     var r = release || { dx: 0, dy: 0, v: 0 };
     var toX = dir * (root.innerWidth + 160);
     var speed = Math.max(Math.abs(r.v), 1.1);
-    var dur = Math.max(140, Math.min(300, Math.abs(toX - r.dx) / speed));
+    var dur = Math.max(120, Math.min(250, Math.abs(toX - r.dx) / speed));
     card.style.transform = "";
     return card.animate([
       { transform: "translate(" + r.dx + "px, " + r.dy + "px) rotate(" + tilt(r.dx) + "deg)" },
@@ -146,7 +159,7 @@
     card.animate([
       { transform: "translate(" + (dir * (root.innerWidth + 160)) + "px, 40px) rotate(" + (dir * 22) + "deg)" },
       { transform: "none" }
-    ], { duration: 240, easing: EASE });
+    ], { duration: 250, easing: EASE });
   }
 
   /* The card underneath rises into place. */
@@ -254,7 +267,7 @@
         rootEl.classList.toggle("is-open", on);
         sum.setAttribute("aria-expanded", on ? "true" : "false");
         body.hidden = !on;
-        if (on && animate && !reduced()) body.animate([{ opacity: 0, transform: "translateY(-4px)" }, { opacity: 1, transform: "none" }], { duration: 160, easing: EASE });
+        if (on && animate && !reduced()) body.animate([{ opacity: 0, transform: "translateY(-4px)" }, { opacity: 1, transform: "none" }], { duration: 150, easing: EASE });
       };
       sum.addEventListener("click", function () { var on = body.hidden; writeLedgerOpen(on); setOpen(on, true); });
       rootEl.appendChild(sum);

@@ -297,7 +297,8 @@
     function advance() {
       flying = null;
       tri.pos += 1;
-      triArrive = true;
+      /* The ledger's sequence plays on the first card of a batch only, not on every decision
+         (review-animations: a 100-times-a-day action stays quiet). */
       renderTri({ rise: true });
       /* On the end screen the reason step is part of it (endReasons), named after the offer. */
       if (direction === "left" && byId("tri-end").hidden) showReasons(item);
@@ -493,7 +494,7 @@
     if (opts && opts.rise) {
       U.rise(top);
       var under = stage.querySelector(".tcard.is-next");
-      if (under && !U.reduced()) under.animate([{ opacity: 0 }, { opacity: 0.6 }], { duration: 200, easing: "ease-out" });
+      if (under && !U.reduced()) under.animate([{ opacity: 0 }, { opacity: 0.6 }], { duration: 200, easing: "cubic-bezier(0.22, 1, 0.36, 1)" });
     }
   }
 
@@ -519,7 +520,7 @@
     if (ev.key === "z" || ev.key === "Z") { undoLast(); return true; }
     if (ev.key === "Enter" && !(ev.target && ev.target.closest && ev.target.closest("a, button"))) {
       var item = tri.items[tri.pos];
-      if (item && byId("tri-end").hidden) { openRecord(item.row, byId("tri-stage").querySelector(".tcard-title button")); return true; }
+      if (item && byId("tri-end").hidden) { openRecord(item.row, byId("tri-stage").querySelector(".tcard-title button"), { instant: true }); return true; }
     }
     return false;
   }

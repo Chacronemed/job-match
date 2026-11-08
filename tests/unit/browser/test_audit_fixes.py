@@ -213,3 +213,43 @@ def test_phone_tab_bar_has_four_tabs_and_more_holds_the_rest(open_dashboard, job
     assert menu.is_hidden()
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
     assert errors == []
+
+
+# ---------- Motion (review-animations / animation-performance pass) ----------
+
+def test_the_palette_opens_and_closes_without_animation(open_dashboard, job_keys):
+    page, errors = open_dashboard(_api(job_keys), hash_="#offres")
+    page.wait_for_selector(ROWS)
+    page.keyboard.press("Control+k")
+    page.wait_for_selector("dialog.palette[open]")
+    name = "getComputedStyle(document.querySelector('dialog.palette')).animationName"
+    assert page.evaluate(name) == "none"
+    page.keyboard.press("Escape")
+    page.wait_for_function("() => !document.querySelector('dialog.palette').open")
+    assert errors == []
+
+
+def test_reduced_motion_keeps_short_fades_not_movement(open_dashboard, job_keys):
+    page, errors = open_dashboard(_api(job_keys), hash_="#offres", viewport=(1024, 768))
+    page.emulate_media(reduced_motion="reduce")
+    page.wait_for_selector(ROWS)
+    page.locator(ROWS).first.click()
+    page.wait_for_function("() => !document.getElementById('record').hidden")
+    # the drawer fades in instead of sliding
+    name = "getComputedStyle(document.getElementById('record')).animationName"
+    assert page.evaluate(name) == "fade-in"
+    assert errors == []
+
+
+def test_a_drawer_reopened_while_closing_stays_open(open_dashboard, job_keys):
+    page, errors = open_dashboard(_api(job_keys), hash_="#offres", viewport=(1024, 768))
+    page.wait_for_selector(ROWS)
+    row = page.locator(ROWS).first
+    row.click()
+    page.wait_for_function("() => !document.getElementById('record').hidden")
+    page.keyboard.press("Escape")
+    row.click()  # within the 200 ms slide-out
+    page.wait_for_timeout(400)
+    assert page.evaluate("!document.getElementById('record').hidden")
+    assert page.locator("#record-title").inner_text() != ""
+    assert errors == []

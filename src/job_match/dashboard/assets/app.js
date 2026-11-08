@@ -674,7 +674,6 @@ window.JM = window.JM || {};
     toastHeld = false;
     toastOnEscape = null;
     if (toast.hidden) return;
-    if (U.reduced()) { toast.hidden = true; return; }
     toast.classList.remove("is-in");
     toast.classList.add("leaving");
     clearTimeout(toastLeave);
@@ -702,10 +701,12 @@ window.JM = window.JM || {};
     (actions || []).forEach(function (a) { toastActions.appendChild(toastButton(a)); });
     toastActions.hidden = !toastActions.childNodes.length;
     clearTimeout(toastLeave);
+    /* shown again while leaving: it comes back in, it does not snap to full opacity */
+    var wasLeaving = toast.classList.contains("leaving");
     toast.classList.remove("leaving");
     var wasHidden = toast.hidden;
     toast.hidden = false;
-    if (wasHidden) {
+    if (wasHidden || wasLeaving) {
       toast.classList.remove("is-in");
       void toast.offsetWidth;  /* restart the slide-in */
       toast.classList.add("is-in");
@@ -964,6 +965,7 @@ window.JM = window.JM || {};
       record.appendChild(bar);
       record.appendChild(recordBody(j));
       record.appendChild(el("div", { class: "record-foot" }, recordActions(j)));
+      clearTimeout(R.closing);
       record.hidden = false;
       record.classList.remove("closing");
       document.body.classList.add("record-open");
@@ -975,7 +977,8 @@ window.JM = window.JM || {};
       syncHash();
     }
     /* A quiet open is synchronous: the state is set before the next render looks at it. */
-    var shown = (!was && !quiet && wideScreen()) ? U.transition(fill, ["record"]) : (fill(), Promise.resolve());
+    var instant = !!(opts && opts.instant);  /* opened from the keyboard: no View Transition */
+    var shown = (!was && !quiet && !instant && wideScreen()) ? U.transition(fill, ["record"]) : (fill(), Promise.resolve());
     shown.then(function () {
       /* Quiet: the focus stays where it was (a row, a field), or nowhere; a focus that was
          inside the panel before it was redrawn goes to its title, as a user open does. */
@@ -1003,9 +1006,14 @@ window.JM = window.JM || {};
     }
     R.open = false;
     setInert();  /* the page is focusable again before the focus goes back to it */
-    if (animate === false || U.reduced()) done();
+    if (animate === false) done();
     else if (wideScreen()) U.transition(done, ["record"]);
-    else { record.classList.add("closing"); setTimeout(done, 160); }
+    else {
+      /* a reopen before the slide ends cancels it (openRecord clears R.closing) */
+      record.classList.add("closing");
+      clearTimeout(R.closing);
+      R.closing = setTimeout(done, 200);
+    }
     if (back && document.contains(back)) back.focus({ preventScroll: true });
   }
 
@@ -1033,7 +1041,7 @@ window.JM = window.JM || {};
       }) });
     }
     groups.push({ title: "Aller à", items: TABS.map(function (t) {
-      return { label: "Aller à " + VIEW_TITLE[t], icon: VIEW_ICON[t], keys: ["G", GO_KEYS[t]], run: function () { showTab(t, true, true); } };
+      return { label: "Aller à " + VIEW_TITLE[t], icon: VIEW_ICON[t], keys: ["G", GO_KEYS[t]], run: function () { showTab(t, true, false); } };
     }) });
     var offers = q ? rows : JM.tri.items.slice(JM.tri.pos, JM.tri.pos + 4).map(function (it) { return it.row; });
     groups.push({ title: q ? "Offres" : "À trier ensuite", limit: 6, items: offers.map(function (r) {
@@ -1067,7 +1075,7 @@ window.JM = window.JM || {};
     if (performance.now() - gAt < 900) {
       gAt = -Infinity;
       var to = { t: "tri", c: "candidatures", o: "offres", s: "statistiques", l: "leads", e: "executions" }[ev.key.toLowerCase()];
-      if (to) { ev.preventDefault(); showTab(to, true, true); return; }
+      if (to) { ev.preventDefault(); showTab(to, true, false); return; }  /* a key: no animation */
     }
     if (V.tab === "tri" && triKeys(ev)) { ev.preventDefault(); return; }
     if (V.tab === "offres" && listKeys(ev)) { ev.preventDefault(); return; }

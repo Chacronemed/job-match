@@ -310,3 +310,40 @@ changing the code or by amending the rule here, not silently):
   « J’ai postulé » primary per « À candidater » card.
 - *Targets ≥ 44 px below 768 px* — the Offres search field and the « Trier par » buttons are
   36 px tall at 390 px, « Trier les nouvelles » 40 px.
+
+## Decisions applied in the fix pass (2026-11-08, `design/impeccable-pass`)
+
+These supersede the matching lines above where they differ; the audit IDs are in
+`docs/design/IMPECCABLE_AUDIT.md`.
+
+- **No eyebrow, no slogan.** A view's page top is its `h1` (the view's name and its count) and a
+  sub line built from the data. Micro-labels are sentence case, never uppercase or letter-spaced;
+  the smallest size is `--fs-xs` (11 px) everywhere (G1, G2).
+- **Selected row.** The `--active` overlay, no side stripe; the keyboard cursor adds the focus
+  ring; the row carries `aria-selected`. At ≥ 1280 px the split record **follows the cursor**
+  (J / K / arrows / Tab, drawn after 90 ms of rest); X / S / A always act on the offer the record
+  shows (O10).
+- **One primary per screen.** Offres: the record's action; « Trier les nouvelles » is secondary
+  and hidden when the Tri is empty. The chosen « Ton avis » is outlined in the accent, not filled.
+  Kanban cards have no primary (O2, C6).
+- **Unknown is not zero.** Without the tracking, counts read « — » and Candidatures says « suivi
+  indisponible » instead of drawing empty columns (C1).
+- **Tri end screen = « Aujourd'hui ».** Under the progress, not at the bottom: the session's
+  result, the last drop's reason (keys 1–4), then four links — offers to triage, follow-ups due,
+  files ready to send, replies to confirm — counted by `triage.js todayAgenda` with the counters'
+  rules, and a sentence that says why the Tri is empty from the data. No seventh view, no tab.
+  The reason step has no timer (T5, T7, §8).
+- **Clamped titles.** Tri card, record and Kanban titles stop at three lines; the full title is
+  the tooltip and the record (T1, O5, C4).
+- **Phone tab bar.** Four items: Tri, Offres, Candidatures (with an amber badge for the due
+  follow-ups) and « Plus » (Statistiques, Leads, Exécutions). Offres sorts with a native select
+  on phones; every control there is ≥ 44 px (G5, O3, O8).
+- **Words, not codes.** Rejection reasons, sources, gone offers (« Offre retirée (France
+  Travail) ») and the score scale (« seuil 60 ») are said in French (E1, C3, T3).
+- **Motion on the transitions.dev scale.** `tokens.css` carries the free tokens this UI uses
+  (`--duration-quick` 150 ms, `--duration-fast` 250 ms, `--duration-stagger` 40 ms,
+  `--ease-smooth-out`, `--distance-*`, `--scale-small`); `--d-*` and `--ease` are aliases. Keyboard
+  actions (⌘K palette, G + letter, `O`, `↵`) open without animation; the ledger's sequence plays
+  on the first card of a batch, not on every decision; reduced motion keeps 150 ms fades and drops
+  movement (not a global kill). `ui.js flip` exists but no list calls it today: rows re-render in
+  place.
