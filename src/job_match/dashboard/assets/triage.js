@@ -252,11 +252,60 @@
     };
   }
 
+  /* « Aujourd'hui » (IMPECCABLE_AUDIT §8, the Tri's end screen): what is left to do today,
+     every number from the same rules as the counters. `tracking` false: the Worker's state is
+     unknown, so the four counts that depend on it are null (said « — »), never 0.
+     o: {rows, apps, runAt, minScore, ai, runs, documents, inbox, dueCount, exclude, tracking}.
+     Returns {toTriage, due, docsReady, replies, why} where `why` explains an empty Tri from
+     the data: {kind: "outage"|"nothing"|"filtered"|"done", sources, fetched, triaged, below,
+     offTopic}. */
+  function todayAgenda(o) {
+    var rows = o.rows || [];
+    var apps = o.apps || {};
+    var tracking = !!o.tracking;
+    var toTriage = triageQueue(rows, apps, o.runAt, o.minScore, o.ai).length;
+    var docsReady = null;
+    var replies = null;
+    if (tracking) {
+      var docs = o.documents || {};
+      docsReady = Object.keys(apps).filter(function (k) {
+        return T.statusOf(apps[k]) === "to_apply" && docs[k] && docs[k].status === "ready"
+          && !(o.exclude && o.exclude[k]);
+      }).length;
+      replies = ((o.inbox && o.inbox.to_confirm) || []).length;
+    }
+    var why = null;
+    if (toTriage === 0) {
+      var last = null;
+      (o.runs || []).forEach(function (r) {
+        if (r && r.pipeline === "jobs" && (!last || time(r.started_at) > time(last.started_at))) last = r;
+      });
+      var down = last && Array.isArray(last.outages) ? last.outages.map(function (x) { return x && (x.label || x.source); }).filter(Boolean) : [];
+      var floor = typeof o.minScore === "number" ? o.minScore : null;
+      var below = rows.filter(function (r) { return floor !== null && typeof r.score === "number" && r.score < floor; }).length;
+      var offTopic = rows.filter(function (r) {
+        var v = aiOf(r, o.ai);
+        return v && v.level === "hors_sujet" && T.rowStatus(r, apps) === "to_review";
+      }).length;
+      var triaged = tracking ? rows.filter(function (r) { return T.rowStatus(r, apps) !== "to_review"; }).length : null;
+      var kind = !rows.length ? (down.length ? "outage" : "nothing") : (triaged ? "done" : "filtered");
+      why = { kind: kind, sources: down, fetched: last ? last.fetched : null, triaged: triaged, below: below, offTopic: offTopic };
+    }
+    return {
+      toTriage: tracking ? toTriage : null,
+      due: tracking ? o.dueCount : null,
+      docsReady: docsReady,
+      replies: replies,
+      why: why
+    };
+  }
+
   var api = {
     BATCH: BATCH,
     BOARD: BOARD,
     triProgress: triProgress,
     sidebarCounts: sidebarCounts,
+    todayAgenda: todayAgenda,
     UNDO_MAX: UNDO_MAX,
     REASONS: REASONS,
     SWIPE: SWIPE,

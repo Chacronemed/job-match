@@ -281,6 +281,8 @@ table.data.jobs tr.details td { display: block; padding: 0 17px 16px 17px; borde
 
 /* ---------- Tri: the card, centred and wide ---------- */
 .tri-frame { display: flex; flex-direction: column; flex: 1; min-height: 0; width: 100%; max-width: 745px; margin: 0 auto; }
+/* The title sits on the card's column, not on the page's left edge (IMPECCABLE_AUDIT T5). */
+.view-tri .page-top { width: 100%; max-width: 745px; margin-left: auto; margin-right: auto; }
 .tri-steps { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s3); margin: 0 0 10px; font-size: var(--fs-sm); }
 .tri-count { color: var(--ink); font-weight: 600; }
 .tri-count:empty + .tri-left { margin-left: auto; }
@@ -289,6 +291,7 @@ table.data.jobs tr.details td { display: block; padding: 0 17px 16px 17px; borde
 .progress i { display: block; height: 100%; background: var(--accent); transform-origin: left; transform: scaleX(0); transition: transform var(--d-slow) var(--ease); }
 .tri-pending { display: flex; align-items: center; gap: var(--s3); margin: 0 0 12px; padding: var(--s2) var(--s3); border-radius: var(--r); background: var(--red-3); color: var(--red-11); }
 .tri-stack { flex: 1; min-height: 0; display: flex; flex-direction: column; padding-bottom: 12px; }
+.tri-stack:empty { display: none; }
 /* The front card sizes the pile, up to the stage's height; the back card fills the same box. */
 .tri-pile { position: relative; display: flex; flex-direction: column; max-height: 100%; min-height: 0; }
 .tcard {
@@ -313,6 +316,8 @@ table.data.jobs tr.details td { display: block; padding: 0 17px 16px 17px; borde
 .tcard-open {
   display: block; width: 100%; padding: 0; border: 0; background: none; text-align: left; cursor: pointer; color: var(--ink);
   font-size: 24px; font-weight: 650; letter-spacing: -0.04em; line-height: 1.22; text-wrap: balance; overflow-wrap: anywhere;
+  /* Three lines at most: the ledger stays in view; the full title is in the tooltip and the record (T1). */
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden;
 }
 .tcard-open:hover { color: var(--accent-ink); }
 .tcard-sub { margin: 6px 0 0; color: var(--ink-2); font-size: var(--fs-sm); overflow-wrap: anywhere; }
@@ -376,11 +381,25 @@ table.data.jobs tr.details td { display: block; padding: 0 17px 16px 17px; borde
 .chip-btn { display: inline-flex; align-items: center; gap: var(--s2); height: 32px; padding: 0 6px 0 10px; border-radius: var(--r); border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); }
 .chip-btn:hover { background: var(--slate-4); }
 .chip-btn.ghost { background: none; color: var(--ink-3); padding: 0 10px; }
-.tri-end { display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--s3); margin: auto 0; padding: 48px 24px; outline: none; border: 1px dashed var(--line-3); border-radius: 12px; }
-.tri-end .i { width: 24px; height: 24px; color: var(--green-11); }
+.tri-end { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s3); margin: 0 0 16px; padding: 24px 28px; outline: none; border: 1px solid var(--line-2); border-radius: 12px; background: var(--surface); overflow-y: auto; min-height: 0; }
+.tri-end > .i { width: 24px; height: 24px; color: var(--green-11); }
 .tri-end h2 { margin: 0; font-size: var(--fs-lg); font-weight: 600; letter-spacing: var(--tight); }
-.tri-end p { margin: 0; color: var(--ink-2); max-width: 40ch; }
-.tri-end-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s2); }
+.tri-end p { margin: 0; color: var(--ink-2); max-width: 60ch; }
+.tri-end-reasons { display: flex; flex-direction: column; gap: var(--s2); width: 100%; padding: 12px 14px; border-radius: var(--r); background: var(--raised); }
+.tri-end-reasons .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+/* « Aujourd'hui »: one line per thing left to do, the count first, each a link to where it is done. */
+.today { width: 100%; }
+.today-title { margin: 4px 0 6px; font-size: var(--fs); font-weight: 600; color: var(--ink); }
+.today-list { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+.today-list li { border-bottom: 1px solid var(--line); }
+.today-link { display: flex; align-items: baseline; gap: 10px; min-height: 40px; padding: 9px 4px; color: var(--ink-2); text-decoration: none; }
+.today-link:hover { background: var(--hover); text-decoration: none; }
+.today-n { min-width: 2.5ch; text-align: right; color: var(--ink-3); font-weight: 600; }
+.today-link.is-due .today-n { color: var(--ink); }
+.today-link.is-due .today-label { color: var(--ink); }
+.today-hint { margin-left: auto; color: var(--ink-3); font-size: var(--fs-xs); }
+.tri-end .today-why { margin-top: 10px; color: var(--ink-3); font-size: var(--fs-sm); }
+.tri-end-actions { display: flex; flex-wrap: wrap; gap: var(--s2); }
 .sk-card { cursor: default; gap: var(--s4); padding: 24px; }
 
 /* ---------- « Relevé du score » (ui.js ledger) ---------- */
@@ -421,7 +440,9 @@ table.data.jobs tr.details td { display: block; padding: 0 17px 16px 17px; borde
 .scale-fill { position: absolute; inset: 0; background: var(--accent); transform-origin: left; transform: scaleX(var(--to)); }
 .scale-fill.band-strong { background: var(--green-9); }
 .scale-fill.band-stretch { background: var(--amber-9); }
-.scale-tick { position: absolute; top: 0; width: 1px; height: 13px; background: var(--slate-8); }
+/* The tick's line is a pseudo-element, so its label sits on the card, not on the 1 px line. */
+.scale-tick { position: absolute; top: 0; width: 1px; height: 13px; }
+.scale-tick::before { content: ""; position: absolute; inset: 0; background: var(--slate-8); }
 .scale-tick span { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: var(--fs-xs); color: var(--ink-2); }
 .scale-tick:nth-child(3) { height: 25px; }
 .scale-tick:nth-child(3) span { top: 27px; }  /* the two thresholds are close: one label per line */
@@ -1004,7 +1025,8 @@ html:active-view-transition-type(record)::view-transition-new(main) { animation:
   .tri-reasons-title { font-size: var(--fs); margin-bottom: 6px; }
   .tri-reason-chips { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; margin: 0 calc(var(--s3) * -1); padding: 0 var(--s3); }
   .chip-btn { flex: none; }
-  .tri-end { padding: 32px 16px; }
+  .tri-end { padding: 20px 16px; }
+  .today-link { min-height: 44px; }
   /* Candidatures: the columns one under the other. */
   .page-top { flex-direction: column; }
   .kb-board { grid-template-columns: 1fr; overflow: visible; padding-bottom: 0; }
@@ -1073,4 +1095,12 @@ html:active-view-transition-type(record)::view-transition-new(main) { animation:
   *, *::before, *::after, ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) {
     animation: none !important; transition: none !important;
   }
+}
+
+/* Short viewports (a phone held sideways, 200 % zoom): the Tri title is read by screen readers
+   but gives its height to the card (IMPECCABLE_AUDIT T2). */
+@media (max-height: 560px) {
+  .view-tri .page-top { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .view-tri .tri-steps { margin-bottom: 4px; }
+  .view-tri .progress { margin-bottom: 8px; }
 }

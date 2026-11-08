@@ -44,7 +44,7 @@
   };
   var undo = X.undoStack();
   var triLive = byId("tri-live");
-  var reasonTimer = null;
+  var lastDrop = null;  /* the last offer dropped without a reason: the end screen asks */
 
   var retry = X.retryQueue(function (op) {
     var p = op.payload;
@@ -173,7 +173,7 @@
     /* The title opens the record; the company and the place under it; then the facts as
        chips, in a fixed order. Salary only when the text states it on its own line
        (description.js), word for word. Unknown facts say so. */
-    var open = el("button", { type: "button", class: "tcard-open", title: "Ouvrir la fiche", text: j.title || "—", tabindex: isNext ? "-1" : null });
+    var open = el("button", { type: "button", class: "tcard-open", title: j.title ? j.title + " — ouvrir la fiche" : "Ouvrir la fiche", text: j.title || "—", tabindex: isNext ? "-1" : null });
     open.addEventListener("click", function () { openRecord(j, open); });
     body.appendChild(el("div", null, [
       el("h2", { class: "tcard-title" }, open),
@@ -228,8 +228,9 @@
   /* The reason step sits above the buttons; the buttons stay (AUDIT P2-22), and the next
      decision closes it without a reason. */
   function hideReasons() {
-    clearTimeout(reasonTimer);
     byId("tri-reasons-bar").hidden = true;
+    var inEnd = byId("tri-end").querySelector(".tri-end-reasons");
+    if (inEnd) inEnd.remove();
     reasonFor = null;
   }
 
@@ -237,6 +238,7 @@
   function giveReason(label) {
     var item = reasonFor;
     hideReasons();
+    if (item && item === lastDrop) lastDrop = null;
     if (!item || !label) return;
     T.postingsOf(item.row).slice(0, 1).forEach(function (p) {
       triDecide(p.key, label, typeof item.row.score === "number" ? item.row.score : null);
@@ -244,7 +246,8 @@
     announce("Raison enregistrée : " + T.LABEL_TEXT[label]);
   }
 
-  /* After a drop: why, in one tap or one key (1–4), for 8 seconds, named after the offer. */
+  /* After a drop: why, in one tap or one key (1–4), named after the offer. It stays until the
+     next decision, « Passer » or Échap: no timer (WCAG 2.2.1, IMPECCABLE_AUDIT T7). */
   function showReasons(item) {
     var bar = byId("tri-reasons-bar");
     var list = byId("tri-reason-chips");
@@ -262,8 +265,6 @@
     reasonFor = item;
     bar.hidden = false;
     announce(question + ". Pourquoi\u00a0? Touches 1 à 4, ou la décision suivante pour passer.");
-    clearTimeout(reasonTimer);
-    reasonTimer = setTimeout(hideReasons, 8000);
   }
 
   /* right = keep (to_apply + good_fit), left = drop (ignored; the reason is optional).
@@ -288,6 +289,7 @@
     var rule = X.SWIPE[direction];
     if (rule.label) triDecide(item.row.key, rule.label, typeof item.row.score === "number" ? item.row.score : null);
     if (direction === "right") tri.kept += 1; else tri.dropped += 1;
+    lastDrop = direction === "left" ? item : null;
     announce((direction === "right" ? "Gardée : " : "Écartée : ") + (item.row.title || "offre"));
     var stage = byId("tri-stage");
     var card = stage.querySelector(".tcard:not(.is-next)");
@@ -297,7 +299,7 @@
       tri.pos += 1;
       triArrive = true;
       renderTri({ rise: true });
-      /* No reason step on the end screen: it would ask about an offer no longer in view. */
+      /* On the end screen the reason step is part of it (endReasons), named after the offer. */
       if (direction === "left" && byId("tri-end").hidden) showReasons(item);
       updateCounts();
       /* Focus was on the card that just left: give it to the new card, not to the page. */
@@ -316,6 +318,7 @@
   }
 
   function undoLast() {
+    lastDrop = null;
     if (flying) { var f = flying; flying = null; f.anim.onfinish = null; f.advance(); }
     var entry = undo.pop();
     if (!entry) { announce("Rien à annuler."); return; }
@@ -347,6 +350,73 @@
     }
   }
 
+  /* The reason step for the last card, on the end screen: same chips and keys 1–4. */
+  function endReasons(item) {
+    var box = el("div", { class: "tri-end-reasons", role: "group", "aria-label": "Pourquoi l’avoir écartée ?" });
+    box.appendChild(el("p", { class: "tri-end-q", text: "Dernière offre écartée : " + (item.row.title || "offre sans titre") + ". Pourquoi ?" }));
+    var chips = el("div", { class: "chips" });
+    X.REASONS.forEach(function (label, i) {
+      var b = el("button", { type: "button", class: "chip-btn", "aria-keyshortcuts": String(i + 1) }, [T.LABEL_TEXT[label], U.kbd(String(i + 1))]);
+      b.addEventListener("click", function () { giveReason(label); });
+      chips.appendChild(b);
+    });
+    var skip = el("button", { type: "button", class: "chip-btn ghost", text: "Passer" });
+    skip.addEventListener("click", function () { lastDrop = null; hideReasons(); });
+    chips.appendChild(skip);
+    box.appendChild(chips);
+    reasonFor = item;
+    return box;
+  }
+
+  /* « Aujourd'hui »: what is left today, each line a link to where it is done. Counts from
+     triage.js todayAgenda (the counters' own rules); unknown says « — ». */
+  function todayBlock() {
+    var tracking = track.status === "ready";
+    var today = T.localDay();
+    var a = X.todayAgenda({
+      rows: JM.rows, apps: track.apps, runAt: JM.runAt, minScore: JM.thresholds.min_score,
+      ai: track.ai, runs: JM.runs, documents: track.documents, inbox: track.inbox,
+      dueCount: tracking ? JM.dueKeys(today).length : null,
+      exclude: tracking ? JM.archivedSet() : null, tracking: tracking
+    });
+    var box = el("section", { class: "today", "aria-labelledby": "today-title" });
+    box.appendChild(el("h3", { class: "today-title", id: "today-title", text: "Aujourd’hui" }));
+    var list = el("ul", { class: "today-list" });
+    function line(n, one, many, href, hint) {
+      var known = typeof n === "number";
+      var a2 = el("a", { class: "today-link" + (known && n > 0 ? " is-due" : ""), href: href }, [
+        el("span", { class: "today-n num", text: known ? String(n) : "—" }),
+        el("span", { class: "today-label", text: known ? (n > 1 ? many : one) : one.replace(/^./, function (c) { return c.toUpperCase(); }) }),
+        hint ? el("span", { class: "today-hint", text: hint }) : null
+      ]);
+      list.appendChild(el("li", null, a2));
+    }
+    line(a.toTriage, "offre à trier", "offres à trier", "#tri", null);
+    line(a.due, "relance due", "relances dues", "#candidatures", null);
+    line(a.docsReady, "dossier prêt à envoyer", "dossiers prêts à envoyer", "#candidatures?view=table", "CV et lettre générés");
+    line(a.replies, "réponse à confirmer", "réponses à confirmer", "#candidatures", null);
+    box.appendChild(list);
+    if (!tracking) box.appendChild(el("p", { class: "today-why", text: "Suivi indisponible : ces nombres ne sont pas connus pour l’instant." }));
+    else if (a.why) box.appendChild(el("p", { class: "today-why", text: whyText(a.why) }));
+    return box;
+  }
+
+  /* Why the Tri is empty, from the data only. */
+  function whyText(w) {
+    var plural = function (n, one, many) { return n + " " + (n > 1 ? many : one); };
+    if (w.kind === "outage") return "Source indisponible à la dernière collecte : " + w.sources.join(", ") + ". Les nouvelles offres arriveront quand elle répondra.";
+    if (w.kind === "nothing") return typeof w.fetched === "number"
+      ? "La dernière collecte a lu " + plural(w.fetched, "offre", "offres") + " ; aucune n’a passé les filtres (expérience, contrat, lieu, sujet)."
+      : "Aucune collecte enregistrée dans cet instantané.";
+    var parts = [];
+    if (w.triaged) parts.push(plural(w.triaged, "offre déjà triée", "offres déjà triées"));
+    if (w.below) parts.push(plural(w.below, "offre sous le seuil de " + JM.thresholds.min_score, "offres sous le seuil de " + JM.thresholds.min_score));
+    if (w.offTopic) parts.push(plural(w.offTopic, "offre jugée hors sujet par l’IA", "offres jugées hors sujet par l’IA"));
+    var text = parts.length ? "Tout est à jour : " + parts.join(", ") + "." : "Tout est à jour.";
+    if (w.sources.length) text += " Source indisponible à la dernière collecte : " + w.sources.join(", ") + ".";
+    return text;
+  }
+
   /* opts.rise: the card that was underneath comes up into place. */
   function renderTri(opts) {
     if (!tri.built) buildTri();
@@ -356,7 +426,7 @@
     clear(stage);
     var loading = track.status === "loading";
     var off = byId("tri-off");
-    off.hidden = canTriage() || loading;
+    off.hidden = canTriage() || loading || track.status === "error";
     ["tri-keep", "tri-drop"].forEach(function (id) { byId(id).disabled = !canTriage(); });
     if (loading) {
       byId("tri-count").textContent = "";
@@ -404,10 +474,10 @@
         end.appendChild(el("div", { class: "tri-end-actions" }, [next, toApps]));
         announce("Lot " + pr.batch + " de " + pr.batches + " terminé.");
       } else {
-        end.appendChild(el("h2", { text: "Tri terminé" }));
-        end.appendChild(el("p", { text: total === 0
-          ? "Aucune offre à examiner : tout est trié. Les nouvelles offres arrivent avec la prochaine exécution."
-          : session + ". Les offres gardées attendent dans Candidatures." }));
+        end.appendChild(el("h2", { text: total === 0 ? "Rien à trier" : "Tri terminé" }));
+        if (total) end.appendChild(el("p", { class: "tri-end-session", text: session + "." }));
+        if (lastDrop) end.appendChild(endReasons(lastDrop));
+        end.appendChild(todayBlock());
         end.appendChild(el("div", { class: "tri-end-actions" }, [toApps]));
       }
       return;
@@ -435,7 +505,7 @@
   function triKeys(ev) {
     if (record.contains(document.activeElement) || (R.open && !wideScreen())) return false;
     if (reasonFor && /^[1-4]$/.test(ev.key)) { giveReason(X.REASONS[Number(ev.key) - 1]); return true; }
-    if (ev.key === "Escape" && reasonFor) { hideReasons(); return true; }
+    if (ev.key === "Escape" && reasonFor) { lastDrop = null; hideReasons(); return true; }
     /* The card scrolls inside itself: ↑ ↓, Page ↑ ↓ and Space move its text (← → decide). */
     var sc = byId("tri-stage").querySelector(".tcard:not(.is-next) .tcard-scroll");
     var step = { ArrowDown: 64, ArrowUp: -64, PageDown: 0.9, PageUp: -0.9, " ": 0.9 }[ev.key];

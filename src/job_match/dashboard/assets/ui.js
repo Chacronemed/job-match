@@ -293,6 +293,7 @@
     var rows = [];
     if (b.start !== null) rows.push(["start", "Point de départ", String(b.start)]);
     b.lines.forEach(function (l) { rows.push([l.kind, l.label, S.signed(l.value)]); });
+    if (b.unread) rows.push(["start", b.unread > 1 ? b.unread + " lignes du score illisibles ici" : "1 ligne du score illisible ici", "?"]);
     rows.forEach(function (r, i) {
       var line = el("div", { class: "ledger-line " + r[0] }, [el("dt", { text: r[1] }), el("dd", { class: "num", text: r[2] })]);
       line.style.setProperty("--i", String(i));
@@ -305,11 +306,11 @@
 
     if (typeof t.strong === "number" && typeof t.min_score === "number") {
       var scale = el("div", { class: "scale", role: "img",
-        "aria-label": b.total + " sur 100. Digest dès " + t.min_score + ", forte dès " + t.strong + "." });
+        "aria-label": b.total + " sur 100. Seuil du tri à " + t.min_score + ", forte dès " + t.strong + "." });
       var fill = el("span", { class: "scale-fill band-" + bd.key });
       fill.style.setProperty("--to", String(Math.max(0, Math.min(100, b.total)) / 100));
       scale.appendChild(el("span", { class: "scale-track" }, [fill]));
-      [[t.min_score, "digest"], [t.strong, "forte"]].forEach(function (p) {
+      [[t.min_score, "seuil"], [t.strong, "forte"]].forEach(function (p) {
         var tick = el("span", { class: "scale-tick" }, [el("span", { class: "num", text: p[1] + " " + p[0] })]);
         tick.style.left = p[0] + "%";
         scale.appendChild(tick);
