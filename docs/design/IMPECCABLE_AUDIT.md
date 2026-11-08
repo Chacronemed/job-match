@@ -1,5 +1,8 @@
 # Audit Impeccable — tableau de bord job-match
 
+> **Mise à jour 2026-11-08 :** passe de correction faite sur la même branche après validation
+> (§10 tranché). Statut de chaque problème dans la colonne « Statut » du §2, bilan au §11.
+
 **Branche** `design/impeccable-pass` (depuis `origin/main` 7299229) · 2026-11-07 · **diagnostic
 uniquement : aucune ligne de l'UI n'a été modifiée.** À valider avant toute correction.
 
@@ -59,83 +62,83 @@ corrigerait le problème (à lancer après ta validation).
 
 ### Tri (`#tri`)
 
-| ID | Prio | Problème | Capture | Commande | Effort |
-|---|---|---|---|---|---|
-| T1 | P2 | **Titre de la carte non borné** : un titre long prend 7 lignes à 390 px et pousse le « Relevé du score » sous la ligne de flottaison ; la décision se prend alors sans le score visible. Borner à 3 lignes (titre complet dans la fiche, déjà à un clic) | `breakui-long-titles-tri-390.png` | `/impeccable harden` | S |
-| T2 | P2 | **Viewport court** (téléphone en paysage, zoom 200 %) : barre du haut 56 px + en-tête de page (surtitre, titre 26 px, sous-titre) + progression + barre d'actions + tab bar 64 px → ≈ 100 px utiles pour la carte. L'en-tête de page devrait se replier sous ~600 px de haut | `zoom200-tri-1440.png` | `/impeccable adapt` | M |
-| T3 | P2 | **Graduations du relevé** : « digest 60 » / « forte 70 » en 10 px, mot interne anglais « digest », 3,3:1 en clair. Dire « seuil d'envoi 60 » / « forte 70 » en 11 px AA | `tri-1440-light.png` | `/impeccable clarify` | S |
-| T4 | P2 | **Suivi indisponible** : deux bandeaux empilés (ambre « Le suivi n'a pas pu être chargé » + gris « Le tri enregistre tes choix : il demande le tableau de bord hébergé ») ; le second donne une fausse cause (la page *est* hébergée, c'est l'API qui a échoué) et repousse la carte d'environ 170 px à 390 px | `breakui-api-down-tri-390.png` | `/impeccable harden` | S |
-| T5 | P2 | **Écran « Tri terminé » collé en bas** de la zone (y ≈ 610–868 à 1440) avec un vide au-dessus : la fin du tri — le moment « peak-end » — paraît cassée | `breakui-empty-tri-1440.png` | `/impeccable layout` | S |
-| T6 | P3 | **Ligne d'explication non reconnue ignorée en silence** : le seed utilise un ancien format (« +15 docker ») que `score.js` ne parse pas ; le relevé affiche alors « Point de départ 65 / Total 65 », ce qui est faux (le départ n'était pas 65). Les lignes du vrai scorer (« Matched preferred: docker (+15) ») sont reconnues ; le défaut est la retombée : dire « détail non lisible » plutôt qu'un point de départ inventé | `tri-1440-dark.png` | `/impeccable harden` | S |
-| T7 | P2 | **Raison d'écart perdue** : l'étape « Pourquoi ? » se ferme seule après 8 s (`tri.js:266`) et n'est jamais proposée pour la dernière carte (`tri.js:300`, voulu). Les « Raisons d'écart » de Statistiques sont donc biaisées, et une action minutée pénalise un usage lent (WCAG 2.2.1) | — (vérifié dans le code) | `/impeccable harden` | S |
+| ID | Prio | Problème | Capture | Commande | Effort | Statut |
+|---|---|---|---|---|---|---|
+| T1 | P2 | **Titre de la carte non borné** : un titre long prend 7 lignes à 390 px et pousse le « Relevé du score » sous la ligne de flottaison ; la décision se prend alors sans le score visible. Borner à 3 lignes (titre complet dans la fiche, déjà à un clic) | `breakui-long-titles-tri-390.png` | `/impeccable harden` | S | ✅ e8fb20a |
+| T2 | P2 | **Viewport court** (téléphone en paysage, zoom 200 %) : barre du haut 56 px + en-tête de page (surtitre, titre 26 px, sous-titre) + progression + barre d'actions + tab bar 64 px → ≈ 100 px utiles pour la carte. L'en-tête de page devrait se replier sous ~600 px de haut | `zoom200-tri-1440.png` | `/impeccable adapt` | M | ✅ e8fb20a |
+| T3 | P2 | **Graduations du relevé** : « digest 60 » / « forte 70 » en 10 px, mot interne anglais « digest », 3,3:1 en clair. Dire « seuil d'envoi 60 » / « forte 70 » en 11 px AA | `tri-1440-light.png` | `/impeccable clarify` | S | ✅ e8fb20a |
+| T4 | P2 | **Suivi indisponible** : deux bandeaux empilés (ambre « Le suivi n'a pas pu être chargé » + gris « Le tri enregistre tes choix : il demande le tableau de bord hébergé ») ; le second donne une fausse cause (la page *est* hébergée, c'est l'API qui a échoué) et repousse la carte d'environ 170 px à 390 px | `breakui-api-down-tri-390.png` | `/impeccable harden` | S | ✅ e8fb20a |
+| T5 | P2 | **Écran « Tri terminé » collé en bas** de la zone (y ≈ 610–868 à 1440) avec un vide au-dessus : la fin du tri — le moment « peak-end » — paraît cassée | `breakui-empty-tri-1440.png` | `/impeccable layout` | S | ✅ e8fb20a |
+| T6 | P3 | **Ligne d'explication non reconnue ignorée en silence** : le seed utilise un ancien format (« +15 docker ») que `score.js` ne parse pas ; le relevé affiche alors « Point de départ 65 / Total 65 », ce qui est faux (le départ n'était pas 65). Les lignes du vrai scorer (« Matched preferred: docker (+15) ») sont reconnues ; le défaut est la retombée : dire « détail non lisible » plutôt qu'un point de départ inventé | `tri-1440-dark.png` | `/impeccable harden` | S | ✅ e8fb20a |
+| T7 | P2 | **Raison d'écart perdue** : l'étape « Pourquoi ? » se ferme seule après 8 s (`tri.js:266`) et n'est jamais proposée pour la dernière carte (`tri.js:300`, voulu). Les « Raisons d'écart » de Statistiques sont donc biaisées, et une action minutée pénalise un usage lent (WCAG 2.2.1) | — (vérifié dans le code) | `/impeccable harden` | S | ✅ e8fb20a |
 
 ### Offres (`#offres`)
 
-| ID | Prio | Problème | Capture | Commande | Effort |
-|---|---|---|---|---|---|
-| O1 | **P1** | **Contraste AA raté en thème clair** : les scores et libellés de bande des lignes déjà traitées (`.is-handled`, opacité 0,6 sur toute la cellule) tombent à 2,4–2,7:1 (`#6b9e8e` sur `#e8e5f6`, `#b69464` sur `#f9f9fb`). Le score est *la* donnée de la ligne. Atténuer le titre, pas le score, ou utiliser `--ink-2` au lieu d'une opacité | `offres-1440-light.png`, `offres-390-light.png` | `/impeccable polish` | S |
-| O2 | P2 | **Deux boutons primaires** à ≥ 1280 px : « Trier les nouvelles » (en-tête) et « Candidature envoyée » / « Garder » (pied de fiche), plus « Bon match » plein violet dans « Ton avis ». DESIGN.md : un primaire par écran. Le primaire de la vue est l'action sur l'offre sélectionnée | `offres-1440-dark.png` | `/impeccable quieter` | S |
-| O3 | P2 | **Cibles < 44 px à 390 px** : champ de recherche 36 px, boutons « Trier par » 36 px, « Trier les nouvelles » 40 px (DESIGN.md exige 44 px sous 768 px) | `offres-390-dark.png` | `/impeccable adapt` | S |
-| O4 | P2 | **Liste vide qui affirme une cause fausse** : « Le run de ce matin n'a rien collecté » est un texte fixe (`list.js:474`) affiché même quand l'exécution a lu 533 offres ; la variante filtrée parle aussi du « run de ce matin » alors que les filtres portent sur toute la liste. Lire le dernier run (lues / éligibles) et le dire | `breakui-empty-offres-1440.png` | `/impeccable clarify` | S |
-| O5 | P2 | **Titre de la fiche non borné** : 6 lignes à 26 px dans le panneau de 420 px ; « Adéquation 85/100 » et le pourquoi descendent sous le pli. Borner à 3 lignes + titre complet au survol / dépliable | `breakui-long-titles-offres-1440.png` | `/impeccable harden` | S |
-| O6 | P2 | **0 offre** : la fiche vide montre « Sélectionne une offre… J et K parcourent la liste » alors qu'il n'y a rien ; « Trier les nouvelles » reste primaire et actif à 0 | `breakui-empty-offres-1440.png` | `/impeccable onboard` | S |
-| O7 | P3 | **Monogrammes faux** : « B< » pour `Beta <b>Corp</b>`, « E1 » pour « Entreprise 17 » — initiales prises sur les caractères bruts. Prendre les lettres des deux premiers mots, sinon une icône | `offres-1440-dark.png`, `breakui-500-offres-offres-1440.png` | `/impeccable harden` | S |
-| O8 | P3 | **Barre « Trier par » à 390 px** : défile horizontalement, « VILLE » coupé sans indice de défilement ; capitales espacées | `offres-390-dark.png` | `/impeccable adapt` | S |
-| O9 | P3 | 500 offres : tout est rendu (14 000 nœuds, 33 ms par frappe). Suffisant aujourd'hui ; le commentaire `list.js` suppose « about 50 rows ». Rien à faire tant que la liste reste sous quelques centaines | `breakui-500-offres-offres-1440.png` | `/impeccable optimize` | M (si besoin) |
-| O10 | **P1** | **Le curseur j/k et la fiche divergent** (vérifié en direct à 1440) : après `j j` le focus est sur « SRE confirmé » mais la ligne violette, la fiche et `?fiche=` restent sur la 1re offre jusqu'à `O`, alors que `X` / `S` / `A` agissent sur la ligne focalisée. Risque de marquer « Candidature envoyée » une offre qu'on ne lit pas. À ≥ 1280 px la fiche doit suivre le curseur (aucun appel réseau) | `offres-jk-divergence-1440-dark.png` (focus sur la ligne « SRE confirmé », fiche sur la 1re offre) | `/impeccable harden` | M |
-| O11 | P2 | **Malus affiché comme un atout** sur le chemin de repli : une compétence de `lowered` sans poids numérique et sans ligne d'explication est rendue « up » (point vert) (`why.js:134`). Les lignes du vrai scorer passent par le chemin normal ; le repli doit déduire le sens de `lowered` | `breakui-500-offres-offres-1440.png` (« php ») | `/impeccable harden` | S |
-| O12 | P3 | Pied de fiche : un « × » seul à côté du primaire (nom accessible « Écarter l'offre », mais aucun mot visible) et un second « × » de fermeture en haut | `offres-1440-dark.png` | `/impeccable clarify` | S |
+| ID | Prio | Problème | Capture | Commande | Effort | Statut |
+|---|---|---|---|---|---|---|
+| O1 | **P1** | **Contraste AA raté en thème clair** : les scores et libellés de bande des lignes déjà traitées (`.is-handled`, opacité 0,6 sur toute la cellule) tombent à 2,4–2,7:1 (`#6b9e8e` sur `#e8e5f6`, `#b69464` sur `#f9f9fb`). Le score est *la* donnée de la ligne. Atténuer le titre, pas le score, ou utiliser `--ink-2` au lieu d'une opacité | `offres-1440-light.png`, `offres-390-light.png` | `/impeccable polish` | S | ✅ b49d6d1 |
+| O2 | P2 | **Deux boutons primaires** à ≥ 1280 px : « Trier les nouvelles » (en-tête) et « Candidature envoyée » / « Garder » (pied de fiche), plus « Bon match » plein violet dans « Ton avis ». DESIGN.md : un primaire par écran. Le primaire de la vue est l'action sur l'offre sélectionnée | `offres-1440-dark.png` | `/impeccable quieter` | S | ✅ 55d8f2e |
+| O3 | P2 | **Cibles < 44 px à 390 px** : champ de recherche 36 px, boutons « Trier par » 36 px, « Trier les nouvelles » 40 px (DESIGN.md exige 44 px sous 768 px) | `offres-390-dark.png` | `/impeccable adapt` | S | ✅ 55d8f2e |
+| O4 | P2 | **Liste vide qui affirme une cause fausse** : « Le run de ce matin n'a rien collecté » est un texte fixe (`list.js:474`) affiché même quand l'exécution a lu 533 offres ; la variante filtrée parle aussi du « run de ce matin » alors que les filtres portent sur toute la liste. Lire le dernier run (lues / éligibles) et le dire | `breakui-empty-offres-1440.png` | `/impeccable clarify` | S | ✅ 55d8f2e |
+| O5 | P2 | **Titre de la fiche non borné** : 6 lignes à 26 px dans le panneau de 420 px ; « Adéquation 85/100 » et le pourquoi descendent sous le pli. Borner à 3 lignes + titre complet au survol / dépliable | `breakui-long-titles-offres-1440.png` | `/impeccable harden` | S | ✅ 55d8f2e |
+| O6 | P2 | **0 offre** : la fiche vide montre « Sélectionne une offre… J et K parcourent la liste » alors qu'il n'y a rien ; « Trier les nouvelles » reste primaire et actif à 0 | `breakui-empty-offres-1440.png` | `/impeccable onboard` | S | ✅ 55d8f2e |
+| O7 | P3 | **Monogrammes faux** : « B< » pour `Beta <b>Corp</b>`, « E1 » pour « Entreprise 17 » — initiales prises sur les caractères bruts. Prendre les lettres des deux premiers mots, sinon une icône | `offres-1440-dark.png`, `breakui-500-offres-offres-1440.png` | `/impeccable harden` | S | ✅ 55d8f2e (P3, fichier déjà modifié) |
+| O8 | P3 | **Barre « Trier par » à 390 px** : défile horizontalement, « VILLE » coupé sans indice de défilement ; capitales espacées | `offres-390-dark.png` | `/impeccable adapt` | S | ✅ 55d8f2e |
+| O9 | P3 | 500 offres : tout est rendu (14 000 nœuds, 33 ms par frappe). Suffisant aujourd'hui ; le commentaire `list.js` suppose « about 50 rows ». Rien à faire tant que la liste reste sous quelques centaines | `breakui-500-offres-offres-1440.png` | `/impeccable optimize` | M (si besoin) | ⏸ en observation (P3 ; 33 ms par frappe à 500 offres) |
+| O10 | **P1** | **Le curseur j/k et la fiche divergent** (vérifié en direct à 1440) : après `j j` le focus est sur « SRE confirmé » mais la ligne violette, la fiche et `?fiche=` restent sur la 1re offre jusqu'à `O`, alors que `X` / `S` / `A` agissent sur la ligne focalisée. Risque de marquer « Candidature envoyée » une offre qu'on ne lit pas. À ≥ 1280 px la fiche doit suivre le curseur (aucun appel réseau) | `offres-jk-divergence-1440-dark.png` (focus sur la ligne « SRE confirmé », fiche sur la 1re offre) | `/impeccable harden` | M | ✅ 1fc9479 |
+| O11 | P2 | **Malus affiché comme un atout** sur le chemin de repli : une compétence de `lowered` sans poids numérique et sans ligne d'explication est rendue « up » (point vert) (`why.js:134`). Les lignes du vrai scorer passent par le chemin normal ; le repli doit déduire le sens de `lowered` | `breakui-500-offres-offres-1440.png` (« php ») | `/impeccable harden` | S | ✅ 55d8f2e |
+| O12 | P3 | Pied de fiche : un « × » seul à côté du primaire (nom accessible « Écarter l'offre », mais aucun mot visible) et un second « × » de fermeture en haut | `offres-1440-dark.png` | `/impeccable clarify` | S | ✅ 55d8f2e (P3) |
 
 ### Candidatures (`#candidatures`)
 
-| ID | Prio | Problème | Capture | Commande | Effort |
-|---|---|---|---|---|---|
-| C1 | **P1** | **Inconnu affiché comme zéro** quand le suivi ne charge pas : « 0 dossier suivi · 0 relance en retard · 0 entretien », colonnes « Aucune. », « Garde des offres dans Tri pour les voir ici », sidebar « Candidatures 0 ». C'est une donnée inventée (principe 3 de PRODUCT.md) : afficher « — » et un état « suivi indisponible » à la place des colonnes | `breakui-api-down-candidatures-1440.png` | `/impeccable harden` | M |
-| C2 | P2 | **La même relance annoncée 5 fois** : sidebar « Relances à faire 1 », bouton ambre « 1 relance en retard », ligne de chiffres « 1 relance en retard », bandeau ambre pleine largeur, puce rouge sur la carte. Garder le bandeau (liste cliquable) et la puce ; retirer le bouton et le chiffre redondants | `candidatures-1440-dark.png` | `/impeccable distill` | S |
-| C3 | P2 | **Clé brute comme titre** : une candidature dont l'offre a quitté l'instantané s'intitule `france_travail:GONE1` (`board.js:346`). Afficher « Offre retirée » + source et date, la clé en info-bulle | `candidatures-1440-dark.png` | `/impeccable clarify` | S |
-| C4 | P2 | **Titres longs** : carte Kanban non bornée (8 lignes), bandeau de relance qui passe sur 4 lignes à 390 px avec un titre sans coupure | `breakui-long-titles-candidatures-1440.png`, `…-390.png` | `/impeccable harden` | S |
-| C5 | P2 | **390 px** : les 4 colonnes s'empilent ; « Envoyée » (où est la relance due) arrive après tout « À candidater » ; le bouton « 1 relance en retard » et « Kanban / Tableau » se tassent sur 2 lignes. Sur téléphone, ouvrir sur la colonne qui a une action due ou proposer des onglets par statut | `candidatures-390-light.png` | `/impeccable adapt` | M |
-| C6 | P3 | Un primaire « J'ai postulé » **par carte** « À candidater » : avec 6 cartes, 6 primaires | `candidatures-1440-dark.png` | `/impeccable quieter` | S |
-| C7 | P3 | « Aujourd'hui » seul en tête des métadonnées de carte : on ne sait pas de quoi (mise à jour ? publication ?) | `candidatures-1440-dark.png` | `/impeccable clarify` | S |
-| C8 | P3 | Titres `h1` → `h3` (le bandeau et les colonnes sautent `h2`) | — (détecteur) | `/impeccable polish` | S |
-| C9 | P3 | Vocabulaire qui dérive pour la même action : « J'ai postulé », « Candidature envoyée », « Envoyée » ; liens « Offre » et « Voir la fiche » côte à côte ; point rouge « offre plus affichée » confondu avec le rouge de Refus | `candidatures-1440-dark.png` | `/impeccable clarify` | S |
+| ID | Prio | Problème | Capture | Commande | Effort | Statut |
+|---|---|---|---|---|---|---|
+| C1 | **P1** | **Inconnu affiché comme zéro** quand le suivi ne charge pas : « 0 dossier suivi · 0 relance en retard · 0 entretien », colonnes « Aucune. », « Garde des offres dans Tri pour les voir ici », sidebar « Candidatures 0 ». C'est une donnée inventée (principe 3 de PRODUCT.md) : afficher « — » et un état « suivi indisponible » à la place des colonnes | `breakui-api-down-candidatures-1440.png` | `/impeccable harden` | M | ✅ b49d6d1 |
+| C2 | P2 | **La même relance annoncée 5 fois** : sidebar « Relances à faire 1 », bouton ambre « 1 relance en retard », ligne de chiffres « 1 relance en retard », bandeau ambre pleine largeur, puce rouge sur la carte. Garder le bandeau (liste cliquable) et la puce ; retirer le bouton et le chiffre redondants | `candidatures-1440-dark.png` | `/impeccable distill` | S | ✅ f0f95b7 |
+| C3 | P2 | **Clé brute comme titre** : une candidature dont l'offre a quitté l'instantané s'intitule `france_travail:GONE1` (`board.js:346`). Afficher « Offre retirée » + source et date, la clé en info-bulle | `candidatures-1440-dark.png` | `/impeccable clarify` | S | ✅ f0f95b7 |
+| C4 | P2 | **Titres longs** : carte Kanban non bornée (8 lignes), bandeau de relance qui passe sur 4 lignes à 390 px avec un titre sans coupure | `breakui-long-titles-candidatures-1440.png`, `…-390.png` | `/impeccable harden` | S | ✅ f0f95b7 |
+| C5 | P2 | **390 px** : les 4 colonnes s'empilent ; « Envoyée » (où est la relance due) arrive après tout « À candidater » ; le bouton « 1 relance en retard » et « Kanban / Tableau » se tassent sur 2 lignes. Sur téléphone, ouvrir sur la colonne qui a une action due ou proposer des onglets par statut | `candidatures-390-light.png` | `/impeccable adapt` | M | ✅ f0f95b7 |
+| C6 | P3 | Un primaire « J'ai postulé » **par carte** « À candidater » : avec 6 cartes, 6 primaires | `candidatures-1440-dark.png` | `/impeccable quieter` | S | ✅ f0f95b7 (P3) |
+| C7 | P3 | « Aujourd'hui » seul en tête des métadonnées de carte : on ne sait pas de quoi (mise à jour ? publication ?) | `candidatures-1440-dark.png` | `/impeccable clarify` | S | ✅ f0f95b7 (P3) |
+| C8 | P3 | Titres `h1` → `h3` (le bandeau et les colonnes sautent `h2`) | — (détecteur) | `/impeccable polish` | S | ✅ f0f95b7 (P3) |
+| C9 | P3 | Vocabulaire qui dérive pour la même action : « J'ai postulé », « Candidature envoyée », « Envoyée » ; liens « Offre » et « Voir la fiche » côte à côte ; point rouge « offre plus affichée » confondu avec le rouge de Refus | `candidatures-1440-dark.png` | `/impeccable clarify` | S | ✅ f0f95b7 (P3, « Annonce » ; les libellés de statut inchangés) |
 
 ### Statistiques (`#statistiques`)
 
-| ID | Prio | Problème | Capture | Commande | Effort |
-|---|---|---|---|---|---|
-| S1 | P2 | **Graphe hebdomadaire illisible à petits effectifs** : axe max = 1, chaque événement devient un trait de 12 px de large sur toute la hauteur (≈ 250 px), le graphe sort de l'écran ; on lit des pics, pas une tendance. Hauteur proportionnée, barres groupées par semaine, et en dessous de ~5 événements montrer le tableau seul | `statistiques-1440-dark.png` | `/impeccable layout` | M |
-| S2 | P3 | Tuiles « gros chiffre + libellé 11 px » (gabarit KPI) ; « anciennes) » orphelin ; le sous-texte de « Archivées » contredit le sens d'« archivée » dans Candidatures (cf. PROGRESS : connu) | `statistiques-1440-dark.png` | `/impeccable typeset` | S |
-| S3 | P2 | **Arrondi trompeur** : 2 gardées sur 500 vues → « 0 % des vues » (`stats.js:236`, `Math.round`). Afficher « < 1 % » ou une décimale | `breakui-500-offres-statistiques-1440.png` | `/impeccable clarify` | S |
+| ID | Prio | Problème | Capture | Commande | Effort | Statut |
+|---|---|---|---|---|---|---|
+| S1 | P2 | **Graphe hebdomadaire illisible à petits effectifs** : axe max = 1, chaque événement devient un trait de 12 px de large sur toute la hauteur (≈ 250 px), le graphe sort de l'écran ; on lit des pics, pas une tendance. Hauteur proportionnée, barres groupées par semaine, et en dessous de ~5 événements montrer le tableau seul | `statistiques-1440-dark.png` | `/impeccable layout` | M | ✅ c49af64 |
+| S2 | P3 | Tuiles « gros chiffre + libellé 11 px » (gabarit KPI) ; « anciennes) » orphelin ; le sous-texte de « Archivées » contredit le sens d'« archivée » dans Candidatures (cf. PROGRESS : connu) | `statistiques-1440-dark.png` | `/impeccable typeset` | S | ◐ c49af64 (orphelin corrigé ; tuiles conservées) |
+| S3 | P2 | **Arrondi trompeur** : 2 gardées sur 500 vues → « 0 % des vues » (`stats.js:236`, `Math.round`). Afficher « < 1 % » ou une décimale | `breakui-500-offres-statistiques-1440.png` | `/impeccable clarify` | S | ✅ c49af64 |
 
 ### Leads (`#leads`)
 
-| ID | Prio | Problème | Capture | Commande | Effort |
-|---|---|---|---|---|---|
-| L1 | P3 | « 1 leads de financement » : pluriel codé en dur (`leads.js:70`) | `leads-1440-dark.png` | `/impeccable clarify` | S |
-| L2 | P3 | Tour « series a » brut, en anglais et en minuscules ; « Publiée 18/10 » dans un format différent des autres vues | `leads-1440-dark.png` | `/impeccable clarify` | S |
-| L3 | P3 | 390 px : l'étiquette « recruter 30 personnes » déborde de sa boîte de 111 px | `leads-390-dark.png` | `/impeccable harden` | S |
-| L4 | P3 | Point vert sans libellé devant « Acme » (couleur seule) | `leads-1440-dark.png` | `/impeccable polish` | S |
+| ID | Prio | Problème | Capture | Commande | Effort | Statut |
+|---|---|---|---|---|---|---|
+| L1 | P3 | « 1 leads de financement » : pluriel codé en dur (`leads.js:70`) | `leads-1440-dark.png` | `/impeccable clarify` | S | ⏸ P3, `leads.js` non modifié (règle de périmètre) |
+| L2 | P3 | Tour « series a » brut, en anglais et en minuscules ; « Publiée 18/10 » dans un format différent des autres vues | `leads-1440-dark.png` | `/impeccable clarify` | S | ⏸ P3, idem |
+| L3 | P3 | 390 px : l'étiquette « recruter 30 personnes » déborde de sa boîte de 111 px | `leads-390-dark.png` | `/impeccable harden` | S | ✅ 473c34d |
+| L4 | P3 | Point vert sans libellé devant « Acme » (couleur seule) | `leads-1440-dark.png` | `/impeccable polish` | S | ⏸ P3, idem |
 
 ### Exécutions (`#executions`)
 
-| ID | Prio | Problème | Capture | Commande | Effort |
-|---|---|---|---|---|---|
-| E1 | P2 | **Codes machine non traduits** : « experience 197 · contract 30 · not_relevant 10 » (`runs.js:109` fait juste `toLowerCase()`), « ats: … france_travail: … » comme libellés de source. Le reste de l'UI dit « Trop senior », « France Travail » | `executions-1440-dark.png` | `/impeccable clarify` | S |
-| E2 | P3 | Deux boutons « Lancer maintenant » au nom accessible identique (Rerank IA / Documents) : un lecteur d'écran ne les distingue pas (`index.template.html:280,285`) | `executions-1440-dark.png` | `/impeccable polish` | S |
-| E3 | P3 | Texte de la carte « Documents » en retrait par rapport à son titre (encart dans la carte) | `executions-390-dark.png` | `/impeccable layout` | S |
-| E4 | P3 | 30 cartes de 3–4 lignes de compteurs : la seule exécution en panne se repère, mais comparer deux jours demande de lire ; une ligne par exécution + détail dépliable suffirait | `executions-1440-dark.png` | `/impeccable distill` | M |
+| ID | Prio | Problème | Capture | Commande | Effort | Statut |
+|---|---|---|---|---|---|---|
+| E1 | P2 | **Codes machine non traduits** : « experience 197 · contract 30 · not_relevant 10 » (`runs.js:109` fait juste `toLowerCase()`), « ats: … france_travail: … » comme libellés de source. Le reste de l'UI dit « Trop senior », « France Travail » | `executions-1440-dark.png` | `/impeccable clarify` | S | ✅ 3047f8b |
+| E2 | P3 | Deux boutons « Lancer maintenant » au nom accessible identique (Rerank IA / Documents) : un lecteur d'écran ne les distingue pas (`index.template.html:280,285`) | `executions-1440-dark.png` | `/impeccable polish` | S | ✅ 3047f8b (P3) |
+| E3 | P3 | Texte de la carte « Documents » en retrait par rapport à son titre (encart dans la carte) | `executions-390-dark.png` | `/impeccable layout` | S | ✅ 3047f8b (P3) |
+| E4 | P3 | 30 cartes de 3–4 lignes de compteurs : la seule exécution en panne se repère, mais comparer deux jours demande de lire ; une ligne par exécution + détail dépliable suffirait | `executions-1440-dark.png` | `/impeccable distill` | M | ⏸ P3, refonte (effort M) hors périmètre |
 
 ### Coque commune (sidebar, barre du haut, tab bar)
 
-| ID | Prio | Problème | Capture | Commande | Effort |
-|---|---|---|---|---|---|
-| G1 | P2 | **En-tête de page-slogan sur les 6 vues** (surtitre capitales + titre 26 px + sous-titre ≈ 130 px) : AI slop n° 1, contraire à DESIGN.md, et coût vertical réel (T2) | toutes les captures 1440 | `/impeccable distill` | S |
-| G2 | P2 | **Texte à 10 px hors échelle** dans 12 règles CSS, dont les libellés de la tab bar (téléphone) et, à 390 px, `.row-meta` = entreprise · lieu · contrat des lignes Offres | `offres-390-dark.png` | `/impeccable typeset` | S |
-| G3 | P3 | « Rechercher p… » tronqué dans la sidebar de 232 px (le raccourci Ctrl K mange la place) | `offres-1440-dark.png` | `/impeccable layout` | S |
-| G4 | P3 | Formats d'heure incohérents : « Instantané du 18 oct., 07:00 » (barre du haut, heure locale, sans année) vs « 18 oct. 2026, 09:00 UTC » (sidebar, UTC) vs « 18/10 » (Leads) | `offres-1440-dark.png`, `leads-1440-dark.png` | `/impeccable clarify` | S |
-| G5 | P2 | **Tab bar à 6 onglets** (DESIGN.md en prévoit 5) aux libellés tronqués (« Candid. », « Exéc. ») ; « Relances à faire » n'existe pas sur téléphone ; le badge « 332 » recouvre l'icône. Regrouper Stats / Leads / Exécutions sous « Plus », badge de relances sur Candidatures | `offres-390-dark.png`, `breakui-500-offres-tri-390.png` | `/impeccable adapt` | M |
-| G6 | P3 | « Mon espace / Tri » et « Espace personnel » simulent une profondeur et un multi-utilisateur qui n'existent pas. Non vérifié : la palette ne trouverait pas « relances » (signalé par la revue A, non reproduit ici) | toutes | `/impeccable distill` | S |
+| ID | Prio | Problème | Capture | Commande | Effort | Statut |
+|---|---|---|---|---|---|---|
+| G1 | P2 | **En-tête de page-slogan sur les 6 vues** (surtitre capitales + titre 26 px + sous-titre ≈ 130 px) : AI slop n° 1, contraire à DESIGN.md, et coût vertical réel (T2) | toutes les captures 1440 | `/impeccable distill` | S | ✅ 671732d (décision 2) |
+| G2 | P2 | **Texte à 10 px hors échelle** dans 12 règles CSS, dont les libellés de la tab bar (téléphone) et, à 390 px, `.row-meta` = entreprise · lieu · contrat des lignes Offres | `offres-390-dark.png` | `/impeccable typeset` | S | ✅ 671732d |
+| G3 | P3 | « Rechercher p… » tronqué dans la sidebar de 232 px (le raccourci Ctrl K mange la place) | `offres-1440-dark.png` | `/impeccable layout` | S | ✅ 671732d |
+| G4 | P3 | Formats d'heure incohérents : « Instantané du 18 oct., 07:00 » (barre du haut, heure locale, sans année) vs « 18 oct. 2026, 09:00 UTC » (sidebar, UTC) vs « 18/10 » (Leads) | `offres-1440-dark.png`, `leads-1440-dark.png` | `/impeccable clarify` | S | ⏸ P3 : les heures UTC des exécutions sont peut-être voulues ; à trancher |
+| G5 | P2 | **Tab bar à 6 onglets** (DESIGN.md en prévoit 5) aux libellés tronqués (« Candid. », « Exéc. ») ; « Relances à faire » n'existe pas sur téléphone ; le badge « 332 » recouvre l'icône. Regrouper Stats / Leads / Exécutions sous « Plus », badge de relances sur Candidatures | `offres-390-dark.png`, `breakui-500-offres-tri-390.png` | `/impeccable adapt` | M | ✅ 519c2c7 (4 onglets + « Plus », badge de relances) |
+| G6 | P3 | « Mon espace / Tri » et « Espace personnel » simulent une profondeur et un multi-utilisateur qui n'existent pas. Non vérifié : la palette ne trouverait pas « relances » (signalé par la revue A, non reproduit ici) | toutes | `/impeccable distill` | S | ◐ 671732d (fil et libellé retirés ; palette non reproduite) |
 
 ## 3. break-ui — ce qui casse
 
@@ -354,3 +357,62 @@ O9 (virtualisation à 500+ offres) reste en observation.
    (contrat Focus) ou le remplacer par le seul fond violet pâle ?
 4. **« Aujourd'hui »** : **option 1** (fin du Tri = agenda du jour), **option 2** (vue d'accueil
    qui remplace Stats dans la tab bar), ou **rien** pour l'instant ?
+
+## 11. Passe de correction (2026-11-08) — bilan
+
+Décisions du §10 : (1) les 3 P1, puis les P2 vue par vue (Tri, Offres, Candidatures,
+Statistiques, Leads, Exécutions), P3 seulement dans un fichier déjà modifié ; (2) surtitres
+supprimés ; (3) ligne sélectionnée = fond `--active` + anneau de focus, `aria-selected` ;
+(4) « Aujourd'hui » = écran de fin (et Tri vide) du Tri, sans 7e onglet.
+
+**Commits** (un par lot, chacun poussé) : `624bf2f` retrait de `transitions-polish` ·
+`1fc9479` P1 O10 · `b49d6d1` P1 O1 + C1 · `671732d` coque (G1–G3, G6) · `e8fb20a` Tri ·
+`55d8f2e` Offres · `f0f95b7` Candidatures · `c49af64` Statistiques · `473c34d` Leads ·
+`46e64e0` tests stabilisés · `3047f8b` Exécutions · `519c2c7` tab bar (G5) · `8e6603b`
+mouvement · `eaa7264` motifs insécables · `bb3d298` Web Interface Guidelines.
+
+**Bilan des 45 problèmes** (colonne « Statut » du §2) : **3/3 P1, 22/22 P2, 12/20 P3** corrigés
+(S2 et G6 partiellement). Reportés :
+O9 (virtualisation, en observation), L1, L2, L4 (`leads.js` non modifié), E4 (refonte d'une
+exécution par ligne), G4 (heures UTC : décision à prendre).
+
+**Captures après** : `docs/design/screenshots/impeccable/after/` (mêmes noms que les captures
+« avant » à la racine du dossier : `<vue>-<1440|390>-<dark|light>.png`, `breakui-*`), plus
+`tabbar-more-390-<thème>.png`. Mesure automatique sur les 58 captures finales : 0 débordement
+horizontal, 0 nœud texte sous 4,5:1, 0 cible < 44 px à 390 px, 0 erreur console hors le 404
+(document de fixture) et le 500 (scénario « API en panne ») attendus.
+
+**Détecteur Impeccable, avant → après**
+
+| Règle | Avant (12 scans URL) | Après |
+|---|---|---|
+| `kicker-above-heading` (surtitre) | 12 | **0** |
+| `undersized-ui-text` (< 11 px) | 12 scans | **0** |
+| `low-contrast` | 4 | **0** |
+| `skipped-heading` | 2 | **0** |
+| `text-overflow` | 1 | **0** |
+| `side-tab` (statique) | 1 | **0** (décision 3) |
+| `tiny-text` (11 px de corps) | 8 scans | 9 scans — `--fs-xs` du système, gardé pour les métadonnées |
+| `nested-cards` | 7 scans | 7 scans — cartes Kanban dans leur colonne, encart IA : motif accepté |
+| `overused-font` (statique) | 1 | 1 — Inter voulue par DESIGN.md |
+
+**Mouvement** (`review-animations` + `animation-performance`, verdict initial « Block ») : tokens
+transitions.dev (gratuits, CSS) dans `tokens.css` ; aucune animation sur les actions clavier ;
+séquence du relevé une fois par lot ; panneau, toast et ressort de la carte interruptibles ;
+reduced-motion = fondus de 150 ms sans mouvement. Non mesuré : la fluidité sur un vrai
+téléphone (pas d'appareil ici).
+
+**Web Interface Guidelines** (règles Vercel du jour) : noms accessibles contenant le texte
+visible, bouton de thème sans `aria-pressed` contradictoire, nombres et espaces à la française,
+`scroll-padding` sous les barres mobiles. Gardés volontairement : Entrée sur une ligne ouvre
+l'annonce source (DESIGN.md), `user-select: none` de la carte du Tri (swipe) ; l'annulation des
+actions de la boîte de réception est une fonctionnalité, hors de cette passe.
+
+**Tests** : `ruff check .` propre ; `pytest -q -n auto` **1 795 passed, 3 skipped** (navigateur
+inclus : 87 tests ; les 3 ignorés demandent les fichiers privés `cv_master.yaml`, `contact.yaml`,
+`data/jobs.sqlite`) ; Node `worker/` **343 pass**. Nouveaux : `test_audit_fixes.py` (j/k,
+contrastes en clair/sombre, suivi indisponible, fin du Tri et « Aujourd'hui », Offres, graphe,
+tab bar, mouvement), `test_audit_empty.py`, `todayAgenda` et le repli du relevé côté Node.
+Chacun des correctifs P1 et mouvement a un test qui échouait avant. Quatre fichiers de tests
+attendaient avec une expression nue, que la CSP refuse en `eval` sous charge (2 échecs sur 10) :
+corrigé, 10 passages consécutifs verts.

@@ -3,32 +3,35 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**Impeccable design pass — diagnostic** (branch `design/impeccable-pass` from `main` 7299229,
-2026-11-07, cloud session, PR in draft). **No UI change on this branch.** Waiting for my
-validation of the report before any fix.
-1. Tooling, project scope only (`docs/design/IMPECCABLE_SETUP.md`): Impeccable 4.8.0 skill +
-   4 agents in `.claude/` without the hook (engine binary gitignored, re-downloaded and
-   checksum-verified by the launcher), telemetry off, live copy agent off, live mode unused;
-   transitions.dev free skills (`transitions-dev`, `transitions-polish`; no Pro, no Refine);
-   emilkowalski `review-animations`, `improve-animations`, `find-animation-opportunities`,
-   `animation-performance`, `break-ui` only. `design-taste-frontend` and the `frontend-design`
-   plugin are disabled in `.claude/settings.json` (deny rules / `enabledPlugins: false`), not
-   deleted.
-2. `/impeccable init` → `PRODUCT.md` (root, where Impeccable reads it). `docs/design/DESIGN.md`
-   completed with a final section (Statistiques, light mode, measured drift), nothing rewritten.
-3. Diagnostic: 6 views × light/dark × 1440/390 on the test seed + mocked API, break-ui
-   scenarios (long titles, 0, 500 offers, unknown company, Worker API down, no AI score, 200 %
-   zoom), `impeccable detect` static + 12 URL scans, critique (Assessment A isolated in a
-   sub-agent) and audit. Report: `docs/design/IMPECCABLE_AUDIT.md`; 62 captures in
-   `docs/design/screenshots/impeccable/`.
-4. Headline: audit 15/20, critique 27/40, 45 issues; three P1 — j/k cursor vs record divergence, light-mode contrast of handled rows' scores (opacity 0.6,
-   2.4–2.7:1) and Candidatures showing « 0 » when the tracking failed to load; the page-top
-   eyebrow/slogan on every view is the main AI-slop tell.
-5. Checks: `ruff check .` clean; `pytest -q -n auto` 1 708 passed, 73 skipped (the browser
-   tests: this container's Chromium build does not match the pip Playwright; no code changed).
-**Next step:** read the report, answer its questions (§10), then run the fixes view by view in
-the order of §9 — one commit per command, Playwright tests updated, captures re-taken.
-**Open decision:** build the « Aujourd'hui » view or not (§8).
+**Impeccable design pass — fixes** (branch `design/impeccable-pass`, 2026-11-08, cloud session,
+PR #25 in draft). The 2026-11-07 diagnostic (`docs/design/IMPECCABLE_AUDIT.md`) was validated
+with four decisions: P1 then P2 view by view (P3 only in files already touched), eyebrows
+removed, selected row = `--active` + focus ring, « Aujourd'hui » = the Tri's end screen.
+1. P1: the Offres record follows the j/k cursor and X/S/A act on the shown offer (O10);
+   handled rows keep AA scores in both themes (O1); without the tracking Candidatures says
+   « suivi indisponible » and « — », never 0 (C1).
+2. Shell: no eyebrow or slogan, no uppercase micro-labels, 11 px floor, no side stripe on the
+   selected row; phone tab bar = Tri, Offres, Candidatures (due badge), « Plus » (G1–G6).
+3. Views: Tri end screen « Aujourd'hui » from `triage.js todayAgenda` (Node-tested), last
+   reason asked there, no 8 s timer, clamped titles; Offres one primary, true empty states,
+   phone sort select, 44 px; Candidatures follow-up said once, gone offers named; Statistiques
+   table under 5 events, « < 1 % »; Leads claim wraps; Exécutions codes in words.
+4. Motion: transitions.dev token scale in `tokens.css`; no animation on keyboard actions;
+   ledger sequence once per batch; interruptible drawer/toast/spring-back; reduced motion keeps
+   fades (review-animations + animation-performance).
+5. Tooling: `transitions-polish` removed; Chromium 1248 installed so the browser tests run;
+   flaky waits fixed (bare-expression `wait_for_function` + CSP eval).
+6. Checks: ruff clean; `pytest -q -n auto` 1 795 passed, 3 skipped (browser 87); Node 343
+   pass; impeccable detect 0 eyebrow / 0 contrast / 0 overflow (`IMPECCABLE_AUDIT.md` §11).
+**Next step:** review PR #25 visually (captures in `docs/design/screenshots/impeccable/after/`),
+then merge; on prod, check the Tri end screen and the phone tab bar on the real data.
+**Open decisions:** G4 (UTC times in Exécutions/sidebar vs local snapshot time); deferred P3:
+L1, L2, L4 (`leads.js`), E4 (one line per run), O9 (virtualisation past ~500 offers).
+**Known:** the CI installs its own Chromium; this container needed `playwright install
+chromium` (1248) for the pip Playwright 1.64.
+
+Before it: **Impeccable design pass — diagnostic** (same branch, 2026-11-07): tooling installed in
+the project only, `PRODUCT.md`, the report and 62 captures; audit 15/20, critique 27/40, 45 issues.
 
 Before it: **Source outage guard** (branch `fix/source-outage-guard` from `main`, 2026-11-06, ADR 0027,
 PR in draft). Context: on 2026-11-06 France Travail was down (search → 0 offer, offer pages →
