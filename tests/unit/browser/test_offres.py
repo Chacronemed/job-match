@@ -191,7 +191,7 @@ def test_runs_show_the_source_down_and_its_closure_counters(open_dashboard, job_
     assert source.inner_text().endswith("13 appels, 0 vérifiées, 0 fermées, 12 clôtures suspendues")
     # IMPECCABLE_AUDIT E1: the pipeline's codes are said in words
     assert source.inner_text().startswith("France Travail : ")
-    reasons = card.locator(".run-reasons").inner_text()
+    reasons = card.locator(".run-reasons").inner_text().replace("\u00a0", " ")
     assert "trop d’expérience demandée 50" in reasons and "hors sujet 10" in reasons
     assert "not_relevant" not in reasons
     # the card before it (no outage) has neither the banner nor the counters

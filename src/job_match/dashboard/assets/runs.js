@@ -114,8 +114,8 @@
         var p = el("p", { class: "run-reasons" }, ["Rejets par motif (une offre peut échouer à plusieurs filtres) : "]);
         reasons.forEach(function (k, i) {
           if (i) p.appendChild(document.createTextNode(" · "));
-          p.appendChild(document.createTextNode((REASON_TEXT[k] || k.toLowerCase()) + " "));
-          p.appendChild(el("b", { text: String(r.rejected_by_reason[k]) }));
+          /* label and count stay together on one line (no number alone at a line's start) */
+          p.appendChild(el("span", { class: "run-reason" }, [(REASON_TEXT[k] || k.toLowerCase()) + "\u00a0", el("b", { text: String(r.rejected_by_reason[k]) })]));
         });
         card.appendChild(p);
       }
