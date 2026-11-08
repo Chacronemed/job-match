@@ -49,13 +49,6 @@
       "computedHash": "c7f9b40c6676ecc6d890db4ffecafa1ddebdb4ebaed3098521928e5115bd871f",
       "installMode": "copy"
     },
-    "transitions-polish": {
-      "source": "Jakubantalik/transitions.dev",
-      "sourceType": "github",
-      "skillPath": "skills/transitions-polish/SKILL.md",
-      "computedHash": "3f0630020cdfd0ea3d582ac45201c1ad4bced2ef7d0a0145d4cc81ad25f57ec3",
-      "installMode": "copy"
-    },
     "web-design-guidelines": {
       "source": "vercel-labs/agent-skills",
       "sourceType": "github",
