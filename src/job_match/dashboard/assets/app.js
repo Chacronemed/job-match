@@ -807,6 +807,8 @@ window.JM = window.JM || {};
     var n = X.sidebarCounts(rows, track.apps, runAt, thresholds.min_score, leads, runs, track.ai,
       track.status === "ready" ? JM.archivedSet() : null);
     Object.keys(n).forEach(function (view) { setCount(view, n[view]); });
+    /* Unknown, not zero, while the tracking is not loaded (IMPECCABLE_AUDIT C1). */
+    if (track.status === "error" || track.status === "off") setCount("candidatures", "—");
     /* « Relances à faire » (sidebar): the due follow-ups, as Candidatures lists them. */
     setCount("relances", track.status === "ready" ? dueKeys(T.localDay()).length : "");
   }

@@ -582,13 +582,19 @@
   function renderStats(keys, dueCount) {
     var stats = byId("apps-stats");
     clear(stats);
+    var chip = byId("apps-due-chip");
+    /* Without the tracking the counts are unknown, not zero (IMPECCABLE_AUDIT C1). */
+    if (track.status !== "ready") {
+      chip.hidden = true;
+      stats.appendChild(el("span", null, [el("b", { text: "—" }), " " + (track.status === "loading" ? "chargement du suivi…" : "suivi indisponible")]));
+      return;
+    }
     var interviews = keys.filter(function (k) { return T.statusOf(track.apps[k]) === "interview"; }).length;
     [[keys.length, keys.length > 1 ? "dossiers suivis" : "dossier suivi"],
       [dueCount, dueCount > 1 ? "relances en retard" : "relance en retard"],
       [interviews, interviews > 1 ? "entretiens" : "entretien"]].forEach(function (pair) {
       stats.appendChild(el("span", null, [el("b", { class: "num", text: String(pair[0]) }), " " + pair[1]]));
     });
-    var chip = byId("apps-due-chip");
     chip.hidden = dueCount === 0;
     clear(chip);
     chip.appendChild(JM.U.icon("calendar-clock"));
@@ -610,8 +616,23 @@
     clear(due);
     board.hidden = V.appsView === "table";
     byId("kb-table").hidden = V.appsView !== "table";
-    byId("kb-off").hidden = canTriage() || track.status === "loading";
+    var off = byId("kb-off");
+    off.hidden = track.status === "ready" || track.status === "loading";
+    off.textContent = track.status === "off"
+      ? "Les candidatures viennent du suivi : il demande le tableau de bord hébergé."
+      : "Suivi indisponible : tes candidatures ne sont pas chargées, rien n’est effacé. Réessaie depuis le bandeau en haut de la page.";
     renderInbox();
+    /* No board on an unknown state: empty columns would read as « nothing tracked ». */
+    if (track.status !== "ready" && track.status !== "loading") {
+      board.hidden = true;
+      byId("kb-table").hidden = true;
+      due.hidden = true;
+      byId("apps-show-archived").hidden = true;
+      byId("kb-archived").hidden = true;
+      renderStats([], 0);
+      updateCounts();
+      return;
+    }
     /* The archived applications (ADR 0028) leave the board, the table and the counts; the
        toggle shows them in a folded section under either view. */
     var archived = archivedKeys(today);

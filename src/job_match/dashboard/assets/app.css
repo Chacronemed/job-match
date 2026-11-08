@@ -251,7 +251,8 @@ tr.row.is-handled td.col-title .title-text > span:not(.status) { color: var(--in
 tr.row.st-ignored td.col-title .title-text > span:not(.status), tr.row.st-rejected td.col-title .title-text > span:not(.status) { text-decoration: line-through; }
 /* On the violet selected row the small greys step up one level (AA in light mode). */
 tr.row.is-selected .row-meta, tr.row.is-selected .score-tag, tr.row.is-selected .score small, tr.row.is-selected .score-ai:not(.ai-fort):not(.ai-hors_sujet) { color: var(--ink-2); }
-tr.row.is-handled .score { opacity: 0.6; }
+/* The score keeps its full ink (AA in both themes, IMPECCABLE_AUDIT O1): only its weight steps down. */
+tr.row.is-handled .score { font-weight: 500; }
 /* The expanded row: the details under it, in a quieter box. */
 table.data.jobs tr.details { display: block; }
 table.data.jobs tr.details td { display: block; padding: 0 17px 16px 17px; border-bottom: 1px solid var(--line-2); }
