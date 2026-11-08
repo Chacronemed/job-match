@@ -912,7 +912,7 @@ html:active-view-transition-type(record)::view-transition-new(main) { animation:
 .stats-tile p { margin: 0; }
 .stats-tile-label { color: var(--ink-2); font-size: var(--fs-sm); font-weight: 500; }
 .stats-tile-value { margin: 6px 0 4px !important; color: var(--ink); font-size: 22px; font-weight: 650; letter-spacing: -0.02em; }
-.stats-tile-sub { color: var(--ink-3); font-size: var(--fs-xs); }
+.stats-tile-sub { color: var(--ink-3); font-size: var(--fs-xs); text-wrap: pretty; }
 .stats-legend { margin: 0; }
 .sw-kept { background: var(--violet-9); }
 .sw-sent { background: var(--blue-9); }

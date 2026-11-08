@@ -233,7 +233,8 @@
   ];
   var REASON_TEXT = { none: "Sans raison donnée" };
 
-  function pct(r) { return r === null ? "—" : Math.round(r * 100) + " %"; }
+  /* A rate between 0 and 1 % is « < 1 % », never « 0 % » (IMPECCABLE_AUDIT S3). */
+  function pct(r) { return r === null ? "—" : r > 0 && r < 0.005 ? "< 1 %" : Math.round(r * 100) + " %"; }
   function plural(n, one, many) { return n + " " + (n > 1 ? many : one); }
   function fmtDay(iso) {
     var d = new Date(iso);
@@ -310,6 +311,16 @@
   }
 
   /* Grouped bars, one group per week; a hit area per week carries the tooltip. */
+  var MIN_CHART = 5;
+  function weekTable(weeks) {
+    return el("table", { class: "stats-table" }, [
+      el("thead", null, el("tr", null, [el("th", { scope: "col", text: "Semaine du" })].concat(SERIES.map(function (s) { return el("th", { scope: "col", class: "num", text: s.label }); })))),
+      el("tbody", null, weeks.map(function (w) {
+        return el("tr", null, [el("td", { text: fmtDay(w.start) })].concat(SERIES.map(function (s) { return el("td", { class: "num", text: String(w[s.key]) }); })));
+      }))
+    ]);
+  }
+
   function weekChart(st, width) {
     var weeks = st.weeks.list;
     var body = [];
@@ -317,14 +328,22 @@
       return el("span", { class: "legend-item" }, [el("i", { class: "swatch sw-" + s.key, "aria-hidden": "true" }), s.label]);
     }));
     body.push(legend);
+    var events = weeks.reduce(function (n, w) { return n + SERIES.reduce(function (m, s) { return m + w[s.key]; }, 0); }, 0);
     if (!weeks.length) {
       body.push(el("p", { class: "stats-empty", text: "Aucun événement daté sur la période." }));
+    } else if (events < MIN_CHART) {
+      /* A handful of events: a chart would draw each one as a full-height bar (IMPECCABLE_AUDIT
+         S1); the table says the same numbers plainly, without the chart's colour legend. */
+      body.length = 0;
+      body.push(el("p", { class: "stats-note", text: plural(events, "événement daté", "événements datés") + " sur la période : le graphe apparaît à partir de " + MIN_CHART + "." }));
+      body.push(el("div", { class: "table-scroll" }, weekTable(weeks)));
     } else {
       var max = 1;
       weeks.forEach(function (w) { SERIES.forEach(function (s) { max = Math.max(max, w[s.key]); }); });
       var step = max <= 5 ? 1 : max <= 10 ? 2 : Math.ceil(max / 5);
-      var top = Math.ceil(max / step) * step;
-      var W = Math.max(width || 640, weeks.length * 44 + 40), H = 220, padL = 28, padB = 24, padT = 8;
+      /* at least 4 on the axis: one event is never drawn as a full bar */
+      var top = Math.max(4, Math.ceil(max / step) * step);
+      var W = Math.max(width || 640, weeks.length * 44 + 40), H = 180, padL = 28, padB = 24, padT = 8;
       var plotH = H - padB - padT, groupW = (W - padL) / weeks.length;
       var barW = Math.max(3, Math.min(14, (groupW - 8) / 3 - 2));
       var svg = document.createElementNS(NS, "svg");
@@ -377,13 +396,7 @@
       var wrap = el("div", { class: "chart-wrap" }, [svg, tip]);
       body.push(wrap);
       /* the same numbers as a table: identity never by colour alone */
-      var table = el("table", { class: "stats-table" }, [
-        el("thead", null, el("tr", null, [el("th", { scope: "col", text: "Semaine du" })].concat(SERIES.map(function (s) { return el("th", { scope: "col", class: "num", text: s.label }); })))),
-        el("tbody", null, weeks.map(function (w) {
-          return el("tr", null, [el("td", { text: fmtDay(w.start) })].concat(SERIES.map(function (s) { return el("td", { class: "num", text: String(w[s.key]) }); })));
-        }))
-      ]);
-      body.push(el("details", { class: "stats-details" }, [el("summary", { text: "Voir les chiffres" }), el("div", { class: "table-scroll" }, table)]));
+      body.push(el("details", { class: "stats-details" }, [el("summary", { text: "Voir les chiffres" }), el("div", { class: "table-scroll" }, weekTable(weeks))]));
     }
     var u = st.undated, notes = [];
     if (u.kept) notes.push(plural(u.kept, "gardée", "gardées") + " sans date de décision");

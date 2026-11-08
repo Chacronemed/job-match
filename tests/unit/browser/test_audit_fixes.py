@@ -175,3 +175,15 @@ def test_offres_on_a_phone_sorts_with_a_select_and_44px_targets(open_dashboard, 
     companies = page.locator(f"{ROWS} .row-meta").all_inner_texts()
     assert companies == sorted(companies, key=str.lower)
     assert errors == []
+
+
+# ---------- Statistiques (IMPECCABLE_AUDIT S1) ----------
+
+def test_few_dated_events_show_a_table_not_full_height_bars(open_dashboard, job_keys):
+    page, errors = open_dashboard(_api(job_keys), hash_="#statistiques")
+    page.wait_for_function("() => document.querySelector('#stats-body .stats-funnel') !== null")
+    weeks = page.locator("#h-stats-weeks").locator("xpath=ancestor::section[1]")
+    assert weeks.locator("svg.week-chart").count() == 0
+    assert "le graphe apparaît à partir de 5" in weeks.inner_text()
+    assert weeks.locator("table.stats-table tbody tr").count() >= 1
+    assert errors == []
