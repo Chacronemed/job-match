@@ -19,7 +19,8 @@ NO_CLIP = """
   .map((n) => n.tagName + '.' + n.className + ' ' + n.scrollWidth + '>' + n.clientWidth)
 """
 SENTINEL = "1999-12-31"  # the follow_up_at the fault injection throws on
-HAS_CARDS = "document.querySelectorAll('#kb-board .kb-card').length > 0"
+# an arrow function: a bare expression would be eval'ed, which the page's CSP refuses
+HAS_CARDS = "() => document.querySelectorAll('#kb-board .kb-card').length > 0"
 
 
 def _api(keys, broken=False):
@@ -168,7 +169,7 @@ def test_one_broken_card_is_logged_and_the_others_still_show(open_dashboard, job
 
 def test_run_now_buttons_are_enabled_once_tracking_loaded(open_dashboard, job_keys):
     page, errors = open_dashboard(_api(job_keys), hash_="#executions")
-    page.wait_for_function("!document.getElementById('ai-run-now').disabled")
+    page.wait_for_function("() => !document.getElementById('ai-run-now').disabled")
     assert not page.locator("#docs-run-now").is_disabled()
     assert page.locator("#ai-runs-list .run-ai").count() == 1
     assert errors == []

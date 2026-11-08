@@ -67,7 +67,7 @@ def _reactivate_route(key):
 
 def _open(open_dashboard, keys, **kw):
     page, errors = open_dashboard(_api(keys), init_script=SETUP, hash_="#candidatures", **kw)
-    page.wait_for_function("document.querySelectorAll('#kb-board .kb-card').length > 0")
+    page.wait_for_function("() => document.querySelectorAll('#kb-board .kb-card').length > 0")
     return page, errors
 
 

@@ -85,17 +85,18 @@ def _open_tri(open_dashboard, api, viewport=(1440, 900)):
 def test_the_end_of_the_tri_asks_the_last_reason_and_lists_today(open_dashboard, job_keys):
     page, errors = _open_tri(open_dashboard, _empty_api())
     page.wait_for_function(TRI_READY)
-    for _ in range(3):
+    for i in range(3):
         page.keyboard.press("ArrowLeft")
-        page.wait_for_timeout(350)
+        page.wait_for_function(f"() => window.JM.tri.pos === {i + 1}")
     end = page.locator("#tri-end")
     page.wait_for_function("() => !document.getElementById('tri-end').hidden")
     assert end.locator("h2").inner_text() == "Tri terminé"
     # the last drop's reason, on the end screen, with the same keys 1–4
     assert "Dernière offre écartée" in end.locator(".tri-end-reasons").inner_text()
-    page.keyboard.press("2")
+    with page.expect_request(lambda r: r.method == "POST" and r.url.endswith("/api/decisions")
+                             and "too_senior" in (r.post_data or "")):
+        page.keyboard.press("2")
     page.wait_for_function("() => !document.querySelector('#tri-end .tri-end-reasons')")
-    assert any("too_senior" in (d or "") for d in page.decisions)
     # « Aujourd'hui »: four lines, real counts, each a link
     lines = end.locator(".today-list li")
     assert lines.count() == 4

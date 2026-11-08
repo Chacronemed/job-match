@@ -293,7 +293,7 @@ def _apps(keys):
 
 def test_board_says_its_counts_and_a_card_opens_the_record(open_dashboard, job_keys):
     page, errors = open_dashboard(_apps(job_keys), hash_="#candidatures")
-    page.wait_for_function("document.querySelectorAll('#kb-board .kb-card').length === 3")
+    page.wait_for_function("() => document.querySelectorAll('#kb-board .kb-card').length === 3")
     stats = page.locator("#apps-stats").inner_text()
     assert "3 dossiers suivis" in stats and "1 entretien" in stats
     # IMPECCABLE_AUDIT C2: the follow-up is said by the banner and its card, not five times
@@ -322,7 +322,7 @@ def test_board_says_its_counts_and_a_card_opens_the_record(open_dashboard, job_k
 
 def test_board_stacks_on_a_phone_without_overflow(open_dashboard, job_keys):
     page, errors = open_dashboard(_apps(job_keys), hash_="#candidatures", viewport=(390, 844))
-    page.wait_for_function("document.querySelectorAll('#kb-board .kb-card').length === 3")
+    page.wait_for_function("() => document.querySelectorAll('#kb-board .kb-card').length === 3")
     assert page.evaluate(OVERFLOW) <= 0
     cols = page.locator("#kb-board .kb-col")
     xs = [c.bounding_box()["x"] for c in cols.all()]

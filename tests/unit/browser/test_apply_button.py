@@ -39,7 +39,7 @@ def _api(keys):
 
 def _table(open_dashboard, api, **kw):
     page, errors = open_dashboard(api, init_script=SETUP, **kw)
-    page.wait_for_function("document.querySelectorAll('#kb-board .kb-card').length > 0")
+    page.wait_for_function("() => document.querySelectorAll('#kb-board .kb-card').length > 0")
     page.click("#apps-view-table")
     page.wait_for_selector("#kb-table table.data.apps")
     return page, errors
@@ -54,7 +54,7 @@ def test_postuler_copies_the_command_and_names_the_number(open_dashboard, job_ke
     # kept first); offer 2 is closed and not in it
     setup = SETUP.replace("v.jobs[1].apply_form = null", 'v.jobs[1].apply_form = "ashby"')
     page, errors = open_dashboard(_api(job_keys), init_script=setup)
-    page.wait_for_function("document.querySelectorAll('#kb-board .kb-card').length > 0")
+    page.wait_for_function("() => document.querySelectorAll('#kb-board .kb-card').length > 0")
     page.click("#apps-view-table")
     page.wait_for_selector("#kb-table table.data.apps")
     row = _row(page, job_keys[0])
