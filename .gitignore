@@ -54,3 +54,9 @@ htmlcov/
 
 # Node dependencies of the Worker (worker/package.json, installed by npm ci)
 node_modules/
+# Impeccable (project skill, docs/design/IMPECCABLE_SETUP.md): keep its data files (the
+# generic `data/` rule above would drop them), not its 21 MB engine binary, which the
+# launcher downloads and checks against scripts/engine-checksums.txt on first run
+!.claude/skills/impeccable/scripts/data/
+.claude/skills/impeccable/scripts/bin/
+.impeccable/

@@ -104,7 +104,7 @@ def _funnel(page):
     return page.eval_on_selector_all(
         "#stats-body .funnel-row",
         "rows => rows.map(r => [r.dataset.stage, r.querySelector('.funnel-n').textContent,"
-        " r.querySelector('.funnel-rate').textContent])")
+        " r.querySelector('.funnel-rate').textContent.replace(/\\u00a0/g, ' ')])")
 
 
 def _tile(page, key):
@@ -207,6 +207,8 @@ def test_both_themes_paint_the_series_in_their_own_colours(open_dashboard, theme
 def test_phone_has_no_horizontal_scroll_and_a_tab_to_the_view(open_dashboard):
     page, errors = _open(open_dashboard, viewport=(390, 844))
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+    # IMPECCABLE_AUDIT G5: Statistiques is under « Plus », which shows the current view
+    page.locator("#tab-more").click()
     tab = page.locator('#tabbar a[data-tab="statistiques"]')
     assert tab.is_visible()
     assert tab.get_attribute("aria-current") == "page"

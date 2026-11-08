@@ -111,12 +111,12 @@ window.JM = window.JM || {};
     });
   }
 
+  var YEARS_NUM = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 1 });
   function fmtYears(y) {
     if (y === null || y === undefined) return null;
-    return Number.isInteger(y) ? String(y) : String(y);
+    return YEARS_NUM.format(y);  /* « 1,5 », not « 1.5 » */
   }
 
-  var YEARS_NUM = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 1 });
   /* The triage card's experience fact: "3 ans requis", "1,5 an requis" (French: singular
      below 2), or that the posting states no number. */
   function yearsText(y) {
@@ -132,7 +132,7 @@ window.JM = window.JM || {};
     if (n >= 1e9) { n = n / 1e9; unit = " Md"; }
     else if (n >= 1e6) { n = n / 1e6; unit = " M"; }
     else if (n >= 1e3) { n = n / 1e3; unit = " k"; }
-    var s = (Math.round(n * 10) / 10).toString();
+    var s = YEARS_NUM.format(Math.round(n * 10) / 10);  /* « 1,5 M€ » */
     var cur = currency === "EUR" ? "€" : currency === "USD" ? "$" : currency === "GBP" ? "£" : (currency || "");
     return s + unit + (cur ? (cur.length === 1 ? cur : " " + cur) : "");
   }
@@ -174,7 +174,6 @@ window.JM = window.JM || {};
     if (DARK_ONLY) theme = "dark";
     document.documentElement.setAttribute("data-theme", theme);
     themeBtn.textContent = theme === "dark" ? "Mode clair" : "Mode sombre";
-    themeBtn.setAttribute("aria-pressed", theme === "light" ? "true" : "false");
     byId("theme-color").setAttribute("content", THEME_COLOR[theme]);
     if (persist) {
       try { localStorage.setItem("job-match-theme", theme); } catch (e) { /* private window */ }
@@ -674,7 +673,6 @@ window.JM = window.JM || {};
     toastHeld = false;
     toastOnEscape = null;
     if (toast.hidden) return;
-    if (U.reduced()) { toast.hidden = true; return; }
     toast.classList.remove("is-in");
     toast.classList.add("leaving");
     clearTimeout(toastLeave);
@@ -702,10 +700,12 @@ window.JM = window.JM || {};
     (actions || []).forEach(function (a) { toastActions.appendChild(toastButton(a)); });
     toastActions.hidden = !toastActions.childNodes.length;
     clearTimeout(toastLeave);
+    /* shown again while leaving: it comes back in, it does not snap to full opacity */
+    var wasLeaving = toast.classList.contains("leaving");
     toast.classList.remove("leaving");
     var wasHidden = toast.hidden;
     toast.hidden = false;
-    if (wasHidden) {
+    if (wasHidden || wasLeaving) {
       toast.classList.remove("is-in");
       void toast.offsetWidth;  /* restart the slide-in */
       toast.classList.add("is-in");
@@ -807,8 +807,13 @@ window.JM = window.JM || {};
     var n = X.sidebarCounts(rows, track.apps, runAt, thresholds.min_score, leads, runs, track.ai,
       track.status === "ready" ? JM.archivedSet() : null);
     Object.keys(n).forEach(function (view) { setCount(view, n[view]); });
+    /* Unknown, not zero, while the tracking is not loaded (IMPECCABLE_AUDIT C1). */
+    if (track.status === "error" || track.status === "off") setCount("candidatures", "—");
     /* « Relances à faire » (sidebar): the due follow-ups, as Candidatures lists them. */
-    setCount("relances", track.status === "ready" ? dueKeys(T.localDay()).length : "");
+    var due = track.status === "ready" ? dueKeys(T.localDay()).length : "";
+    setCount("relances", due);
+    var tab = document.querySelector('.tab-item[data-tab="candidatures"]');
+    if (tab) tab.setAttribute("aria-label", "Candidatures" + (due ? ", " + due + (due > 1 ? " relances dues" : " relance due") : ""));
   }
 
   /* ---------- record panel (Attio): split at ≥ 1280 px, overlay below ---------- */
@@ -886,7 +891,7 @@ window.JM = window.JM || {};
       el("span", { class: "pill", title: j.source === "ats" ? "Page carrière de " + (j.company || "l’entreprise") : null, text: sourceText(j) || "Source inconnue" })
     ]);
     box.appendChild(el("header", { class: "record-head" }, [
-      el("h2", { id: "record-title", tabindex: "-1", text: j.title || "—" }),
+      el("h2", { id: "record-title", tabindex: "-1", title: j.title || null, text: j.title || "—" }),
       el("p", { class: "record-sub", text: [j.company || "Entreprise non communiquée", j.location].filter(Boolean).join(" · ") }),
       tags
     ]));
@@ -962,6 +967,7 @@ window.JM = window.JM || {};
       record.appendChild(bar);
       record.appendChild(recordBody(j));
       record.appendChild(el("div", { class: "record-foot" }, recordActions(j)));
+      clearTimeout(R.closing);
       record.hidden = false;
       record.classList.remove("closing");
       document.body.classList.add("record-open");
@@ -973,7 +979,8 @@ window.JM = window.JM || {};
       syncHash();
     }
     /* A quiet open is synchronous: the state is set before the next render looks at it. */
-    var shown = (!was && !quiet && wideScreen()) ? U.transition(fill, ["record"]) : (fill(), Promise.resolve());
+    var instant = !!(opts && opts.instant);  /* opened from the keyboard: no View Transition */
+    var shown = (!was && !quiet && !instant && wideScreen()) ? U.transition(fill, ["record"]) : (fill(), Promise.resolve());
     shown.then(function () {
       /* Quiet: the focus stays where it was (a row, a field), or nowhere; a focus that was
          inside the panel before it was redrawn goes to its title, as a user open does. */
@@ -1001,9 +1008,14 @@ window.JM = window.JM || {};
     }
     R.open = false;
     setInert();  /* the page is focusable again before the focus goes back to it */
-    if (animate === false || U.reduced()) done();
+    if (animate === false) done();
     else if (wideScreen()) U.transition(done, ["record"]);
-    else { record.classList.add("closing"); setTimeout(done, 160); }
+    else {
+      /* a reopen before the slide ends cancels it (openRecord clears R.closing) */
+      record.classList.add("closing");
+      clearTimeout(R.closing);
+      R.closing = setTimeout(done, 200);
+    }
     if (back && document.contains(back)) back.focus({ preventScroll: true });
   }
 
@@ -1031,7 +1043,7 @@ window.JM = window.JM || {};
       }) });
     }
     groups.push({ title: "Aller à", items: TABS.map(function (t) {
-      return { label: "Aller à " + VIEW_TITLE[t], icon: VIEW_ICON[t], keys: ["G", GO_KEYS[t]], run: function () { showTab(t, true, true); } };
+      return { label: "Aller à " + VIEW_TITLE[t], icon: VIEW_ICON[t], keys: ["G", GO_KEYS[t]], run: function () { showTab(t, true, false); } };
     }) });
     var offers = q ? rows : JM.tri.items.slice(JM.tri.pos, JM.tri.pos + 4).map(function (it) { return it.row; });
     groups.push({ title: q ? "Offres" : "À trier ensuite", limit: 6, items: offers.map(function (r) {
@@ -1065,7 +1077,7 @@ window.JM = window.JM || {};
     if (performance.now() - gAt < 900) {
       gAt = -Infinity;
       var to = { t: "tri", c: "candidatures", o: "offres", s: "statistiques", l: "leads", e: "executions" }[ev.key.toLowerCase()];
-      if (to) { ev.preventDefault(); showTab(to, true, true); return; }
+      if (to) { ev.preventDefault(); showTab(to, true, false); return; }  /* a key: no animation */
     }
     if (V.tab === "tri" && triKeys(ev)) { ev.preventDefault(); return; }
     if (V.tab === "offres" && listKeys(ev)) { ev.preventDefault(); return; }

@@ -142,3 +142,50 @@ def job_keys(dashboard_data):
     """The keys of the offers the page shows, best score first."""
     data, _seed = dashboard_data
     return [j["key"] for j in data["jobs"]]
+
+
+# WCAG contrast of the text of every node matching a selector, as painted: the text colour with
+# its alpha and the opacity of its ancestors, over the ancestors' backgrounds composited from the
+# first opaque one (rgba overlays such as --hover / --active are common here).
+_CONTRAST_JS = r"""(sel) => {
+  const parse = (c) => {
+    const m = c.match(/[\d.]+/g) || [0, 0, 0, 0];
+    return [+m[0], +m[1], +m[2], m.length > 3 ? +m[3] : 1];
+  };
+  const over = (top, under) => {
+    const a = top[3];
+    return [0, 1, 2].map(i => top[i] * a + under[i] * (1 - a)).concat(1);
+  };
+  const chan = (x) => {
+    x /= 255;
+    return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
+  };
+  const lum = (c) => 0.2126 * chan(c[0]) + 0.7152 * chan(c[1]) + 0.0722 * chan(c[2]);
+  const shown = (e) => e.textContent.trim()
+    && e.checkVisibility({opacityProperty: true, visibilityProperty: true});
+  return [...document.querySelectorAll(sel)].filter(shown).map(e => {
+    const layers = [];
+    let n = e;
+    let opacity = 1;
+    while (n && n.nodeType === 1) {
+      const cs = getComputedStyle(n);
+      opacity *= +cs.opacity;
+      layers.push(parse(cs.backgroundColor));
+      n = n.parentElement;
+    }
+    let bg = [255, 255, 255, 1];
+    for (let i = layers.length - 1; i >= 0; i--) if (layers[i][3] > 0) bg = over(layers[i], bg);
+    const fg = parse(getComputedStyle(e).color);
+    fg[3] *= opacity;
+    const a = lum(over(fg, bg));
+    const b = lum(bg);
+    const ratio = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    return [e.textContent.trim().slice(0, 30), Math.round(ratio * 100) / 100];
+  });
+}"""
+
+
+@pytest.fixture
+def contrast():
+    """`contrast(page, selector)` -> [(text, ratio)] for each visible matching node, as painted."""
+    return lambda page, selector: [tuple(x) for x in page.evaluate(_CONTRAST_JS, selector)]

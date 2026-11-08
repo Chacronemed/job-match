@@ -3,7 +3,37 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**Source outage guard** (branch `fix/source-outage-guard` from `main`, 2026-11-06, ADR 0027,
+**Impeccable design pass — fixes** (branch `design/impeccable-pass`, 2026-11-08, cloud session,
+PR #25 in draft). The 2026-11-07 diagnostic (`docs/design/IMPECCABLE_AUDIT.md`) was validated
+with four decisions: P1 then P2 view by view (P3 only in files already touched), eyebrows
+removed, selected row = `--active` + focus ring, « Aujourd'hui » = the Tri's end screen.
+1. P1: the Offres record follows the j/k cursor and X/S/A act on the shown offer (O10);
+   handled rows keep AA scores in both themes (O1); without the tracking Candidatures says
+   « suivi indisponible » and « — », never 0 (C1).
+2. Shell: no eyebrow or slogan, no uppercase micro-labels, 11 px floor, no side stripe on the
+   selected row; phone tab bar = Tri, Offres, Candidatures (due badge), « Plus » (G1–G6).
+3. Views: Tri end screen « Aujourd'hui » from `triage.js todayAgenda` (Node-tested), last
+   reason asked there, no 8 s timer, clamped titles; Offres one primary, true empty states,
+   phone sort select, 44 px; Candidatures follow-up said once, gone offers named; Statistiques
+   table under 5 events, « < 1 % »; Leads claim wraps; Exécutions codes in words.
+4. Motion: transitions.dev token scale in `tokens.css`; no animation on keyboard actions;
+   ledger sequence once per batch; interruptible drawer/toast/spring-back; reduced motion keeps
+   fades (review-animations + animation-performance).
+5. Tooling: `transitions-polish` removed; Chromium 1248 installed so the browser tests run;
+   flaky waits fixed (bare-expression `wait_for_function` + CSP eval).
+6. Checks: ruff clean; `pytest -q -n auto` 1 795 passed, 3 skipped (browser 87); Node 343
+   pass; impeccable detect 0 eyebrow / 0 contrast / 0 overflow (`IMPECCABLE_AUDIT.md` §11).
+**Next step:** review PR #25 visually (captures in `docs/design/screenshots/impeccable/after/`),
+then merge; on prod, check the Tri end screen and the phone tab bar on the real data.
+**Open decisions:** G4 (UTC times in Exécutions/sidebar vs local snapshot time); deferred P3:
+L1, L2, L4 (`leads.js`), E4 (one line per run), O9 (virtualisation past ~500 offers).
+**Known:** the CI installs its own Chromium; this container needed `playwright install
+chromium` (1248) for the pip Playwright 1.64.
+
+Before it: **Impeccable design pass — diagnostic** (same branch, 2026-11-07): tooling installed in
+the project only, `PRODUCT.md`, the report and 62 captures; audit 15/20, critique 27/40, 45 issues.
+
+Before it: **Source outage guard** (branch `fix/source-outage-guard` from `main`, 2026-11-06, ADR 0027,
 PR in draft). Context: on 2026-11-06 France Travail was down (search → 0 offer, offer pages →
 « n'existe pas »); taken at face value the run would have closed every stored FT offer and
 expired my applications.

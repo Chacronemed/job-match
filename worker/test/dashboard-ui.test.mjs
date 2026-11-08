@@ -14,6 +14,11 @@ const T = { strong: 75, min_score: 50 };
 const job = (score, explanations, extra = {}) => ({ score, explanations, section: "eligible", ...extra });
 
 describe("breakdown", () => {
+  test("a weighted line it cannot read makes the start unknown, never the total", () => {
+    const b = S.breakdown(job(65, ["+15 docker"]));
+    assert.deepEqual([b.start, b.unread, b.lines.length, b.total], [null, 1, 0, 65]);
+  });
+
   test("reads every weight from the scorer's lines and finds the start", () => {
     const b = S.breakdown(job(64, [
       "Matched preferred: docker (+3)", "Missed preferred: aws", "Matched preferred: kubernetes (+4)",

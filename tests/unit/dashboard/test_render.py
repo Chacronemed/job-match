@@ -98,7 +98,7 @@ def test_the_page_has_dark_and_light_tokens_one_accent_and_reduced_motion():
     assert ':root[data-theme="light"]' in css and "prefers-color-scheme: light" not in css
     assert "--bg: var(--slate-1)" in html and "--slate-1: #111113" in html
     assert "--accent: var(--violet-9)" in html
-    assert 'id="theme-toggle" type="button" aria-pressed="false">' in html
+    assert 'id="theme-toggle" type="button">' in html  # its label names the action
     assert "prefers-reduced-motion: reduce" in html
     assert "linear-gradient" not in html and "radial-gradient" not in html
 
@@ -165,7 +165,7 @@ def test_audit_p1_fixes_are_in_the_page():
     assert 'id="toast-actions"' in html and "kb-prompt" not in html
     assert "followUpAsk(key, today)" in html
     # P1-2: a word search, with an example query.
-    assert 'placeholder="ex. orbital kubernetes"' in html
+    assert 'placeholder="ex. orbital kubernetes…"' in html
     assert "T.matchesWords(j, searchWords())" in html
     # P1-3: the reason step names the offer, as the one that just left (not the card shown).
     assert 'id="tri-reasons-title"' in html and '"Dernière offre écartée' in html

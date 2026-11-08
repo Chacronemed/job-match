@@ -203,9 +203,10 @@
     return wrap;
   }
 
-  /* Two letters from the company's name (its first two words), a « ? » without one. */
+  /* Two letters from the company's name (its first two words made of letters), a « ? »
+     without one: no punctuation or digits (« Beta <b>Corp</b> » → BC, AUDIT O7). */
   function monogram(j) {
-    var words = String(j.company || "").trim().split(/[\s\-–·,/]+/).filter(Boolean);
+    var words = String(j.company || "").replace(/<[^>]*>/g, " ").match(/[A-Za-zÀ-ÖØ-öø-ÿ]+/g) || [];
     var text = words.length > 1 ? words[0].charAt(0) + words[1].charAt(0) : (words[0] || "?").slice(0, 2);
     return el("span", { class: "logo", "aria-hidden": "true", text: text.toUpperCase() });
   }
@@ -243,7 +244,7 @@
       td.appendChild(line);
       /* The quiet facts on one line under the title; the sortable cells stay in the row for the
          sort and the tests, hidden. */
-      var age = typeof j.age_days === "number" ? (j.age_days === 0 ? "aujourd’hui" : j.age_days + " j") : "";
+      var age = typeof j.age_days === "number" ? (j.age_days === 0 ? "aujourd’hui" : j.age_days + "\u00a0j") : "";
       td.appendChild(el("span", { class: "row-meta", "aria-hidden": "true", text: [j.company || "Entreprise non communiquée", cityOf(j), j.contract !== "UNKNOWN" ? j.contract : "", sourceText(j), age].filter(Boolean).join(" · ") }));
       return td;
     },
@@ -266,7 +267,7 @@
     },
     age_days: function (j) {
       var age = typeof j.age_days === "number" ? j.age_days : null;
-      var td = cell("num col-age", "Âge", el("span", { class: age === null ? "unknown" : "", text: age === null ? "—" : age + " j" }));
+      var td = cell("num col-age", "Âge", el("span", { class: age === null ? "unknown" : "", text: age === null ? "—" : age + "\u00a0j" }));
       if (j.posted_at) td.title = "Publiée le " + fmtDate(j.posted_at);
       return td;
     },
@@ -338,7 +339,7 @@
       foot.appendChild(b);
       return b;
     }
-    if (s !== "ignored") button("", function () { quickSet(row, "ignored"); }, "ghost record-drop", "Écarter l’offre").appendChild(JM.U.icon("x"));
+    if (s !== "ignored") button("Écarter", function () { quickSet(row, "ignored"); }, "ghost record-drop", "Écarter l’offre").insertBefore(JM.U.icon("x"), null);
     if (s !== "to_apply" && s !== "applied" && s !== "interview") button("Garder", function () { quickSet(row, "to_apply"); }, "primary").appendChild(JM.U.icon("arrow-right"));
     else if (s === "to_apply" && JM.archiveStateOf(row.key)) {
       /* Auto-archived (ADR 0028): back in the list for another kept_days from today. */
@@ -465,14 +466,30 @@
     });
   }
 
+  /* Why the list is empty, from the latest collection run (IMPECCABLE_AUDIT O4): never a
+     claim the data does not back. */
+  function emptyListText() {
+    var last = null;
+    (JM.runs || []).forEach(function (r) {
+      if (r && r.pipeline === "jobs" && (!last || String(r.started_at) > String(last.started_at))) last = r;
+    });
+    if (!last) return "Aucune collecte dans cet instantané : les offres arrivent avec la prochaine exécution.";
+    var down = (last.outages || []).map(function (o) { return o && (o.label || o.source); }).filter(Boolean);
+    if (down.length) return "Source indisponible à la dernière collecte (" + down.join(", ") + ") : aucune offre ouverte pour l’instant.";
+    var n = typeof last.fetched === "number" ? last.fetched : null;
+    return n === null ? "Aucune offre ouverte : voir Exécutions pour la dernière collecte."
+      : "La dernière collecte a lu " + n + (n > 1 ? " offres" : " offre") + " ; aucune n’a passé les filtres (expérience, contrat, lieu, sujet).";
+  }
+
   function setEmpty(shown) {
     var empty = byId("jobs-empty");
     empty.hidden = shown > 0;
     if (shown > 0) return;
     var n = activeFilters();
-    byId("jobs-empty-text").textContent = rows.length === 0
-      ? "Le run de ce matin n’a rien collecté : la prochaine exécution tourne demain matin (voir Exécutions)."
-      : "Le run de ce matin n’a rien trouvé pour ces filtres.";
+    byId("jobs-empty-text").textContent = rows.length === 0 ? emptyListText() : "Aucune offre ne correspond à ces filtres.";
+    /* O6: nothing to select, nothing to triage from here. */
+    byId("detail-empty-text").textContent = rows.length === 0 ? "Aucune offre ouverte dans cet instantané." : "Sélectionne une offre pour lire son relevé du score.";
+    byId("detail-empty-hint").hidden = rows.length === 0;
     byId("jobs-empty-reset").hidden = n === 0;
   }
 
@@ -519,7 +536,9 @@
   /* The selected row, by the record's job: one strongly marked row. */
   function markSelected() {
     Array.prototype.forEach.call(jobsBody.querySelectorAll("tr.row"), function (row) {
-      row.classList.toggle("is-selected", !!(R.open && R.job === row.jmRow));
+      var on = !!(R.open && R.job === row.jmRow);
+      row.classList.toggle("is-selected", on);
+      row.setAttribute("aria-selected", on ? "true" : "false");
     });
   }
 
@@ -551,7 +570,34 @@
     i = Math.max(0, Math.min(list.length - 1, i));
     list[i].focus({ preventScroll: true });
     list[i].scrollIntoView({ block: "nearest", behavior: U.reduced() ? "auto" : "smooth" });
+    followCursor(list[i]);
   }
+
+  /* The split's record follows the keyboard cursor (IMPECCABLE_AUDIT O10): what X / S / A act
+     on is always the offer on screen. Drawn after 90 ms of rest so a held J does not rebuild the
+     record on every row; an action key draws it at once first (flushFollow). */
+  var followTimer = null;
+  var followRow = null;
+  function followCursor(row) {
+    clearTimeout(followTimer);
+    followRow = null;
+    if (!row || V.tab !== "offres" || !JM.wideScreen() || (R.open && R.job === row.jmRow)) return;
+    followRow = row;
+    followTimer = setTimeout(flushFollow, 90);
+  }
+  function flushFollow() {
+    clearTimeout(followTimer);
+    var row = followRow;
+    followRow = null;
+    if (row && document.contains(row) && !(R.open && R.job === row.jmRow)) {
+      openRecord(row.jmRow, null, { quiet: true });
+    }
+  }
+  /* Tab into a row is a keyboard move too; a click opens the record on its own. */
+  jobsBody.addEventListener("focusin", function (ev) {
+    var row = ev.target;
+    if (row && row.classList && row.classList.contains("row") && row.matches(":focus-visible")) followCursor(row);
+  });
 
   /* True when the key was handled. Inside the row's details (a form, a chip) the keys are the
      controls' own. */
@@ -562,6 +608,7 @@
     if (ev.key === "k" || ev.key === "ArrowUp") { moveFocus(-1); return true; }
     var row = focusedRow();
     if (!row) return false;
+    if (followRow) flushFollow();
     var j = row.jmRow;
     if (ev.key === "x" && canWrite()) { quickSet(j, "ignored"); return true; }
     if (ev.key === "s" && canWrite()) { quickSet(j, "to_apply"); return true; }
@@ -571,7 +618,7 @@
       else row.toggleDetails();
       return true;
     }
-    if (ev.key === "o") { openRecord(j, row); return true; }
+    if (ev.key === "o") { openRecord(j, row, { instant: true }); return true; }
     return false;
   }
 
@@ -698,7 +745,22 @@
     });
   });
 
+  /* Phones: one native select instead of the scrolling header bar (IMPECCABLE_AUDIT O8). */
+  var sortM = byId("f-sort-m");
+  sortM.addEventListener("change", function () {
+    var v = sortM.value.split("-");
+    state.sortKey = v[0];
+    state.sortDir = v[1] === "asc" ? "asc" : "desc";
+    markSortHeader();
+    renderJobs();
+    syncHash();
+  });
+
   function markSortHeader() {
+    var want = state.sortKey + "-" + state.sortDir;
+    if (sortM.querySelector('option[value="' + want + '"]')) sortM.value = want;
+    else if (!sortM.querySelector('option[value="custom"]')) sortM.appendChild(el("option", { value: "custom", text: "Tri personnalisé", disabled: "disabled" }));
+    if (sortM.value !== want) sortM.value = "custom";
     headers.forEach(function (h) {
       var b = h.querySelector(".sort");
       h.setAttribute("aria-sort", b && b.getAttribute("data-key") === state.sortKey

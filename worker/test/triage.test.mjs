@@ -328,3 +328,45 @@ describe("sidebar counters (DESIGN.md Counters): invariants", () => {
     assert.deepEqual([dropped.tri, dropped.candidatures], [before.tri - 1, before.candidatures]);
   });
 });
+
+// « Aujourd'hui » on the Tri's end screen (IMPECCABLE_AUDIT §8): the counters' own rules, and
+// an unknown tracking is null (« — »), never zero.
+describe("todayAgenda", () => {
+  const RUN = (fetched, outages = []) => ({ pipeline: "jobs", started_at: "2026-10-21T07:00:00+00:00", fetched, outages });
+  const base = { runAt: Date.parse("2026-10-21T07:00:00+00:00"), minScore: 60, ai: {} };
+
+  test("counts the queue, the due follow-ups, the documents ready and the replies", () => {
+    const rows = [job("ft:a", 80, "2026-10-21T07:10:00+00:00"), job("ft:b", 70, "2026-10-21T07:10:00+00:00"),
+      job("ft:c", 90, "2026-10-21T07:10:00+00:00")];
+    const apps = { "ft:b": { status: "to_apply" }, "ft:c": { status: "to_apply" }, "ft:z": { status: "applied" } };
+    const a = X.todayAgenda({ ...base, rows, apps, runs: [RUN(10)], tracking: true, dueCount: 2,
+      documents: { "ft:b": { status: "ready" }, "ft:c": { status: "pending" }, "ft:z": { status: "ready" } },
+      inbox: { to_confirm: [{}, {}, {}] }, exclude: {} });
+    assert.deepEqual([a.toTriage, a.due, a.docsReady, a.replies, a.why], [1, 2, 1, 3, null]);
+  });
+
+  test("an archived application has no document to send", () => {
+    const apps = { "ft:b": { status: "to_apply" } };
+    const a = X.todayAgenda({ ...base, rows: [], apps, runs: [], tracking: true, dueCount: 0,
+      documents: { "ft:b": { status: "ready" } }, inbox: {}, exclude: { "ft:b": true } });
+    assert.equal(a.docsReady, 0);
+  });
+
+  test("without the tracking every count that depends on it is unknown", () => {
+    const a = X.todayAgenda({ ...base, rows: [job("ft:a", 80, "2026-10-21T07:10:00+00:00")], apps: {}, runs: [], tracking: false, dueCount: null });
+    assert.deepEqual([a.toTriage, a.due, a.docsReady, a.replies], [null, null, null, null]);
+  });
+
+  test("an empty Tri says why, from the data", () => {
+    const empty = { ...base, apps: {}, tracking: true, dueCount: 0, documents: {}, inbox: {} };
+    const down = X.todayAgenda({ ...empty, rows: [], runs: [RUN(0, [{ source: "france_travail", label: "France Travail" }])] });
+    assert.deepEqual([down.why.kind, down.why.sources], ["outage", ["France Travail"]]);
+    const nothing = X.todayAgenda({ ...empty, rows: [], runs: [RUN(533)] });
+    assert.deepEqual([nothing.why.kind, nothing.why.fetched], ["nothing", 533]);
+    const rows = [job("ft:low", 40, "2026-10-21T07:10:00+00:00"), job("ft:done", 90, "2026-10-21T07:10:00+00:00")];
+    const done = X.todayAgenda({ ...empty, rows, apps: { "ft:done": { status: "ignored" } }, runs: [RUN(5)] });
+    assert.deepEqual([done.toTriage, done.why.kind, done.why.triaged, done.why.below], [0, "done", 1, 1]);
+    const doneDown = X.todayAgenda({ ...empty, rows, apps: { "ft:done": { status: "ignored" } }, runs: [RUN(0, [{ label: "France Travail" }])] });
+    assert.deepEqual([doneDown.why.kind, doneDown.why.sources], ["done", ["France Travail"]]);
+  });
+});

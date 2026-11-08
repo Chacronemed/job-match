@@ -43,9 +43,15 @@
         return;
       }
     });
+    /* A weighted line in a format this file does not read (an older scorer): its points are
+       somewhere in the total, so the start is unknown, never the total itself (AUDIT T6). */
+    var unread = (job.explanations || []).filter(function (text) {
+      return /[+-]\d+/.test(text) && !PROFILE.test(text) && !STRETCH.test(text)
+        && !LINE.some(function (l) { return l[0].test(text); });
+    }).length;
     var delta = lines.reduce(function (a, l) { return a + l.value; }, 0);
     var capped = job.score === 0 || job.score === 100;
-    return { start: capped ? null : job.score - delta, lines: lines, total: job.score, capped: capped };
+    return { start: capped || unread ? null : job.score - delta, lines: lines, total: job.score, capped: capped, unread: unread };
   }
 
   /* The band the pipeline put the offer in (data.py `section`), in words. */

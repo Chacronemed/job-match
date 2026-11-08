@@ -5,6 +5,7 @@ record's footer actions, the section chips, the unknown experience said as such,
 tracking error state."""
 
 import json
+from urllib.parse import unquote
 
 ROWS = "#jobs-body tr.row"
 READY = "() => document.querySelector('#track-banner').hidden && window.JM.track.status === 'ready'"
@@ -141,6 +142,37 @@ def test_the_record_footer_keeps_the_offer_and_follows_its_status(open_dashboard
     assert errors == []
 
 
+def test_j_and_k_move_the_record_with_the_cursor_and_s_acts_on_the_shown_offer(
+        open_dashboard, job_keys):
+    """IMPECCABLE_AUDIT O10: at >= 1280 px the split's record follows the keyboard cursor, so
+    X / S / A always act on the offer the record shows."""
+    page, errors = _open(open_dashboard)
+    page.wait_for_function("() => !document.getElementById('record').hidden")
+    puts = []
+    page.on("request", lambda r: puts.append(r.url.rsplit("/", 1)[1])
+            if r.method == "PUT" and "/api/applications/" in r.url else None)
+    page.keyboard.press("j")
+    page.keyboard.press("j")
+    rows = page.locator(ROWS)
+    second = rows.nth(1)
+    key = second.get_attribute("data-key")
+    page.wait_for_function(f"() => decodeURIComponent(location.hash).includes('fiche={key}')")
+    assert page.evaluate("document.activeElement.getAttribute('data-key')") == key
+    shown = second.locator(".title-text > span").inner_text()
+    assert page.locator("#record-title").inner_text() == shown
+    assert page.locator(f"{ROWS}.is-selected").count() == 1
+    assert second.get_attribute("aria-selected") == "true"
+    page.keyboard.press("k")
+    first_key = rows.nth(0).get_attribute("data-key")
+    page.wait_for_function(f"() => decodeURIComponent(location.hash).includes('fiche={first_key}')")
+    page.keyboard.press("j")
+    page.keyboard.press("s")  # straight after the move: no wait, the record must already be there
+    page.wait_for_function(f"() => document.querySelectorAll('{ROWS}.st-to_apply').length > 0")
+    page.wait_for_timeout(100)
+    assert [unquote(p) for p in puts] == [key]
+    assert errors == []
+
+
 def test_section_chips_toggle_and_toutes_puts_every_section_back(open_dashboard, job_keys):
     page, errors = _open(open_dashboard)
     assert page.locator("#section-all").get_attribute("aria-pressed") == "true"
@@ -261,11 +293,12 @@ def _apps(keys):
 
 def test_board_says_its_counts_and_a_card_opens_the_record(open_dashboard, job_keys):
     page, errors = open_dashboard(_apps(job_keys), hash_="#candidatures")
-    page.wait_for_function("document.querySelectorAll('#kb-board .kb-card').length === 3")
+    page.wait_for_function("() => document.querySelectorAll('#kb-board .kb-card').length === 3")
     stats = page.locator("#apps-stats").inner_text()
-    assert "3 dossiers suivis" in stats and "1 relance en retard" in stats
-    assert "1 entretien" in stats
-    assert page.locator("#apps-due-chip").is_visible()
+    assert "3 dossiers suivis" in stats and "1 entretien" in stats
+    # IMPECCABLE_AUDIT C2: the follow-up is said by the banner and its card, not five times
+    assert "relance" not in stats
+    assert page.locator("#apps-due-chip").is_hidden()
     assert page.locator("[data-count=relances]").first.inner_text() == "1"
     cols = page.locator("#kb-board .kb-col")
     assert cols.count() == 4  # the board's own statuses, not the mockup's
@@ -275,8 +308,8 @@ def test_board_says_its_counts_and_a_card_opens_the_record(open_dashboard, job_k
     due = page.locator("#kb-board .kb-card .kb-follow.is-due")
     assert due.count() == 1 and "j de retard" in due.inner_text()
     assert page.locator("#kb-due").bounding_box()["height"] < 60
-    page.locator("#apps-due-chip").click()
-    assert page.evaluate("document.activeElement.closest('#kb-due') !== null")
+    page.locator("#kb-due .kb-due-list button").first.click()
+    assert page.evaluate("document.activeElement.classList.contains('kb-card')")
     # « Voir la fiche » opens the record next to the board
     card = page.locator("#kb-board .kb-card").first
     card.locator(".kb-open").click()
@@ -289,7 +322,7 @@ def test_board_says_its_counts_and_a_card_opens_the_record(open_dashboard, job_k
 
 def test_board_stacks_on_a_phone_without_overflow(open_dashboard, job_keys):
     page, errors = open_dashboard(_apps(job_keys), hash_="#candidatures", viewport=(390, 844))
-    page.wait_for_function("document.querySelectorAll('#kb-board .kb-card').length === 3")
+    page.wait_for_function("() => document.querySelectorAll('#kb-board .kb-card').length === 3")
     assert page.evaluate(OVERFLOW) <= 0
     cols = page.locator("#kb-board .kb-col")
     xs = [c.bounding_box()["x"] for c in cols.all()]

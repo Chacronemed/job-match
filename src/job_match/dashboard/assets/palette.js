@@ -90,9 +90,11 @@
     close(dlg).then(function () { it.c.run(); });
   }
 
+  /* The palette closes at once and its command runs at once (a ⌘K toggle has no animation);
+     the help fades out. */
   function close(d) {
     if (!d || !d.open) return Promise.resolve();
-    if (U.reduced()) { d.close(); return Promise.resolve(); }
+    if (d === dlg) { d.close(); return Promise.resolve(); }
     d.classList.add("closing");
     return new Promise(function (res) {
       var done = function () { d.classList.remove("closing"); if (d.open) d.close(); res(); };

@@ -108,7 +108,8 @@ def test_the_empty_state_says_what_to_do_and_resets(open_dashboard, job_keys):
     page.locator("#jobs-controls summary").click()
     page.locator("#f-search").fill("rien-ne-correspond")
     page.wait_for_selector("#jobs-empty:not([hidden])")
-    assert "rien trouvé pour ces filtres" in page.locator("#jobs-empty-text").inner_text()
+    empty = page.locator("#jobs-empty-text").inner_text()
+    assert empty == "Aucune offre ne correspond à ces filtres."
     page.locator("#jobs-empty-reset").click()
     page.wait_for_function(f"() => document.querySelectorAll('{ROWS}').length > 1")
     assert page.locator("#f-search").input_value() == ""
@@ -188,6 +189,11 @@ def test_runs_show_the_source_down_and_its_closure_counters(open_dashboard, job_
     assert "clôtures suspendues 12" in card.locator(".run-stats").inner_text()
     source = card.locator(".run-source[data-source='france_travail']")
     assert source.inner_text().endswith("13 appels, 0 vérifiées, 0 fermées, 12 clôtures suspendues")
+    # IMPECCABLE_AUDIT E1: the pipeline's codes are said in words
+    assert source.inner_text().startswith("France Travail : ")
+    reasons = card.locator(".run-reasons").inner_text().replace("\u00a0", " ")
+    assert "trop d’expérience demandée 50" in reasons and "hors sujet 10" in reasons
+    assert "not_relevant" not in reasons
     # the card before it (no outage) has neither the banner nor the counters
     assert page.locator("#runs-list .run-outage").count() == 1
     assert errors == []

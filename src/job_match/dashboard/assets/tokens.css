@@ -62,9 +62,17 @@
   /* Focus layout: sidebar, top bar, the record column, one Offres row (dense) */
   --sidebar-w: 232px; --topbar-h: 64px; --panel-w: 420px; --row-h: 58px;
 
-  /* motion */
-  --ease: cubic-bezier(0.16, 1, 0.3, 1);
-  --d-fast: 120ms; --d: 160ms; --d-slow: 200ms;
+  /* motion: the transitions.dev scale (free tokens, .claude/skills/transitions-dev/_root.css),
+     the subset this Operate UI uses: 150 / 250 ms, one smooth ease-out, nothing bounces. The
+     older names stay as aliases so every rule reads from the same scale. */
+  --duration-stagger: 40ms;
+  --duration-quick: 150ms;
+  --duration-fast: 250ms;
+  --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --distance-micro: 4px; --distance-small: 6px; --distance-base: 8px;
+  --scale-small: 0.98;
+  --ease: var(--ease-smooth-out);
+  --d-fast: var(--duration-quick); --d: var(--duration-quick); --d-slow: var(--duration-fast);
   --overlay-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
 }
 
@@ -93,6 +101,4 @@
 
 body[data-density="comfortable"] { --row-h: 70px; }
 
-@media (prefers-reduced-motion: reduce) {
-  :root { --d-fast: 0ms; --d: 0ms; --d-slow: 0ms; }
-}
+/* Reduced motion keeps the fades (state feedback) and drops the movement: app.css. */
