@@ -71,7 +71,9 @@ def test_kanban_shows_every_status_without_console_errors(open_dashboard, job_ke
     assert page.locator("#kb-board button", has_text="J’ai postulé").count() == 1
     assert page.locator("#kb-due").is_visible()
     assert "1 relance en retard" in page.locator("#kb-due").inner_text()
-    assert page.locator("#kb-board .kb-card", has_text="offre plus affichée").count() == 1
+    # IMPECCABLE_AUDIT C3: a gone offer is named in words, its key only in the tooltip
+    gone = page.locator("#kb-board .kb-card", has_text="Offre retirée (France Travail)")
+    assert gone.count() == 1 and "france_travail:GONE1" not in gone.inner_text()
     assert page.locator("#kb-board .kb-card-broken").count() == 0
     assert errors == []
 
@@ -98,7 +100,8 @@ def test_table_shows_every_row_without_console_errors(open_dashboard, job_keys):
     assert page.locator("#kb-table tbody tr").count() == 4
     menus = page.locator("#kb-table select.kb-status")
     assert sorted(m.input_value() for m in menus.all()) == sorted(STATUSES)
-    assert page.locator("#kb-table tbody tr", has_text="offre plus affichée").count() == 1
+    gone = page.locator("#kb-table tbody tr", has_text="Offre retirée (France Travail)")
+    assert gone.count() == 1
     assert page.locator("#kb-table th").count() == 8
     # the ready version: PDF + DOCX for the CV and the letter; the failed one: « Échec » with
     # the code as the tooltip and « Regénérer »; a row without documents: « — » and « Générer »

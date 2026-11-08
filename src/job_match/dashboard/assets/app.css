@@ -639,7 +639,8 @@ select.posting-status { min-height: 32px; }
 .kb-due-title { display: flex; align-items: center; gap: 8px; margin: 0; font-size: var(--fs-sm); font-weight: 600; color: var(--amber-11); }
 .kb-due-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 18px; }
 .kb-due-list li { display: flex; gap: 8px; align-items: baseline; }
-.kb-due-list .link-btn { min-width: 0; text-align: left; overflow-wrap: anywhere; font-size: var(--fs-sm); }
+.kb-due-list li { min-width: 0; max-width: 100%; }
+.kb-due-list .link-btn { min-width: 0; max-width: 46ch; text-align: left; font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kb-due-late { font-size: var(--fs-xs); color: var(--amber-11); font-variant-numeric: tabular-nums; }
 .kb-board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; align-items: stretch; flex: 1; min-height: 0; }
 .kb-col { display: flex; flex-direction: column; min-width: 0; min-height: 200px; padding: 13px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); transition: background var(--d-fast); }
@@ -658,7 +659,9 @@ select.posting-status { min-height: 32px; }
 body.is-dragging-card { user-select: none; -webkit-user-select: none; }
 .kb-card-broken { box-shadow: inset 0 0 0 1px var(--red-9); color: var(--ink-2); cursor: default; }
 .kb-card.is-dragging { z-index: 10; cursor: grabbing; box-shadow: var(--overlay-shadow); }
-.kb-title { text-wrap: pretty; margin: 0 0 8px; font-size: var(--fs); font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+.kb-title { text-wrap: pretty; margin: 0 0 8px; font-size: var(--fs); font-weight: 600; line-height: 1.35; overflow-wrap: anywhere;
+  /* Three lines at most (C4): the full title is the tooltip and the record. */
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
 .kb-meta { display: flex; align-items: center; gap: 7px; margin: 0 0 8px; font-size: var(--fs-xs); color: var(--ink-2); overflow-wrap: anywhere; }
 .kb-meta::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--hue, var(--ink-3)); flex: none; }
 .kb-dates { margin: 0 0 6px; font-size: var(--fs-xs); color: var(--ink-3); font-variant-numeric: tabular-nums; }
@@ -1107,6 +1110,11 @@ html:active-view-transition-type(record)::view-transition-new(main) { animation:
   *, *::before, *::after, ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) {
     animation: none !important; transition: none !important;
   }
+}
+
+/* Phones: the column with a follow-up due comes first, not under every « À candidater » (C5). */
+@media (max-width: 760px) {
+  .kb-col:has(.kb-follow.is-due) { order: -1; }
 }
 
 /* Short viewports (a phone held sideways, 200 % zoom): the Tri title is read by screen readers

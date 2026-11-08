@@ -295,9 +295,10 @@ def test_board_says_its_counts_and_a_card_opens_the_record(open_dashboard, job_k
     page, errors = open_dashboard(_apps(job_keys), hash_="#candidatures")
     page.wait_for_function("document.querySelectorAll('#kb-board .kb-card').length === 3")
     stats = page.locator("#apps-stats").inner_text()
-    assert "3 dossiers suivis" in stats and "1 relance en retard" in stats
-    assert "1 entretien" in stats
-    assert page.locator("#apps-due-chip").is_visible()
+    assert "3 dossiers suivis" in stats and "1 entretien" in stats
+    # IMPECCABLE_AUDIT C2: the follow-up is said by the banner and its card, not five times
+    assert "relance" not in stats
+    assert page.locator("#apps-due-chip").is_hidden()
     assert page.locator("[data-count=relances]").first.inner_text() == "1"
     cols = page.locator("#kb-board .kb-col")
     assert cols.count() == 4  # the board's own statuses, not the mockup's
@@ -307,8 +308,8 @@ def test_board_says_its_counts_and_a_card_opens_the_record(open_dashboard, job_k
     due = page.locator("#kb-board .kb-card .kb-follow.is-due")
     assert due.count() == 1 and "j de retard" in due.inner_text()
     assert page.locator("#kb-due").bounding_box()["height"] < 60
-    page.locator("#apps-due-chip").click()
-    assert page.evaluate("document.activeElement.closest('#kb-due') !== null")
+    page.locator("#kb-due .kb-due-list button").first.click()
+    assert page.evaluate("document.activeElement.classList.contains('kb-card')")
     # « Voir la fiche » opens the record next to the board
     card = page.locator("#kb-board .kb-card").first
     card.locator(".kb-open").click()

@@ -338,18 +338,26 @@
   /* The hue of a card's company dot: the column's own. */
   var STATUS_DOT = { to_apply: "var(--accent-ink)", applied: "var(--blue-11)", interview: "var(--green-11)", rejected: "var(--red-11)" };
 
+  /* An application whose offer left the snapshot: its source in words, never its raw key
+     (the key stays in the tooltip). IMPECCABLE_AUDIT C3. */
+  var GONE_SOURCE = { france_travail: "France Travail", adzuna: "Adzuna", jooble: "Jooble", ats: "pages carrière" };
+  function goneTitle(key) {
+    var src = GONE_SOURCE[String(key).split(":")[0]];
+    return "Offre retirée" + (src ? " (" + src + ")" : "");
+  }
+
   function appCard(key, today) {
     var app = track.apps[key];
     var status = T.statusOf(app);
     var j = postingByKey[key];
     var card = el("article", { class: "kb-card", "data-key": key, tabindex: "-1" });
-    card.appendChild(el("h4", { class: "kb-title", text: j ? (j.title || "—") : key }));
-    var meta = el("p", { class: "kb-meta", text: j ? [j.company || "Entreprise non communiquée", j.location || ""].filter(Boolean).join(" · ") : "offre plus affichée" });
-    meta.style.setProperty("--hue", STATUS_DOT[status] || "var(--ink-3)");
+    card.appendChild(el("h3", { class: "kb-title", title: j ? (j.title || null) : key, text: j ? (j.title || "—") : goneTitle(key) }));
+    var meta = el("p", { class: "kb-meta" + (j ? "" : " is-gone"), text: j ? [j.company || "Entreprise non communiquée", j.location || ""].filter(Boolean).join(" · ") : "plus dans la liste des offres" });
+    meta.style.setProperty("--hue", j ? (STATUS_DOT[status] || "var(--ink-3)") : "var(--ink-3)");
     card.appendChild(meta);
     var dates = [];
     var since = daysInStatus(app, today);
-    if (since !== null) dates.push(since === 0 ? "Aujourd’hui" : "Depuis " + since + " j");
+    if (since !== null) dates.push(since === 0 ? "Dans cette colonne depuis aujourd’hui" : "Dans cette colonne depuis " + since + " j");
     if (app.applied_at) dates.push("Envoyée le " + shortDay(app.applied_at));
     if (app.interview_at) dates.push("Entretien le " + shortDay(app.interview_at));
     if (dates.length) card.appendChild(el("p", { class: "kb-dates", text: dates.join(" · ") }));
@@ -364,14 +372,14 @@
     var actions = el("div", { class: "kb-actions" });
     actions.appendChild(statusMenu(key, j, status));
     if (status === "to_apply") {
-      var applied = el("button", { type: "button", class: "btn btn-primary btn-small", text: "J’ai postulé" });
+      var applied = el("button", { type: "button", class: "button btn-small", text: "J’ai postulé" });
       applied.addEventListener("click", function () {
         setRecord(key, { status: "applied", applied_at: today }, "Candidature envoyée le " + shortDay(today),
           followUpAsk(key, today));
       });
       actions.appendChild(applied);
     }
-    if (j && j.url && HTTP.test(j.url)) actions.appendChild(el("a", { href: j.url, target: "_blank", rel: "noopener noreferrer", "aria-label": "Voir l’offre : " + (j.title || key), text: "Offre" }));
+    if (j && j.url && HTTP.test(j.url)) actions.appendChild(el("a", { href: j.url, target: "_blank", rel: "noopener noreferrer", "aria-label": "Voir l’annonce : " + (j.title || key), text: "Annonce" }));
     if (j) {
       var open = el("button", { type: "button", class: "link-btn kb-open", "aria-label": "Voir la fiche : " + (j.title || key) }, [JM.U.icon("external-link"), "Voir la fiche"]);
       open.addEventListener("click", function () { openRecord(j, open); });
@@ -390,10 +398,10 @@
       try { return fallback(); } catch (e2) { return el("p", { class: "kb-empty", text: "Carte illisible" }); }
     }
   }
-  function brokenTitle(key) { var j = postingByKey[key]; return j && j.title ? j.title : key; }
+  function brokenTitle(key) { var j = postingByKey[key]; return j && j.title ? j.title : goneTitle(key); }
   function brokenCard(key) {
     var card = el("article", { class: "kb-card kb-card-broken", "data-key": key, tabindex: "-1" });
-    card.appendChild(el("h4", { class: "kb-title", text: brokenTitle(key) }));
+    card.appendChild(el("h3", { class: "kb-title", text: brokenTitle(key) }));
     card.appendChild(el("p", { class: "kb-meta", text: "Carte illisible · les autres s’affichent" }));
     try { card.appendChild(el("div", { class: "kb-actions" }, statusMenu(key, postingByKey[key], T.statusOf(track.apps[key])))); } catch (e) { /* no menu */ }
     return card;
@@ -591,11 +599,11 @@
     }
     var interviews = keys.filter(function (k) { return T.statusOf(track.apps[k]) === "interview"; }).length;
     [[keys.length, keys.length > 1 ? "dossiers suivis" : "dossier suivi"],
-      [dueCount, dueCount > 1 ? "relances en retard" : "relance en retard"],
       [interviews, interviews > 1 ? "entretiens" : "entretien"]].forEach(function (pair) {
       stats.appendChild(el("span", null, [el("b", { class: "num", text: String(pair[0]) }), " " + pair[1]]));
     });
-    chip.hidden = dueCount === 0;
+    /* The due follow-ups are said by the banner above the board (C2): no second chip. */
+    chip.hidden = true;
     clear(chip);
     chip.appendChild(JM.U.icon("calendar-clock"));
     chip.appendChild(document.createTextNode(dueCount + (dueCount > 1 ? " relances en retard" : " relance en retard")));
@@ -651,13 +659,13 @@
     renderStats(keys, dueKeys.length);
     due.hidden = dueKeys.length === 0;
     if (dueKeys.length) {
-      due.appendChild(el("h3", { class: "kb-due-title", icon: "calendar-clock", text: dueKeys.length + (dueKeys.length > 1 ? " relances en retard" : " relance en retard") }));
+      due.appendChild(el("h2", { class: "kb-due-title", icon: "calendar-clock", text: dueKeys.length + (dueKeys.length > 1 ? " relances en retard" : " relance en retard") }));
       var list = el("ul", { class: "kb-due-list" });
       dueKeys.forEach(function (k) {
         var app = track.apps[k];
         var j = postingByKey[k];
         var late = T.daysBetween(app.follow_up_at, today);
-        var go = el("button", { type: "button", class: "link-btn", text: j ? (j.title || k) : k });
+        var go = el("button", { type: "button", class: "link-btn", title: j ? (j.title || null) : k, text: j ? (j.title || k) : goneTitle(k) });
         go.addEventListener("click", function () {
           var target = board.querySelector('.kb-card[data-key="' + (window.CSS && CSS.escape ? CSS.escape(k) : k) + '"]');
           if (target) { target.scrollIntoView({ block: "center" }); target.focus({ preventScroll: true }); }
@@ -681,7 +689,7 @@
           return String(track.apps[b].updated_at || "").localeCompare(String(track.apps[a].updated_at || ""));
         });
       var col = el("section", { class: "kb-col kb-" + status, "data-status": status, "aria-label": BOARD_TEXT[status] });
-      col.appendChild(el("h3", { class: "kb-col-title" }, [BOARD_TEXT[status] + " ", el("span", { class: "tab-count", text: String(inCol.length) })]));
+      col.appendChild(el("h2", { class: "kb-col-title" }, [BOARD_TEXT[status] + " ", el("span", { class: "tab-count", text: String(inCol.length) })]));
       var body = el("div", { class: "kb-col-body" });
       inCol.forEach(function (k) { body.appendChild(safeNode(k, function () { return appCard(k, today); }, function () { return brokenCard(k); })); });
       if (!inCol.length) body.appendChild(el("p", { class: "kb-empty", text: status === "to_apply" ? "Garde des offres dans Tri pour les voir ici." : "Aucune." }));
@@ -846,7 +854,7 @@
       var links = T.documentLinks(k, doc);
       var expired = T.isExpired(app, j);
       var tr = el("tr", { "data-key": k, class: expired ? "is-expired" : null });
-      var titleText = j ? (j.title || k) : k;
+      var titleText = j ? (j.title || k) : goneTitle(k);
       /* the title opens the record; an offer the page no longer has has no record to open */
       var title = j
         ? el("button", { type: "button", class: "link-btn", title: titleText, text: titleText })
@@ -855,7 +863,7 @@
       var prefill = j ? el("span", { class: "apps-form" + (T.canPrefill(j) ? " can-prefill" : ""), text: T.canPrefill(j) ? "Pré-remplissage" : "Manuel",
         title: T.canPrefill(j) ? "job-match apply remplit le formulaire" : "Formulaire à remplir à la main" }) : null;
       tr.appendChild(el("td", { class: "apps-title", "data-label": "Offre" }, [title, prefill]));
-      var company = j ? (j.company || null) : "offre plus affichée";
+      var company = j ? (j.company || null) : "plus dans la liste des offres";
       tr.appendChild(el("td", { class: "apps-company", "data-label": "Entreprise", title: company },
         company ? company : el("span", { class: "apps-unknown", text: "Non communiquée" })));
       var ai = j ? aiOf(j) : null;
@@ -917,13 +925,13 @@
     var links = T.documentLinks(k, doc);
     var state = archiveStateOf(k, today);
     var tr = el("tr", { "data-key": k, class: "is-archived" });
-    var titleText = j ? (j.title || k) : k;
+    var titleText = j ? (j.title || k) : goneTitle(k);
     var title = j
       ? el("button", { type: "button", class: "link-btn", title: titleText, text: titleText })
       : el("span", { class: "apps-gone", title: titleText, text: titleText });
     if (j) title.addEventListener("click", function () { openRecord(j, title); });
     tr.appendChild(el("td", { class: "apps-title", "data-label": "Offre" }, title));
-    var company = j ? (j.company || null) : "offre plus affichée";
+    var company = j ? (j.company || null) : "plus dans la liste des offres";
     tr.appendChild(el("td", { class: "apps-company", "data-label": "Entreprise", title: company },
       company ? company : el("span", { class: "apps-unknown", text: "Non communiquée" })));
     tr.appendChild(el("td", { class: "apps-status", "data-label": "Statut" }, [
