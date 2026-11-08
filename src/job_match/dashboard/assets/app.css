@@ -754,7 +754,9 @@ table.data.leads tr.row:focus-visible { outline: 2px solid var(--focus); outline
 .dot-strong { background: var(--green-9); }
 .dot-stretch { background: var(--amber-9); }
 table.data.leads td.col-hiring { max-width: 0; height: auto; padding-top: 6px; padding-bottom: 6px; }
-.lead-hiring { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.lead-hiring { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+/* The hiring claim is a sentence from the article: it wraps instead of leaving its tag (L3). */
+.lead-hiring .tag { max-width: 100%; white-space: normal; overflow-wrap: break-word; padding-top: 3px; padding-bottom: 3px; }
 .lead-hiring-ev { padding: 0; border: 0; background: none; font-size: var(--fs-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; color: var(--ink-3); }
 .lead-hiring-ev::before, .lead-hiring-ev::after { content: ""; }
 .lead-evidence { margin: 0; display: flex; flex-direction: column; gap: 6px; }
@@ -1061,6 +1063,9 @@ html:active-view-transition-type(record)::view-transition-new(main) { animation:
   table.data.leads td.col-title, table.data.apps td.apps-title, table.data.apps td.apps-company, table.data.apps td.apps-status, table.data.apps td.apps-docs, table.data.apps td.doc-cell, table.data.apps td.link-col { grid-column: 1 / -1; }
   table.data.apps td.doc-cell .doc-links { flex-wrap: wrap; }
   table.data.leads td.col-title { font-weight: 500; }
+  /* The hiring claim gets the full width on phones (L3). */
+  table.data.leads td.col-hiring { grid-column: 1 / -1; align-items: flex-start; max-width: none; }
+  table.data.leads td.col-hiring .lead-hiring { flex: 1; }
   table.data.leads td.col-title::before, table.data.apps td.apps-title::before { display: none; }
   table.data.apps td.apps-title { display: block; }
   table.data.apps td.apps-title .link-btn { white-space: normal; overflow: visible; min-height: 44px; }
