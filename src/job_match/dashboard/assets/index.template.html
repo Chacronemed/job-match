@@ -297,10 +297,13 @@ __CSS__
 <nav class="tabbar" id="tabbar" aria-label="Vues (barre du bas)">
   <a class="tab-item" href="#tri" data-tab="tri" data-icon="layers"><span class="nav-label">Tri</span><span class="nav-n num" data-count="tri"></span></a>
   <a class="tab-item" href="#offres" data-tab="offres" data-icon="list"><span class="nav-label">Offres</span><span class="nav-n num" data-count="offres"></span></a>
-  <a class="tab-item" href="#candidatures" data-tab="candidatures" data-icon="briefcase-business"><span class="nav-label">Candid.</span><span class="nav-n num" data-count="candidatures"></span></a>
-  <a class="tab-item" href="#statistiques" data-tab="statistiques" data-icon="chart-column"><span class="nav-label">Stats</span></a>
-  <a class="tab-item" href="#leads" data-tab="leads" data-icon="radar"><span class="nav-label">Leads</span><span class="nav-n num" data-count="leads"></span></a>
-  <a class="tab-item" href="#executions" data-tab="executions" data-icon="activity"><span class="nav-label">Exéc.</span><span class="nav-n num" data-count="executions"></span></a>
+  <a class="tab-item" href="#candidatures" data-tab="candidatures" data-icon="briefcase-business"><span class="nav-label">Candidatures</span><span class="nav-n num" data-count="candidatures"></span><span class="tab-due num" data-count="relances" aria-label="relances dues"></span></a>
+  <button type="button" class="tab-item tab-more" id="tab-more" aria-expanded="false" aria-controls="tab-more-menu"><span class="nav-label">Plus</span></button>
+  <div class="tab-more-menu" id="tab-more-menu" hidden>
+    <a class="tab-more-item" href="#statistiques" data-tab="statistiques" data-icon="chart-column"><span class="nav-label">Statistiques</span></a>
+    <a class="tab-more-item" href="#leads" data-tab="leads" data-icon="radar"><span class="nav-label">Leads</span><span class="nav-n num" data-count="leads"></span></a>
+    <a class="tab-more-item" href="#executions" data-tab="executions" data-icon="activity"><span class="nav-label">Exécutions</span><span class="nav-n num" data-count="executions"></span></a>
+  </div>
 </nav>
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden>

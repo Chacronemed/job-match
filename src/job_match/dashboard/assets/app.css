@@ -1092,7 +1092,7 @@ html:active-view-transition-type(record)::view-transition-new(main) { animation:
   .record-foot { padding: 12px 14px calc(12px + env(safe-area-inset-bottom)); }
   .record-foot .button { min-height: 44px; }
   .tabbar {
-    position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: grid; grid-template-columns: repeat(6, 1fr);
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: grid; grid-template-columns: repeat(4, 1fr);
     height: calc(64px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom);
     background: var(--bg); border-top: 1px solid var(--line-2);
   }
@@ -1130,4 +1130,18 @@ html:active-view-transition-type(record)::view-transition-new(main) { animation:
   .view-tri .page-top { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .view-tri .tri-steps { margin-bottom: 4px; }
   .view-tri .progress { margin-bottom: 8px; }
+}
+
+/* Phone tab bar: « Plus » and its menu (G5); the due follow-ups as a badge on Candidatures. */
+@media (max-width: 760px) {
+  .tab-more { border: 0; background: none; font: inherit; font-size: var(--fs-xs); cursor: pointer; }
+  .tabbar:has(.tab-more-menu [aria-current="page"]) .tab-more { color: var(--accent-ink); }
+  .tab-more-menu { position: absolute; right: 8px; bottom: calc(100% + 8px); min-width: 220px; padding: 6px; border: 1px solid var(--line-3); border-radius: 12px; background: var(--raised); box-shadow: var(--overlay-shadow); }
+  .tab-more-menu[hidden] { display: none; }
+  .tab-more-item { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; border-radius: 8px; color: var(--ink-2); text-decoration: none; }
+  .tab-more-item:hover { background: var(--hover); text-decoration: none; }
+  .tab-more-item[aria-current="page"] { color: var(--accent-ink); background: var(--active); }
+  .tab-more-item .nav-n { margin-left: auto; color: var(--ink-3); }
+  .tab-due:empty { display: none; }
+  .tab-due { position: absolute; top: 7px; left: calc(50% + 7px); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--amber-9); color: #000; font-size: var(--fs-xs); line-height: 18px; text-align: center; }
 }

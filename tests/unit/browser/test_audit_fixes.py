@@ -188,3 +188,28 @@ def test_few_dated_events_show_a_table_not_full_height_bars(open_dashboard, job_
     assert "le graphe apparaît à partir de 5" in weeks.inner_text()
     assert weeks.locator("table.stats-table tbody tr").count() >= 1
     assert errors == []
+
+
+# ---------- Phone tab bar (IMPECCABLE_AUDIT G5) ----------
+
+def test_phone_tab_bar_has_four_tabs_and_more_holds_the_rest(open_dashboard, job_keys):
+    page, errors = open_dashboard(_api(job_keys), hash_="#offres", viewport=(390, 844))
+    page.wait_for_selector(ROWS)
+    tabs = page.locator("#tabbar > .tab-item")
+    assert tabs.count() == 4
+    for t in tabs.all():
+        box = t.bounding_box()
+        assert box["width"] >= 44 and box["height"] >= 44
+    assert "Candidatures" in tabs.nth(2).inner_text()
+    menu = page.locator("#tab-more-menu")
+    assert menu.is_hidden()
+    page.locator("#tab-more").click()
+    assert menu.is_visible() and page.locator("#tab-more").get_attribute("aria-expanded") == "true"
+    page.keyboard.press("Escape")
+    assert menu.is_hidden()
+    page.locator("#tab-more").click()
+    menu.locator('a[data-tab="executions"]').click()
+    page.wait_for_function("() => location.hash.startsWith('#executions')")
+    assert menu.is_hidden()
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+    assert errors == []

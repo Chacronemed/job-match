@@ -61,6 +61,19 @@
   paletteBtnM.appendChild(U.icon("search"));
   paletteBtnM.addEventListener("click", function () { P.open(); });
   byId("help-btn").addEventListener("click", function () { P.openHelp(); });
+  /* Phone tab bar: four tabs and « Plus » for the three views consulted, not worked in
+     (IMPECCABLE_AUDIT G5). The menu closes on a choice, Escape or a tap elsewhere. */
+  var more = byId("tab-more");
+  var moreMenu = byId("tab-more-menu");
+  more.insertBefore(U.icon("ellipsis"), more.firstChild);
+  function setMore(open) {
+    moreMenu.hidden = !open;
+    more.setAttribute("aria-expanded", String(open));
+  }
+  more.addEventListener("click", function () { setMore(moreMenu.hidden); if (!moreMenu.hidden) { var f = moreMenu.querySelector("a"); if (f) f.focus(); } });
+  moreMenu.addEventListener("click", function (ev) { if (ev.target.closest("a")) setMore(false); });
+  document.addEventListener("click", function (ev) { if (!moreMenu.hidden && !ev.target.closest("#tab-more, #tab-more-menu")) setMore(false); });
+  document.addEventListener("keydown", function (ev) { if (ev.key === "Escape" && !moreMenu.hidden) { setMore(false); more.focus(); } });
   /* « Trier les nouvelles » (Offres) goes to Tri; « Relances à faire » to the due list. */
   var toTri = byId("offres-to-tri");
   toTri.appendChild(U.icon("arrow-right"));
