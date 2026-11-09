@@ -81,19 +81,19 @@ def test_postuler_on_a_manual_form_opens_the_offer(open_dashboard, job_keys):
 
 def test_a_kept_application_on_a_closed_offer_is_expired(open_dashboard, job_keys):
     page, errors = _table(open_dashboard, _api(job_keys))
-    row = _row(page, job_keys[2])
-    assert row.locator(".status-badge.is-expired").inner_text() == "Expirée"
-    assert row.locator("button.apps-apply").count() == 0
-    assert row.get_attribute("class") == "is-expired"
-    # last row, and not counted by « Générer les manquants » (2 open ones lack documents)
-    keys = [r.get_attribute("data-key") for r in page.locator("#kb-table tbody tr").all()]
-    assert keys[-1] == job_keys[2]
+    # out of the table, the Kanban, the counts and « Générer les manquants » (2 open ones)
+    assert _row(page, job_keys[2]).count() == 0
     assert "(2)" in page.locator("#apps-generate-missing").inner_text()
-    # the Kanban's « À candidater » column leaves it out
+    assert page.locator('.sidebar [data-count="candidatures"]').first.inner_text() == "2"
+    # with the archived ones: « Expirée », its reason, no « Postuler », no « Réactiver »
+    page.click("#apps-show-archived")
+    row = page.locator(f'#kb-archived-box tr[data-key="{job_keys[2]}"]')
+    assert row.locator(".status-badge.is-expired").inner_text() == "Expirée"
+    assert row.locator(".kb-archived-reason").inner_text() == "offre expirée"
+    assert row.locator("button.apps-apply").count() == 0
+    assert row.locator("button.apps-reactivate").count() == 0
     page.click("#apps-view-kanban")
-    col = page.locator('#kb-board .kb-col[data-status="to_apply"]')
-    assert col.locator(".kb-card").count() == 2
-    assert col.locator(f'.kb-card[data-key="{job_keys[2]}"]').count() == 0
+    assert page.locator(f'#kb-board .kb-card[data-key="{job_keys[2]}"]').count() == 0
     assert errors == []
 
 

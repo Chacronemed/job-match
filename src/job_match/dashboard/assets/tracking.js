@@ -280,9 +280,48 @@
   function isArchived(app, posting, decision, today, cfg) {
     return archiveState(app, posting, decision, today, cfg) !== null;
   }
-  /* « gardée il y a 17 jours » / « publiée il y a 23 jours ». */
+  /* Candidatures hides the « Expirée » applications with the archived ones: same folded
+     section, same counts left out. null, {reason: "expired"} or the archive state above. An
+     offer that comes back (closed false again) brings its application back by itself. */
+  function hiddenState(app, posting, decision, today, cfg) {
+    if (isExpired(app, posting)) return { reason: "expired", days: 0 };
+    return archiveState(app, posting, decision, today, cfg);
+  }
+
+  /* The Candidatures segments (#candidatures?f=…): the statuses each one shows, in order.
+     « À postuler » is the default and is left out of the hash. */
+  var APPS_FILTERS = ["postuler", "envoyees", "entretiens", "refus", "tout"];
+  var APPS_FILTER_STATUSES = {
+    postuler: ["to_apply"], envoyees: ["applied"], entretiens: ["interview"], refus: ["rejected"],
+    tout: ["to_apply", "applied", "interview", "rejected"]
+  };
+  var APPS_FILTER_TEXT = { postuler: "À postuler", envoyees: "Envoyées", entretiens: "Entretiens", refus: "Refus", tout: "Tout" };
+  function appsFilterOf(value) {
+    return APPS_FILTERS.indexOf(value) >= 0 ? value : "postuler";
+  }
+  /* `keys`: the applications on screen (hidden ones already out). The keys of one filter;
+     « À postuler » by AI score (best first, none last), then the latest kept first. */
+  function appsFilterKeys(apps, keys, filter, scoreOf, decisions) {
+    var f = appsFilterOf(filter);
+    var statuses = APPS_FILTER_STATUSES[f];
+    var out = (keys || []).filter(function (k) { return statuses.indexOf(statusOf(apps[k])) >= 0; });
+    if (f !== "postuler") return out;
+    function score(k) { var v = scoreOf ? scoreOf(k) : null; return typeof v === "number" ? v : -1; }
+    function kept(k) { return keptDay(apps[k], decisions && decisions[k]) || ""; }
+    return out.sort(function (a, b) {
+      return score(b) - score(a) || kept(b).localeCompare(kept(a)) || (a < b ? -1 : 1);
+    });
+  }
+  function appsFilterCounts(apps, keys) {
+    var n = {};
+    APPS_FILTERS.forEach(function (f) { n[f] = appsFilterKeys(apps, keys, f).length; });
+    return n;
+  }
+
+  /* « gardée il y a 17 jours » / « publiée il y a 23 jours » / « offre expirée ». */
   function archiveReason(state) {
     if (!state) return "";
+    if (state.reason === "expired") return "offre expirée";
     return (state.reason === "kept" ? "gardée" : "publiée") + " il y a " + state.days + " jour" + (state.days !== 1 ? "s" : "");
   }
 
@@ -448,6 +487,13 @@
     archiveState: archiveState,
     isArchived: isArchived,
     archiveReason: archiveReason,
+    hiddenState: hiddenState,
+    APPS_FILTERS: APPS_FILTERS,
+    APPS_FILTER_STATUSES: APPS_FILTER_STATUSES,
+    APPS_FILTER_TEXT: APPS_FILTER_TEXT,
+    appsFilterOf: appsFilterOf,
+    appsFilterKeys: appsFilterKeys,
+    appsFilterCounts: appsFilterCounts,
     canPrefill: canPrefill,
     applyList: applyList,
     APPLY_FORMS: APPLY_FORMS,

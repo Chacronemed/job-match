@@ -81,7 +81,7 @@ def test_archived_applications_leave_the_board_the_table_and_the_count(open_dash
     assert col.locator(".kb-card").count() == 1
     assert col.locator(f'.kb-card[data-key="{job_keys[1]}"]').count() == 1
     assert _count(page) == "2"  # the live one and the sent one
-    assert "2 dossiers suivis" in page.locator("#apps-stats").inner_text()
+    assert "1 à postuler" in page.locator("#apps-stats").inner_text()
     toggle = page.locator("#apps-show-archived")
     assert toggle.inner_text() == "Afficher les archivées (2)"
     assert toggle.get_attribute("aria-pressed") == "false"
@@ -89,6 +89,9 @@ def test_archived_applications_leave_the_board_the_table_and_the_count(open_dash
     # the table: the archived rows are not among the rows, « Générer » does not count them
     page.click("#apps-view-table")
     page.wait_for_selector("#kb-table table.data.apps")
+    rows = [r.get_attribute("data-key") for r in page.locator("#kb-table tbody tr").all()]
+    assert rows == [job_keys[1]]  # « À postuler » by default
+    page.click('#apps-filter [data-filter="tout"]')
     rows = [r.get_attribute("data-key") for r in page.locator("#kb-table tbody tr").all()]
     assert sorted(rows) == sorted([job_keys[1], SENT])
     assert page.locator("#apps-generate-missing").inner_text() == "Générer les manquants (2)"

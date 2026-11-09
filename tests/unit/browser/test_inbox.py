@@ -83,6 +83,7 @@ def _answer(item, application):
 
 
 def _open(open_dashboard, keys, routes, **kw):
+    kw.setdefault("hash_", "#candidatures?f=tout")  # every column, not only « À postuler »
     page, errors = open_dashboard(_api(keys), routes=routes, **kw)
     page.wait_for_function(HAS_CARDS)
     return page, errors
@@ -140,7 +141,8 @@ def test_corriger_picks_the_application_and_the_kind_then_puts_once(open_dashboa
         return _api(job_keys)
 
     page, errors = open_dashboard(
-        api, routes={("PUT", "/api/inbox/msg-1"): _answer(done, app)}, viewport=(390, 844)
+        api, routes={("PUT", "/api/inbox/msg-1"): _answer(done, app)}, viewport=(390, 844),
+        hash_="#candidatures?f=tout",
     )
     page.wait_for_function(HAS_CARDS)
     page.on("request", lambda r: sent.update(body=r.post_data) if r.method == "PUT" else None)

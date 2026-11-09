@@ -292,12 +292,12 @@ def _apps(keys):
 
 
 def test_board_says_its_counts_and_a_card_opens_the_record(open_dashboard, job_keys):
-    page, errors = open_dashboard(_apps(job_keys), hash_="#candidatures")
+    page, errors = open_dashboard(_apps(job_keys), hash_="#candidatures?f=tout")
     page.wait_for_function("() => document.querySelectorAll('#kb-board .kb-card').length === 3")
     stats = page.locator("#apps-stats").inner_text()
-    assert "3 dossiers suivis" in stats and "1 entretien" in stats
-    # IMPECCABLE_AUDIT C2: the follow-up is said by the banner and its card, not five times
-    assert "relance" not in stats
+    # « N à postuler · N relances dues · N entretiens »
+    for part in ("1 à postuler", "1 relance due", "1 entretien"):
+        assert part in stats, stats
     assert page.locator("#apps-due-chip").is_hidden()
     assert page.locator("[data-count=relances]").first.inner_text() == "1"
     cols = page.locator("#kb-board .kb-col")
@@ -321,7 +321,8 @@ def test_board_says_its_counts_and_a_card_opens_the_record(open_dashboard, job_k
 
 
 def test_board_stacks_on_a_phone_without_overflow(open_dashboard, job_keys):
-    page, errors = open_dashboard(_apps(job_keys), hash_="#candidatures", viewport=(390, 844))
+    page, errors = open_dashboard(_apps(job_keys), hash_="#candidatures?f=tout",
+                                  viewport=(390, 844))
     page.wait_for_function("() => document.querySelectorAll('#kb-board .kb-card').length === 3")
     assert page.evaluate(OVERFLOW) <= 0
     cols = page.locator("#kb-board .kb-col")

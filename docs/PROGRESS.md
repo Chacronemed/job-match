@@ -3,7 +3,28 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**Impeccable design pass — fixes** (branch `design/impeccable-pass`, 2026-11-08, cloud session,
+**Candidatures filters** (branch `feat/apps-filters` from `origin/main`, 2026-11-09, PR in draft).
+1. « Expirée » joins the archived: `T.hiddenState` (tracking.js) = expired, else the ADR 0028
+   archive state; `board.js archivedKeys` uses it, so expired applications leave the board, the
+   table, the sidebar count and the subtitle, and show in « Afficher les archivées » with the
+   « Expirée » badge, « offre expirée », their status menu, no « Postuler » / « Réactiver ».
+   Derived from `closed`: an offer that comes back brings its application back.
+2. Segments `#apps-filter` « À postuler (N) » [default] · « Envoyées » · « Entretiens » ·
+   « Refus » · « Tout », in the hash as `f=` (default omitted), for the Kanban (its columns
+   only) and the table. « À postuler » = AI score desc, then latest kept day
+   (`T.appsFilterKeys`). Subtitle « N à postuler · N relances dues · N entretiens ».
+3. Status cell = `.apps-status-stack` (flex column): badge, reason, menu never overlap.
+4. A failed document on an expired offer: « Échec » + « Offre expirée », no « Regénérer »
+   (archived row and record panel). The archived section opens as soon as it is shown.
+5. Tests: `tests/unit/browser/test_apps_filters.py` (counts = rows, hash on reload, expired
+   hidden/shown, bounding boxes, both themes, 390 px), Node `dashboard-tracking.test.mjs`;
+   tests needing every column open `#candidatures?f=tout`. ruff clean, `pytest -q -n auto`
+   1 802 passed.
+**Next step:** review the PR on prod data (phone: five segments on one line at 390 px).
+**Open decision:** « À postuler » ties sorted by latest kept first (oldest-first is the
+alternative: closest to auto-archive).
+
+Before it: **Impeccable design pass — fixes** (branch `design/impeccable-pass`, 2026-11-08, cloud session,
 PR #25 in draft). The 2026-11-07 diagnostic (`docs/design/IMPECCABLE_AUDIT.md`) was validated
 with four decisions: P1 then P2 view by view (P3 only in files already touched), eyebrows
 removed, selected row = `--active` + focus ring, « Aujourd'hui » = the Tri's end screen.

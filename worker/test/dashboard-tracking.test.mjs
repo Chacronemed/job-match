@@ -426,3 +426,35 @@ describe("auto-archive (ADR 0028)", () => {
     assert.equal(res.application.job_key, "ft:old");
   });
 });
+
+describe("Candidatures filters and hidden applications", () => {
+  const apps = {
+    a: { status: "to_apply" }, b: { status: "to_apply" }, c: { status: "to_apply" },
+    s: { status: "applied" }, i: { status: "interview" }, r: { status: "rejected" },
+  };
+  const decisions = {
+    a: { label: "good_fit", created_at: "2026-10-10T08:00:00Z" },
+    b: { label: "good_fit", created_at: "2026-10-18T08:00:00Z" },
+    c: { label: "good_fit", created_at: "2026-10-19T08:00:00Z" },
+  };
+  test("counts per segment, « Tout » is every status on the board", () => {
+    assert.deepEqual(T.appsFilterCounts(apps, Object.keys(apps)),
+      { postuler: 3, envoyees: 1, entretiens: 1, refus: 1, tout: 6 });
+  });
+  test("« À postuler » by AI score, then the latest kept; unknown filter falls back", () => {
+    const scores = { a: 80, b: 80, c: null };
+    const keys = T.appsFilterKeys(apps, Object.keys(apps), "postuler", (k) => scores[k], decisions);
+    assert.deepEqual(keys, ["b", "a", "c"]);
+    assert.equal(T.appsFilterOf("nope"), "postuler");
+    assert.deepEqual(T.appsFilterKeys(apps, Object.keys(apps), "refus"), ["r"]);
+  });
+  test("an expired application is hidden with its reason, and comes back when the offer does", () => {
+    const app = { status: "to_apply" };
+    const state = T.hiddenState(app, { closed: true }, null, TODAY);
+    assert.deepEqual(state, { reason: "expired", days: 0 });
+    assert.equal(T.archiveReason(state), "offre expirée");
+    assert.equal(T.hiddenState(app, { closed: false }, null, TODAY), null);
+    // a sent application is never hidden by a closed offer
+    assert.equal(T.hiddenState({ status: "applied" }, { closed: true }, null, TODAY), null);
+  });
+});

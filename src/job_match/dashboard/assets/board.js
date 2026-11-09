@@ -209,7 +209,9 @@
     button.addEventListener("click", function () {
       requestDocuments(j.key, button, function (d) { state.textContent = T.docText(d); });
     });
-    var row = el("div", { class: "doc-row" }, [state, button]);
+    /* an expired offer: nothing to (re)generate */
+    var expired = track.apps[j.key] && T.isExpired(track.apps[j.key], postingByKey[j.key]);
+    var row = el("div", { class: "doc-row" }, [state, expired ? el("span", { class: "apps-expired-note", text: "Offre expirée" }) : button]);
     var links = T.documentLinks(j.key, doc);
     if (links) {
       row.appendChild(el("span", { class: "doc-links" }, [el("span", { text: "CV :" }), fileCell(links, "cv", doc, "CV", j.key)]));
@@ -550,8 +552,14 @@
     if (!app) return null;
     return T.archiveState(app, postingByKey[k], decisionOf(k), today || T.localDay());
   }
+  /* What leaves the lists: the archived and the « Expirée » applications (T.hiddenState). */
+  function hiddenStateOf(k, today) {
+    var app = track.apps[k];
+    if (!app) return null;
+    return T.hiddenState(app, postingByKey[k], decisionOf(k), today || T.localDay());
+  }
   function archivedKeys(today) {
-    return boardKeys().filter(function (k) { return archiveStateOf(k, today) !== null; });
+    return boardKeys().filter(function (k) { return hiddenStateOf(k, today) !== null; });
   }
   function archivedSet() {
     var set = {};
@@ -586,7 +594,7 @@
     }).sort(function (a, b) { return track.apps[a].follow_up_at < track.apps[b].follow_up_at ? -1 : 1; });
   }
 
-  /* Under the title: the counts the board shows, nothing else. */
+  /* Under the title: « N à postuler · N relances dues · N entretiens ». */
   function renderStats(keys, dueCount) {
     var stats = byId("apps-stats");
     clear(stats);
@@ -597,9 +605,10 @@
       stats.appendChild(el("span", null, [el("b", { text: "—" }), " " + (track.status === "loading" ? "chargement du suivi…" : "suivi indisponible")]));
       return;
     }
-    var interviews = keys.filter(function (k) { return T.statusOf(track.apps[k]) === "interview"; }).length;
-    [[keys.length, keys.length > 1 ? "dossiers suivis" : "dossier suivi"],
-      [interviews, interviews > 1 ? "entretiens" : "entretien"]].forEach(function (pair) {
+    var n = T.appsFilterCounts(track.apps, keys);
+    [[n.postuler, "à postuler"],
+      [dueCount, dueCount > 1 ? "relances dues" : "relance due"],
+      [n.entretiens, n.entretiens > 1 ? "entretiens" : "entretien"]].forEach(function (pair) {
       stats.appendChild(el("span", null, [el("b", { class: "num", text: String(pair[0]) }), " " + pair[1]]));
     });
     /* The due follow-ups are said by the banner above the board (C2): no second chip. */
@@ -615,6 +624,27 @@
     var first = due.querySelector("button");
     if (first) first.focus({ preventScroll: true });
   });
+
+  /* The segments above the views: « À postuler (N) » … « Tout (N) », the real counts. */
+  function renderFilter(keys) {
+    var bar = byId("apps-filter");
+    clear(bar);
+    bar.hidden = track.status !== "ready";
+    if (bar.hidden) return;
+    var n = T.appsFilterCounts(track.apps, keys);
+    T.APPS_FILTERS.forEach(function (f) {
+      var b = el("button", { type: "button", class: "chip chip-plain", "data-filter": f, "aria-pressed": String(V.appsFilter === f) }, [
+        T.APPS_FILTER_TEXT[f] + " ", el("span", { class: "tab-count num", text: String(n[f]) })]);
+      b.addEventListener("click", function () {
+        if (V.appsFilter === f) return;
+        V.appsFilter = f;
+        renderApps();
+        JM.syncHash();
+      });
+      bar.appendChild(b);
+    });
+  }
+  function scoreOf(k) { var j = postingByKey[k]; var v = j ? aiOf(j) : null; return v ? v.score : null; }
 
   function renderApps() {
     var today = T.localDay();
@@ -637,12 +667,13 @@
       due.hidden = true;
       byId("apps-show-archived").hidden = true;
       byId("kb-archived").hidden = true;
+      renderFilter([]);
       renderStats([], 0);
       updateCounts();
       return;
     }
-    /* The archived applications (ADR 0028) leave the board, the table and the counts; the
-       toggle shows them in a folded section under either view. */
+    /* The archived and the expired applications (ADR 0028) leave the board, the table and
+       the counts; the toggle shows them in a folded section under either view. */
     var archived = archivedKeys(today);
     var archivedMap = {};
     archived.forEach(function (k) { archivedMap[k] = true; });
@@ -657,6 +688,9 @@
     if (!archBox.hidden) archBox.appendChild(archivedSection(archived, today));
     var dueKeys = JM.dueKeys(today);
     renderStats(keys, dueKeys.length);
+    V.appsFilter = T.appsFilterOf(V.appsFilter);
+    renderFilter(keys);
+    var shown = T.appsFilterKeys(track.apps, keys, V.appsFilter, scoreOf, decisionsIndex());
     due.hidden = dueKeys.length === 0;
     if (dueKeys.length) {
       due.appendChild(el("h2", { class: "kb-due-title", icon: "calendar-clock", text: dueKeys.length + (dueKeys.length > 1 ? " relances en retard" : " relance en retard") }));
@@ -675,19 +709,20 @@
       due.appendChild(list);
     }
     if (V.appsView === "table") {
-      renderAppsTable(today, keys);
+      renderAppsTable(today, shown);
       updateCounts();
       return;
     }
-    BOARD.forEach(function (status) {
-      /* an expired application (its offer closed) leaves « À candidater »: the table keeps it;
-         an archived one left `keys` already */
-      var inCol = keys.filter(function (k) { return T.statusOf(track.apps[k]) === status && !T.isExpired(track.apps[k], postingByKey[k]); })
-        .sort(function (a, b) {
-          var da = T.isDue(track.apps[a], today) ? 0 : 1, db = T.isDue(track.apps[b], today) ? 0 : 1;
-          if (da !== db) return da - db;
-          return String(track.apps[b].updated_at || "").localeCompare(String(track.apps[a].updated_at || ""));
-        });
+    /* the filter keeps its columns only; « À candidater » in the filter's order */
+    var cols = BOARD.filter(function (status) { return T.APPS_FILTER_STATUSES[V.appsFilter].indexOf(status) >= 0; });
+    board.classList.toggle("is-single", cols.length === 1);
+    cols.forEach(function (status) {
+      var inCol = shown.filter(function (k) { return T.statusOf(track.apps[k]) === status; });
+      if (status !== "to_apply") inCol.sort(function (a, b) {
+        var da = T.isDue(track.apps[a], today) ? 0 : 1, db = T.isDue(track.apps[b], today) ? 0 : 1;
+        if (da !== db) return da - db;
+        return String(track.apps[b].updated_at || "").localeCompare(String(track.apps[a].updated_at || ""));
+      });
       var col = el("section", { class: "kb-col kb-" + status, "data-status": status, "aria-label": BOARD_TEXT[status] });
       col.appendChild(el("h2", { class: "kb-col-title" }, [BOARD_TEXT[status] + " ", el("span", { class: "tab-count", text: String(inCol.length) })]));
       var body = el("div", { class: "kb-col-body" });
@@ -795,9 +830,7 @@
   function renderAppsTable(today, keys) {
     var wrap = byId("kb-table");
     clear(wrap);
-    var rows = keys.slice().sort(function (a, b) {
-      var xa = T.isExpired(track.apps[a], postingByKey[a]) ? 1 : 0, xb = T.isExpired(track.apps[b], postingByKey[b]) ? 1 : 0;
-      if (xa !== xb) return xa - xb; // the expired ones last
+    var rows = V.appsFilter === "postuler" ? keys.slice() : keys.slice().sort(function (a, b) {
       var da = T.isDue(track.apps[a], today) ? 0 : 1, db = T.isDue(track.apps[b], today) ? 0 : 1;
       if (da !== db) return da - db;
       var ra = T.STATUS_RANK[T.statusOf(track.apps[a])], rb = T.STATUS_RANK[T.statusOf(track.apps[b])];
@@ -805,7 +838,8 @@
       return String(track.apps[b].updated_at || "").localeCompare(String(track.apps[a].updated_at || ""));
     });
     if (!rows.length) {
-      wrap.appendChild(el("p", { class: "kb-empty", text: "Garde des offres dans Tri pour les voir ici." }));
+      wrap.appendChild(el("p", { class: "kb-empty", text: V.appsFilter === "postuler" || V.appsFilter === "tout"
+        ? "Garde des offres dans Tri pour les voir ici." : "Aucune candidature dans ce filtre." }));
       return;
     }
     var missing = T.missingDocuments(track.apps, track.documents, postingByKey, decisionsIndex(), today);
@@ -868,9 +902,9 @@
         company ? company : el("span", { class: "apps-unknown", text: "Non communiquée" })));
       var ai = j ? aiOf(j) : null;
       tr.appendChild(el("td", { class: "num", "data-label": "Score IA", text: ai ? String(ai.score) : "—" }));
-      tr.appendChild(el("td", { class: "apps-status", "data-label": "Statut" }, expired
+      tr.appendChild(el("td", { class: "apps-status", "data-label": "Statut" }, el("div", { class: "apps-status-stack" }, expired
         ? [el("span", { class: "status-badge is-expired", text: "Expirée", title: "La source a retiré l’offre" }), statusMenu(k, j, T.statusOf(app))]
-        : statusMenu(k, j, T.statusOf(app))));
+        : [statusMenu(k, j, T.statusOf(app))])));
       if (links) {
         tr.appendChild(el("td", { class: "doc-cell", "data-label": "CV" }, fileCell(links, "cv", doc, "CV", k)));
         tr.appendChild(el("td", { class: "doc-cell", "data-label": "Lettre" }, fileCell(links, "letter", doc, "Lettre", k)));
@@ -897,18 +931,19 @@
      documents still downloadable, « Réactiver »; no « Postuler », no « Générer ». */
   var ARCHIVED_COLUMNS = ["Offre", "Entreprise", "Statut", "CV", "Lettre", "Action"];
   function archivedSection(keys, today) {
-    var box = el("details", { class: "kb-archived-box", id: "kb-archived-box" });
+    /* shown only when asked for (button or #…&archived=1): open from the start */
+    var box = el("details", { class: "kb-archived-box", id: "kb-archived-box", open: "" });
     box.appendChild(el("summary", null, [
       "Archivées ", el("span", { class: "tab-count", text: String(keys.length) }),
-      el("span", { class: "kb-archived-hint", text: "À candidater jamais traitées : gardées il y a plus de " + T.ARCHIVE.kept_days +
-        " jours ou publiées il y a plus de " + T.ARCHIVE.published_days + " jours. Rien n’est supprimé ; les documents restent téléchargeables." })
+      el("span", { class: "kb-archived-hint", text: "À candidater jamais traitées : offre expirée, gardées il y a plus de " + T.ARCHIVE.kept_days +
+        " jours ou publiées il y a plus de " + T.ARCHIVE.published_days + " jours. Rien n’est supprimé ; les documents restent téléchargeables. Une offre qui réapparaît revient seule." })
     ]));
     if (!keys.length) {
       box.appendChild(el("p", { class: "kb-empty", text: "Aucune candidature archivée." }));
       return box;
     }
     var rows = keys.slice().sort(function (a, b) {
-      return (archiveStateOf(b, today) || { days: 0 }).days - (archiveStateOf(a, today) || { days: 0 }).days || (a < b ? -1 : 1);
+      return (hiddenStateOf(b, today) || { days: 0 }).days - (hiddenStateOf(a, today) || { days: 0 }).days || (a < b ? -1 : 1);
     });
     var head = el("tr");
     ARCHIVED_COLUMNS.forEach(function (h) { head.appendChild(el("th", { scope: "col", text: h })); });
@@ -923,8 +958,9 @@
     var j = postingByKey[k];
     var doc = track.documents[k] || null;
     var links = T.documentLinks(k, doc);
-    var state = archiveStateOf(k, today);
-    var tr = el("tr", { "data-key": k, class: "is-archived" });
+    var state = hiddenStateOf(k, today);
+    var expired = !!state && state.reason === "expired";
+    var tr = el("tr", { "data-key": k, class: "is-archived" + (expired ? " is-expired" : "") });
     var titleText = j ? (j.title || k) : goneTitle(k);
     var title = j
       ? el("button", { type: "button", class: "link-btn", title: titleText, text: titleText })
@@ -934,16 +970,28 @@
     var company = j ? (j.company || null) : "plus dans la liste des offres";
     tr.appendChild(el("td", { class: "apps-company", "data-label": "Entreprise", title: company },
       company ? company : el("span", { class: "apps-unknown", text: "Non communiquée" })));
-    tr.appendChild(el("td", { class: "apps-status", "data-label": "Statut" }, [
-      el("span", { class: "status-badge is-archived", text: "Archivée", title: "Archivée automatiquement, rien n’est supprimé" }),
-      el("span", { class: "kb-archived-reason", text: T.archiveReason(state) })
-    ]));
+    /* badge, reason (and the menu of an expired one) stacked in the cell, never overlapping */
+    tr.appendChild(el("td", { class: "apps-status", "data-label": "Statut" }, el("div", { class: "apps-status-stack" }, [
+      expired
+        ? el("span", { class: "status-badge is-expired", text: "Expirée", title: "La source a retiré l’offre" })
+        : el("span", { class: "status-badge is-archived", text: "Archivée", title: "Archivée automatiquement, rien n’est supprimé" }),
+      el("span", { class: "kb-archived-reason", text: T.archiveReason(state) }),
+      expired ? statusMenu(k, j, T.statusOf(app)) : null
+    ])));
     if (links) {
       tr.appendChild(el("td", { class: "doc-cell", "data-label": "CV" }, fileCell(links, "cv", doc, "CV", k)));
       tr.appendChild(el("td", { class: "doc-cell", "data-label": "Lettre" }, fileCell(links, "letter", doc, "Lettre", k)));
+    } else if (expired && doc) {
+      /* a failed or pending version on a closed offer: nothing to regenerate */
+      tr.appendChild(el("td", { class: "apps-docs", colspan: 2, "data-label": "CV · Lettre" }, [
+        docBadgeEl(doc), el("span", { class: "apps-expired-note", text: "Offre expirée" })]));
     } else {
       tr.appendChild(el("td", { class: "doc-cell", "data-label": "CV", text: "—" }));
       tr.appendChild(el("td", { class: "doc-cell", "data-label": "Lettre", text: "—" }));
+    }
+    if (expired) {
+      tr.appendChild(el("td", { class: "link-col", "data-label": "Action", text: "—" }));
+      return tr;
     }
     var react = el("button", { type: "button", class: "btn btn-small apps-reactivate", text: "Réactiver",
       "aria-label": "Réactiver : " + titleText, title: "Remet la candidature dans la liste pour " + T.ARCHIVE.kept_days + " jours" });
