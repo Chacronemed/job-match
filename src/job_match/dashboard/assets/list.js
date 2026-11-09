@@ -807,6 +807,7 @@
     aiSelect.value = state.ai;
     if (parsed.params.view === "table" || parsed.params.view === "kanban") setAppsView(parsed.params.view, true);
     V.showArchived = parsed.params.archived === "1";
+    V.appsFilter = T.appsFilterOf(parsed.params.f);
     var min = parseInt(p.min, 10);
     state.minScore = min >= 0 && min <= 100 ? min : 0;
     minScoreInput.value = String(state.minScore);

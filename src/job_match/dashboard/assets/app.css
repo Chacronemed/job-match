@@ -725,7 +725,16 @@ table.data.apps .apps-form.can-prefill { color: var(--ink-2); }
 table.data.apps .apps-gone { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 table.data.apps td.link-col > * { vertical-align: middle; margin-right: 8px; }
 .status-badge.is-expired { display: inline-block; margin: 0 0 4px; padding: 1px 7px; border-radius: 5px; font-size: var(--fs-xs); font-weight: 600; color: var(--ink-2); background: var(--slate-4); }
-table.data.apps td.apps-status .status-badge { display: table; }
+/* Badge, reason and menu share the Statut cell as a stack: the row grows, nothing overlaps. */
+.apps-status-stack { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 6px 0; min-width: 0; }
+.apps-status-stack > * { max-width: 100%; }
+.apps-status-stack .status-badge, .apps-status-stack .kb-archived-reason { margin: 0; }
+.apps-expired-note { font-size: var(--fs-xs); color: var(--ink-3); }
+/* The Candidatures filters: segments with their counts, above the views. */
+.apps-filter { display: flex; flex-wrap: wrap; width: fit-content; max-width: 100%; margin: 0 0 14px; }
+.apps-filter .chip .tab-count { margin-left: 2px; color: var(--ink-3); font-size: var(--fs-xs); }
+.apps-filter .chip[aria-pressed="true"] .tab-count { color: var(--ink-2); }
+.kb-board.is-single { grid-template-columns: minmax(0, 560px); }
 table.data.apps tr.is-expired td.apps-title, table.data.apps tr.is-expired td.apps-company { color: var(--ink-3); }
 /* Auto-archived applications (ADR 0028): a folded section under the board or the table, grey badge. */
 .kb-archived { margin-top: 14px; }
@@ -889,6 +898,7 @@ html:active-view-transition-type(record)::view-transition-new(main) { animation:
   .view { padding: 20px 20px 20px; }
   .topbar { padding: 0 20px; }
   .track-banner { margin: 10px 20px 0; }
+  .kb-board.is-single { grid-template-columns: minmax(0, 560px); overflow-x: visible; }
   .kb-board { grid-template-columns: repeat(4, minmax(240px, 1fr)); overflow-x: auto; overscroll-behavior-x: contain; padding-bottom: 6px; }
   .runs-grid { grid-template-columns: 1fr; }
   .help-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1048,7 +1058,10 @@ html:active-view-transition-type(record)::view-transition-new(main) { animation:
   .today-link { min-height: 44px; }
   /* Candidatures: the columns one under the other. */
   .page-top { flex-direction: column; }
-  .kb-board { grid-template-columns: 1fr; overflow: visible; padding-bottom: 0; }
+  .kb-board, .kb-board.is-single { grid-template-columns: 1fr; overflow: visible; padding-bottom: 0; }
+  .apps-filter { width: 100%; flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+  .apps-filter .chip { flex: 1 0 auto; min-height: 44px; padding: 0 5px; white-space: nowrap; }
+  .apps-status-stack { padding: 0; }
   .kb-col { min-height: 0; }
   .kb-status, .btn-small { min-height: 44px; }
   .kb-actions .link-btn, .kb-actions a { min-height: 44px; }

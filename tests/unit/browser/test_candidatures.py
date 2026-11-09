@@ -56,6 +56,7 @@ def _api(keys, broken=False):
 
 
 def _open_candidatures(open_dashboard, api, **kw):
+    kw.setdefault("hash_", "#candidatures?f=tout")  # every status, not only « À postuler »
     page, errors = open_dashboard(api, **kw)
     page.wait_for_function(HAS_CARDS)
     return page, errors

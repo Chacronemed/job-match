@@ -233,7 +233,7 @@ window.JM = window.JM || {};
 
   /* Shared, reassigned across files: the current view and the hash guard. */
   /* statsPeriod: the Statistiques window, "30", "90" or "tout" (#statistiques?p=90). */
-  var V = JM.v = { tab: "", applyingHash: false, appsView: "kanban", statsPeriod: "30", showArchived: false };
+  var V = JM.v = { tab: "", applyingHash: false, appsView: "kanban", statsPeriod: "30", showArchived: false, appsFilter: "postuler" };
 
   /* The hash carries the tab and the Offres filters (#offres?q=...&hide=...), whatever the
      tab: switching to Tri and back, or reloading, keeps them. Every value is validated before
@@ -250,6 +250,7 @@ window.JM = window.JM || {};
       if (JM.state.source) parts.push("src=" + encodeURIComponent(JM.state.source));
       if (JM.state.status) parts.push("st=" + JM.state.status);
       if (JM.state.ai) parts.push("ia=" + JM.state.ai);
+      if (V.tab === "candidatures" && V.appsFilter !== "postuler") parts.push("f=" + V.appsFilter);
       if (V.tab === "candidatures" && V.appsView === "table") parts.push("view=table");
       if (V.tab === "candidatures" && V.showArchived) parts.push("archived=1");
       if (V.tab === "statistiques" && V.statsPeriod !== "30") parts.push("p=" + V.statsPeriod);
