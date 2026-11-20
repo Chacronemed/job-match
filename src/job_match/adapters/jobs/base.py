@@ -30,6 +30,9 @@ class OfferStatus(StrEnum):
     OPEN = "OPEN"
     CLOSED = "CLOSED"
     UNKNOWN = "UNKNOWN"
+    # The source chose not to ask today (a board read once a week, a call cap reached, an
+    # anti-robot answer already counted once): nothing to change, and not an error.
+    NOT_ASKED = "NOT_ASKED"
 
 
 class RequestStats(NamedTuple):

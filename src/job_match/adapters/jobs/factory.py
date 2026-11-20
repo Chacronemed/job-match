@@ -6,6 +6,7 @@ whatever is left: a missing Jooble key must not cost us the France Travail run.
 """
 import logging
 import os
+from collections.abc import Callable
 
 from job_match.adapters.jobs.base import JobSource
 from job_match.config.schema import AtsBoard, Profile, Settings
@@ -26,6 +27,26 @@ KNOWN_SOURCES = tuple(REQUIRED_ENV)
 def missing_env(name: str) -> list[str]:
     """Env vars required by `name` that are unset or empty."""
     return [var for var in REQUIRED_ENV.get(name, ()) if not os.environ.get(var)]
+
+
+def paged_title_filter(settings: Settings) -> Callable[[str], bool] | None:
+    """What decides, from its title alone, whether a paged ATS posting (Workday,
+    SmartRecruiters) is worth a detail call: not a developer role (`relevance.dev_titles`)
+    and in the core or near family (`title_relevance`). With no family configured there is
+    nothing to filter on, so every posting is read (None)."""
+    from job_match.eligibility.gate import title_is_a_dev_role
+    from job_match.scoring.title import CORE, NEAR, title_family
+
+    families = settings.title_relevance
+    if not families.core and not families.near:
+        return None
+
+    def worth_a_detail_call(title: str) -> bool:
+        if title_is_a_dev_role(title, settings.relevance):
+            return False
+        return title_family(title, families).family in (CORE, NEAR)
+
+    return worth_a_detail_call
 
 
 def build_sources(
@@ -105,6 +126,9 @@ def build_sources(
                 AtsBoardSource(
                     ats_boards,
                     workday=settings.sources.workday,
+                    keywords=settings.sources.ats_search.search_keywords,
+                    title_filter=(paged_title_filter(settings)
+                                  if settings.sources.ats_search.title_prefilter else None),
                     **({} if limit is None else {"max_results": limit}),
                 )
             )

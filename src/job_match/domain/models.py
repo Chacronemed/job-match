@@ -367,6 +367,12 @@ class RunSummary:
     # source → company → {fetched, eligible}, for the sources that read named company
     # boards (ats); the others parse the employer from the posting and are not broken down.
     by_company: dict[str, dict[str, dict[str, int]]] = field(default_factory=dict)
+    # One entry per Workday board, in config order: {board, company, status, calls, listed,
+    # fetched, due_in}; status is ok / capped (call cap reached) / skipped (not its day) /
+    # blocked (the edge's anti-robot « security check ») / error. `workday_blocked` counts
+    # the blocked ones: each stopped at once, never retried, never worked around.
+    workday_boards: list[dict] = field(default_factory=list)
+    workday_blocked: int = 0
     by_area: dict[str, int] = field(default_factory=dict)  # queried area → fetched
     # Where the offers actually are, parsed from each offer's own location: the only
     # geographic breakdown left once the search is national and by_area is just "all".

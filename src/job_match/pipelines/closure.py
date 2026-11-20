@@ -35,6 +35,9 @@ class ClosureStats:
     closed: int = 0     # of which the source said are gone, and were marked so
     errors: int = 0     # of which got no clear answer (left untouched)
     suspended: int = 0  # not asked, or "gone" not applied, because the source is down
+    # Not asked because the source chose not to today (`OfferStatus.NOT_ASKED`: a board read
+    # once a week, a call cap, an anti-robot answer): neither checked nor an error.
+    deferred: int = field(default=0, compare=False)
     # Per source: {checked, closed, errors, suspended}. Not part of equality: the totals
     # are what the older tests and callers compare.
     by_source: dict[str, dict[str, int]] = field(default_factory=dict, compare=False)
@@ -43,12 +46,14 @@ class ClosureStats:
 
 
 class _SourceState:
-    __slots__ = ("checked", "errors", "suspended", "stopped", "open_ids", "closed_ids")
+    __slots__ = ("checked", "errors", "suspended", "deferred", "stopped", "open_ids",
+                 "closed_ids")
 
     def __init__(self) -> None:
         self.checked = 0
         self.errors = 0
         self.suspended = 0
+        self.deferred = 0
         self.stopped = False
         self.open_ids: list[int] = []
         self.closed_ids: list[int] = []
@@ -105,12 +110,15 @@ def check_closed(
             st.closed_ids.append(job_id)
         elif status is OfferStatus.OPEN:
             st.open_ids.append(job_id)
+        elif status is OfferStatus.NOT_ASKED:
+            st.checked -= 1  # the source did not ask on purpose: not a check, not an error
+            st.deferred += 1
         else:
             st.errors += 1  # UNKNOWN: nothing written, asked again next run
 
     found: list[SourceOutage] = []
     by_source: dict[str, dict[str, int]] = {}
-    checked = closed = errors = suspended = 0
+    checked = closed = errors = suspended = deferred = 0
     for source_name in sorted(states):
         st = states[source_name]
         outage = closure_outage(source_name, st.checked, len(st.closed_ids), settings.outage_guard)
@@ -131,17 +139,20 @@ def check_closed(
             "errors": st.errors,
             "suspended": st.suspended,
         }
+        if st.deferred:
+            counts["deferred"] = st.deferred
         by_source[source_name] = counts
         checked += st.checked
         closed += len(st.closed_ids)
         errors += st.errors
         suspended += st.suspended
+        deferred += st.deferred
 
     logger.info(
-        "closure check: checked=%d closed=%d unclear=%d suspended=%d",
-        checked, closed, errors, suspended,
+        "closure check: checked=%d closed=%d unclear=%d suspended=%d not_asked=%d",
+        checked, closed, errors, suspended, deferred,
     )
     return ClosureStats(
         checked=checked, closed=closed, errors=errors, suspended=suspended,
-        by_source=by_source, outages=tuple(found),
+        deferred=deferred, by_source=by_source, outages=tuple(found),
     )

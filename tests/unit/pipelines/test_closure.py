@@ -159,3 +159,20 @@ def test_a_source_that_cannot_be_asked_stops_the_check_without_closing_anything(
     assert stats == ClosureStats(checked=1, closed=0, errors=1)
     assert source.asked == ["A"]  # stopped after the first failure
     assert _cols(db, a.id) == (None, None) and _cols(db, b.id) == (None, None)
+
+
+def test_an_offer_the_source_chose_not_to_ask_about_is_neither_checked_nor_an_error(db):
+    """A Workday board read once a week, a call cap reached, an anti-robot answer."""
+    repo = JobRepository(db.conn)
+    waiting = repo.save(_job("LATER"))
+    live = repo.save(_job("LIVE"))
+    source = CheckingSource({"LATER": OfferStatus.NOT_ASKED, "LIVE": OfferStatus.OPEN})
+
+    stats = check_closed([source], SETTINGS, db, NOW)
+
+    assert stats == ClosureStats(checked=1, closed=0, errors=0)
+    assert stats.deferred == 1
+    assert stats.by_source["france_travail"] == {
+        "checked": 1, "closed": 0, "errors": 0, "suspended": 0, "deferred": 1}
+    assert _cols(db, waiting.id) == (None, None)  # untouched: asked again on its day
+    assert _cols(db, live.id) == (None, NOW.isoformat())

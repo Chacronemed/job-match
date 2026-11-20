@@ -46,6 +46,15 @@ def test_workday_slug_and_max_postings(tmp_path):
     assert (board.slug, board.max_postings) == ("x.wd3.myworkdayjobs.com/x/Careers", 40)
 
 
+def test_a_workday_board_may_carry_its_own_frequency(tmp_path):
+    path = tmp_path / "ats_boards.yaml"
+    path.write_text("boards:\n  - {company: X, ats: workday, frequency_days: 1,\n"
+                    "     slug: x.wd3.myworkdayjobs.com/x/Careers}\n"
+                    "  - {company: Y, ats: lever, slug: y}\n", encoding="utf-8")
+    daily, plain = load_ats_boards(path)
+    assert daily.frequency_days == 1 and plain.frequency_days is None
+
+
 def test_missing_file_means_no_boards(tmp_path):
     assert load_ats_boards(tmp_path / "none.yaml") == []
 
@@ -58,6 +67,7 @@ def test_missing_file_means_no_boards(tmp_path):
     "boards:\n  - {company: X, ats: talentsoft, slug: '10.0.0.1'}\n",          # not an IP
     "boards:\n  - {company: X, ats: talentsoft, slug: localhost}\n",           # no bare name
     "boards:\n  - {company: X, ats: lever, slug: x, max_postings: 0}\n",
+    "boards:\n  - {company: X, ats: lever, slug: x, frequency_days: 0}\n",
     "boards:\n  - {company: X, ats: lever, slug: 'a/b'}\n",   # not URL-safe
     "boards:\n  - {company: '', ats: lever, slug: ok}\n",     # no company
     "boards: {a: 1}\n",                                       # not a list

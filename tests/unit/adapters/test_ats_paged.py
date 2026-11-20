@@ -27,7 +27,10 @@ SR_BASE = "https://api.smartrecruiters.com/v1/companies/Devoteam/postings"
 FRANCE_ID = "54c5b6971ffb4bf0b116fe7651ec789a"
 
 
-NO_WAIT = WorkdayConfig(request_delay_seconds=0, backoff_seconds=0)
+# The whole French board, every run, no cap: what these tests describe. The search by
+# keyword, the cap and the frequency have their own file (test_workday_calls.py).
+EVERY_RUN = {"max_calls_per_run": 0, "frequency_days": 1}
+NO_WAIT = WorkdayConfig(request_delay_seconds=0, backoff_seconds=0, **EVERY_RUN)
 
 
 def _source(*boards: AtsBoard, **kwargs) -> AtsBoardSource:
@@ -313,7 +316,7 @@ def test_one_request_per_second_per_host_not_across_hosts():
 
     src = AtsBoardSource([WD, SR], requests_per_second=1.0, sleep=sleep,
                          clock=lambda: now[0],
-                         workday=WorkdayConfig(request_delay_seconds=2.0))
+                         workday=WorkdayConfig(request_delay_seconds=2.0, **EVERY_RUN))
     list(src.fetch())
     # Workday: facets, page, detail → 2 waits of its own delay; SmartRecruiters (another
     # host): its first call does not wait, its detail does.
@@ -324,9 +327,7 @@ def test_one_request_per_second_per_host_not_across_hosts():
 
 WD2 = AtsBoard(company="Airbus", ats="workday", slug="ag.wd3.myworkdayjobs.com/ag/Airbus")
 WD2_BASE = "https://ag.wd3.myworkdayjobs.com/wday/cxs/ag/Airbus"
-SECURITY_CHECK = httpx.Response(  # what Workday's edge answers since 2026-11-16
-    429, headers={"Content-Type": "text/html; charset=UTF-8"},
-    content=b"<html><body>Security Check</body></html>")
+QUOTA = httpx.Response(429)  # a plain "too many requests": retried, unlike a security check
 
 
 class _Time:
@@ -346,7 +347,7 @@ class _Time:
 
 def _paced(*boards: AtsBoard, time: _Time, **workday) -> AtsBoardSource:
     return AtsBoardSource(list(boards), requests_per_second=1000.0, sleep=time.sleep,
-                          clock=time.clock, workday=WorkdayConfig(**workday))
+                          clock=time.clock, workday=WorkdayConfig(**{**EVERY_RUN, **workday}))
 
 
 def _mock_second_tenant() -> respx.Route:
@@ -403,7 +404,7 @@ def test_workday_429_waits_what_retry_after_says_then_goes_on():
 @respx.mock
 def test_workday_429_without_retry_after_backs_off_longer_each_time(caplog):
     route, _ = _mock_workday([_wd_posting("R1")])
-    answers = iter([SECURITY_CHECK, SECURITY_CHECK, httpx.Response(503)])
+    answers = iter([QUOTA, QUOTA, httpx.Response(503)])
     listing = route.side_effect
     route.side_effect = lambda request: next(answers, None) or listing(request)
     time = _Time()
@@ -415,7 +416,7 @@ def test_workday_429_without_retry_after_backs_off_longer_each_time(caplog):
 
     assert [i["id"] for i in items] == ["R1"]  # the fourth attempt answered
     assert time.waits == [5.0, 10.0, 15.0]  # 5, 10, then 20 capped at 15
-    assert "HTTP 429 (security check page) on attempt 1/4, waiting 5.0s" in caplog.text
+    assert "HTTP 429 on attempt 1/4, waiting 5.0s" in caplog.text
     assert src.request_stats == (3, 0)  # one logical call, retried: not a failure
 
 
@@ -436,7 +437,7 @@ def test_workday_tenant_that_keeps_failing_is_left_alone_and_the_others_still_ru
     postings = [_wd_posting(f"R{i}") for i in range(8)]
     route, detail = _mock_workday(postings)
     detail.side_effect = None
-    detail.return_value = SECURITY_CHECK  # the listing answers, every detail is refused
+    detail.return_value = httpx.Response(503)  # the listing answers, no detail does
     other = _mock_second_tenant()
     time = _Time()
     src = _paced(WD, WD2, time=time, request_delay_seconds=0, backoff_seconds=5,
@@ -450,7 +451,7 @@ def test_workday_tenant_that_keeps_failing_is_left_alone_and_the_others_still_ru
     assert time.waits == [5.0, 5.0, 5.0]
     assert "workday tenant thales.wd3.myworkdayjobs.com left alone for the rest of this run" \
         in caplog.text
-    assert "3 calls failed in a row (last: HTTP 429 (security check page))" in caplog.text
+    assert "3 calls failed in a row (last: HTTP 503)" in caplog.text
     # No global failure: the other tenant was read, and the run goes on.
     assert [(i[COMPANY_KEY], i["id"]) for i in items] == [("Airbus", "A1")]
     assert other.call_count == 2
