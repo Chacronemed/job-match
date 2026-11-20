@@ -1,5 +1,6 @@
 """Workday and SmartRecruiters boards: French postings only, capped listing, one detail
-call per posting, 1 request/s per host."""
+call per posting, 1 request/s per host; Workday paced on one queue for every tenant, its
+429 retried with Retry-After or a longer backoff, a failing tenant left alone for the run."""
 import json
 import logging
 from datetime import UTC, datetime
@@ -16,7 +17,7 @@ from job_match.adapters.jobs.ats import (
     board_url,
 )
 from job_match.adapters.jobs.base import OfferStatus
-from job_match.config.schema import AtsBoard
+from job_match.config.schema import AtsBoard, WorkdayConfig
 from job_match.domain.models import ContractType, WorkplaceType
 
 WD = AtsBoard(company="Thales", ats="workday", slug="thales.wd3.myworkdayjobs.com/thales/Careers")
@@ -26,7 +27,11 @@ SR_BASE = "https://api.smartrecruiters.com/v1/companies/Devoteam/postings"
 FRANCE_ID = "54c5b6971ffb4bf0b116fe7651ec789a"
 
 
+NO_WAIT = WorkdayConfig(request_delay_seconds=0, backoff_seconds=0)
+
+
 def _source(*boards: AtsBoard, **kwargs) -> AtsBoardSource:
+    kwargs.setdefault("workday", NO_WAIT)
     return AtsBoardSource(list(boards), requests_per_second=1000.0, **kwargs)
 
 
@@ -307,8 +312,232 @@ def test_one_request_per_second_per_host_not_across_hosts():
         now[0] += seconds
 
     src = AtsBoardSource([WD, SR], requests_per_second=1.0, sleep=sleep,
-                         clock=lambda: now[0])
+                         clock=lambda: now[0],
+                         workday=WorkdayConfig(request_delay_seconds=2.0))
     list(src.fetch())
-    # Workday: facets, page, detail → 2 waits; SmartRecruiters (another host): its first
-    # call does not wait, its detail does.
-    assert waits == [1.0, 1.0, 1.0]
+    # Workday: facets, page, detail → 2 waits of its own delay; SmartRecruiters (another
+    # host): its first call does not wait, its detail does.
+    assert waits == [2.0, 2.0, 1.0]
+
+
+# ---------------------------------------------------------------------- Workday pacing
+
+WD2 = AtsBoard(company="Airbus", ats="workday", slug="ag.wd3.myworkdayjobs.com/ag/Airbus")
+WD2_BASE = "https://ag.wd3.myworkdayjobs.com/wday/cxs/ag/Airbus"
+SECURITY_CHECK = httpx.Response(  # what Workday's edge answers since 2026-11-16
+    429, headers={"Content-Type": "text/html; charset=UTF-8"},
+    content=b"<html><body>Security Check</body></html>")
+
+
+class _Time:
+    """A clock that only moves when the source sleeps: every wait is recorded."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.waits: list[float] = []
+
+    def sleep(self, seconds: float) -> None:
+        self.waits.append(seconds)
+        self.now += seconds
+
+    def clock(self) -> float:
+        return self.now
+
+
+def _paced(*boards: AtsBoard, time: _Time, **workday) -> AtsBoardSource:
+    return AtsBoardSource(list(boards), requests_per_second=1000.0, sleep=time.sleep,
+                          clock=time.clock, workday=WorkdayConfig(**workday))
+
+
+def _mock_second_tenant() -> respx.Route:
+    """Airbus: one French posting, on another Workday host."""
+    def jobs(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        if not body["appliedFacets"]:
+            return httpx.Response(200, json={"total": 9, "facets": _facets()})
+        return httpx.Response(200, json={"total": 1, "jobPostings": [_wd_posting("A1")]})
+
+    respx.get(url__startswith=WD2_BASE + "/job/").mock(
+        return_value=httpx.Response(200, json=_wd_detail("A1")))
+    return respx.post(WD2_BASE + "/jobs").mock(side_effect=jobs)
+
+
+@respx.mock
+def test_workday_tenants_share_one_queue_and_are_read_one_after_the_other():
+    route, detail = _mock_workday([_wd_posting("R1")])
+    other = _mock_second_tenant()
+    time = _Time()
+    order: list[str] = []
+    route.side_effect = _recording(route.side_effect, order, "thales")
+    other.side_effect = _recording(other.side_effect, order, "airbus")
+
+    list(_paced(WD, WD2, time=time, request_delay_seconds=2.0).fetch())
+
+    # 3 calls per tenant (facets, page, detail) on two different hosts: every call but the
+    # very first waits the Workday delay, the first Airbus call included.
+    assert time.waits == [2.0] * 5
+    assert order == ["thales", "thales", "airbus", "airbus"]  # never interleaved
+
+
+def _recording(side_effect, order: list[str], name: str):
+    def wrapped(request: httpx.Request) -> httpx.Response:
+        order.append(name)
+        return side_effect(request)
+    return wrapped
+
+
+@respx.mock
+def test_workday_429_waits_what_retry_after_says_then_goes_on():
+    route, _ = _mock_workday([_wd_posting("R1")])
+    answers = iter([httpx.Response(429, headers={"Retry-After": "7"})])
+    listing = route.side_effect
+    route.side_effect = lambda request: next(answers, None) or listing(request)
+    time = _Time()
+
+    items = list(_paced(WD, time=time, request_delay_seconds=0, backoff_seconds=5).fetch())
+
+    assert [i["id"] for i in items] == ["R1"]
+    assert time.waits == [7.0]  # the header, not the 5 s backoff
+
+
+@respx.mock
+def test_workday_429_without_retry_after_backs_off_longer_each_time(caplog):
+    route, _ = _mock_workday([_wd_posting("R1")])
+    answers = iter([SECURITY_CHECK, SECURITY_CHECK, httpx.Response(503)])
+    listing = route.side_effect
+    route.side_effect = lambda request: next(answers, None) or listing(request)
+    time = _Time()
+
+    src = _paced(WD, time=time, request_delay_seconds=0, backoff_seconds=5,
+                 backoff_max_seconds=15, max_retries=3)
+    with caplog.at_level(logging.WARNING):
+        items = list(src.fetch())
+
+    assert [i["id"] for i in items] == ["R1"]  # the fourth attempt answered
+    assert time.waits == [5.0, 10.0, 15.0]  # 5, 10, then 20 capped at 15
+    assert "HTTP 429 (security check page) on attempt 1/4, waiting 5.0s" in caplog.text
+    assert src.request_stats == (3, 0)  # one logical call, retried: not a failure
+
+
+@respx.mock
+def test_workday_retry_after_http_date_is_read_too():
+    route, _ = _mock_workday([_wd_posting("R1")])
+    answers = iter([httpx.Response(
+        429, headers={"Retry-After": "Wed, 21 Oct 2015 07:28:00 GMT"})])  # long past: 0 s
+    listing = route.side_effect
+    route.side_effect = lambda request: next(answers, None) or listing(request)
+    time = _Time()
+    list(_paced(WD, time=time, request_delay_seconds=0, backoff_seconds=5).fetch())
+    assert time.waits == [0.0]
+
+
+@respx.mock
+def test_workday_tenant_that_keeps_failing_is_left_alone_and_the_others_still_run(caplog):
+    postings = [_wd_posting(f"R{i}") for i in range(8)]
+    route, detail = _mock_workday(postings)
+    detail.side_effect = None
+    detail.return_value = SECURITY_CHECK  # the listing answers, every detail is refused
+    other = _mock_second_tenant()
+    time = _Time()
+    src = _paced(WD, WD2, time=time, request_delay_seconds=0, backoff_seconds=5,
+                 max_retries=1, max_consecutive_failures=3)
+
+    with caplog.at_level(logging.WARNING):
+        items = list(src.fetch())
+
+    # Three details failed in a row (2 attempts each): the other five are not even asked.
+    assert detail.call_count == 6
+    assert time.waits == [5.0, 5.0, 5.0]
+    assert "workday tenant thales.wd3.myworkdayjobs.com left alone for the rest of this run" \
+        in caplog.text
+    assert "3 calls failed in a row (last: HTTP 429 (security check page))" in caplog.text
+    # No global failure: the other tenant was read, and the run goes on.
+    assert [(i[COMPANY_KEY], i["id"]) for i in items] == [("Airbus", "A1")]
+    assert other.call_count == 2
+    stats = {q.query: q.fetched for q in src.query_stats}
+    assert stats == {"thales.Careers": 0, "ag.Airbus": 1}
+    assert src.request_stats == (2 + 3 + 3, 3)  # the skipped details were never attempted
+
+    # Its closure checks make no call either: a listed id is still known OPEN, an id the
+    # capped listing did not show cannot be probed, so UNKNOWN (nothing is closed).
+    assert src.check_offer("workday:thales.Careers:R1") is OfferStatus.OPEN
+    capped = AtsBoard(company="Thales", ats="workday", slug=WD.slug, max_postings=5)
+    src2 = _paced(capped, time=_Time(), request_delay_seconds=0, backoff_seconds=0,
+                  max_retries=0, max_consecutive_failures=1)
+    list(src2.fetch())
+    calls = route.call_count
+    assert src2.check_offer("workday:thales.Careers:R7") is OfferStatus.UNKNOWN
+    assert route.call_count == calls
+
+
+@respx.mock
+def test_workday_retry_after_beyond_the_cap_gives_the_tenant_up_at_once(caplog):
+    route = respx.post(WD_BASE + "/jobs").mock(
+        return_value=httpx.Response(429, headers={"Retry-After": "3600"}))
+    other = _mock_second_tenant()
+    time = _Time()
+    src = _paced(WD, WD2, time=time, request_delay_seconds=0, retry_after_max_seconds=120)
+
+    with caplog.at_level(logging.WARNING):
+        items = list(src.fetch())
+
+    assert route.call_count == 1 and time.waits == []  # no hour-long sleep, no retry
+    assert "Retry-After 3600s is beyond 120s" in caplog.text
+    assert [i["id"] for i in items] == ["A1"] and other.call_count == 2
+    assert src.check_offer("workday:thales.Careers:R1") is OfferStatus.UNKNOWN
+    assert route.call_count == 1
+
+
+@respx.mock
+def test_workday_timeout_is_retried_then_only_that_board_is_skipped():
+    route = respx.post(WD_BASE + "/jobs").mock(side_effect=httpx.ReadTimeout("slow"))
+    _mock_second_tenant()
+    time = _Time()
+    src = _paced(WD, WD2, time=time, request_delay_seconds=0, backoff_seconds=5,
+                 max_retries=2)
+    items = list(src.fetch())
+    assert route.call_count == 3 and time.waits == [5.0, 10.0]
+    assert [i["id"] for i in items] == ["A1"]
+
+
+# ---------------------------------------------------------------------- France by location
+
+def _city_facets(*cities: tuple[str, str]) -> list[dict]:
+    """Euronext / Murex: no country facet, a `locations` one listing cities."""
+    return [{"facetParameter": "locationMainGroup", "values": [
+        {"facetParameter": "locations", "descriptor": "Locations",
+         "values": [{"descriptor": name, "id": ident, "count": 1} for name, ident in cities]},
+    ]}]
+
+
+@respx.mock
+def test_workday_without_a_country_facet_keeps_the_french_locations():
+    seen: list[dict] = []
+
+    def jobs(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        seen.append(body["appliedFacets"])
+        if not body["appliedFacets"]:
+            return httpx.Response(200, json={"total": 40, "facets": _city_facets(
+                ("Amsterdam", "ams"), ("Paris", "par"), ("Porto", "opo"),
+                ("Lyon", "lys"), ("ADC - Oslo", "osl"))})
+        return httpx.Response(200, json={"total": 1, "jobPostings": [_wd_posting("R1")]})
+
+    respx.post(WD_BASE + "/jobs").mock(side_effect=jobs)
+    respx.get(url__startswith=WD_BASE + "/job/").mock(
+        return_value=httpx.Response(200, json=_wd_detail("R1")))
+
+    items = list(_source(WD).fetch())
+
+    assert seen == [{}, {"locations": ["par", "lys"]}]
+    assert [i["id"] for i in items] == ["R1"]
+
+
+@respx.mock
+def test_workday_locations_facet_without_a_french_place_has_no_posting():
+    route = respx.post(WD_BASE + "/jobs").mock(return_value=httpx.Response(
+        200, json={"total": 3, "facets": _city_facets(("Amsterdam", "ams"), ("Milan", "mil"))}))
+    src = _source(WD)
+    assert list(src.fetch()) == []
+    assert route.call_count == 1 and src.query_stats[0].available == 0
+

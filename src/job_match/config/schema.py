@@ -66,8 +66,9 @@ class AtsBoard:
     """One company career board behind a public ATS JSON endpoint (config/ats_boards.yaml)."""
 
     company: str
-    ats: str   # greenhouse | lever | ashby | smartrecruiters | workday
-    slug: str  # the board's identifier in the ATS URL; Workday: <host>/<tenant>/<site>
+    ats: str   # greenhouse | lever | ashby | smartrecruiters | workday | talentsoft
+    slug: str  # the board's identifier in the ATS URL; Workday: <host>/<tenant>/<site>;
+    #            Talentsoft: the career site's host
     max_postings: int | None = None  # Workday / SmartRecruiters: listing cap (None = 100)
 
 
@@ -82,6 +83,31 @@ class TargetCompany:
     priority: int | None = None
 
 
+@dataclass(frozen=True)
+class WorkdayConfig:
+    """How the `ats` source paces its Workday calls (`sources.ats.workday`).
+
+    Every Workday tenant sits behind the same edge, so the tenants share one queue: they are
+    read one after the other and two calls are never closer than `request_delay_seconds`,
+    whatever the tenant. A 429 or a 5xx is retried `max_retries` times: the wait is the
+    response's `Retry-After` when it sends one, else `backoff_seconds` doubled at each
+    attempt and capped at `backoff_max_seconds`. A `Retry-After` longer than
+    `retry_after_max_seconds`, or `max_consecutive_failures` failed calls in a row, and the
+    tenant is left alone until the next run: logged, skipped, the other boards still run.
+
+    The defaults keep a refusing edge cheap: a failed call costs 15 s of backoff (5 + 10),
+    so a tenant that answers nothing is given up after about half a minute. Measured
+    2026-11-20: the 429 Workday serves is a client check, not a quota, and no pace gets
+    through it, so waiting longer or retrying more only makes the run longer."""
+
+    request_delay_seconds: float = 1.5
+    max_retries: int = 2
+    backoff_seconds: float = 5.0
+    backoff_max_seconds: float = 60.0
+    retry_after_max_seconds: float = 120.0
+    max_consecutive_failures: int = 2
+
+
 @dataclass
 class SourcesConfig:
     """Which job sources run, and the geography/quota they run with.
@@ -94,6 +120,7 @@ class SourcesConfig:
     enabled: list[str] = field(default_factory=lambda: ["france_travail"])
     regions: list[str] = field(default_factory=list)
     limits: dict[str, SourceLimits] = field(default_factory=dict)
+    workday: WorkdayConfig = field(default_factory=WorkdayConfig)
 
     def is_enabled(self, name: str) -> bool:
         return name in self.enabled

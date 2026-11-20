@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss xmlns:a10="http://www.w3.org/2005/Atom" version="2.0">
+  <channel>
+    <title>Export RSS des offres - Seulement les offres à la une : Non</title>
+    <link>https://recrutement.example.com/handlers/offerRss.ashx?LCID=1036</link>
+    <description />
+    <language>fr-FR</language>
+    <item>
+      <link>https://recrutement.example.com/Pages/Offre/detailoffre.aspx?idOffre=4101&amp;idOrigine=502&amp;LCID=1036&amp;offerReference=2026-4101</link>
+      <category>Systèmes d'informations/Infrastructures &amp; Production informatique</category>
+      <category>CDI</category>
+      <category>12 rue de l'Exemple 31100 TOULOUSE</category>
+      <title>2026-4101 - Ingénieur DevOps Cloud F/H</title>
+      <description>&lt;b&gt;Métier : &lt;/b&gt;Systèmes d'informations/Infrastructures &amp;amp; Production informatique&lt;br /&gt;
+&lt;b&gt;Type de contrat : &lt;/b&gt;CDI&lt;br /&gt;
+&lt;b&gt;Description du poste : &lt;/b&gt;&lt;br /&gt;
+Vous automatisez les déploiements avec Terraform et Kubernetes.&lt;br /&gt;
+Vous justifiez de 2 ans d'expérience.&lt;br /&gt;
+&lt;b&gt;Site : &lt;/b&gt;12 rue de l'Exemple 31100 TOULOUSE&lt;br /&gt;</description>
+      <pubDate>Fri, 20 Nov 2026 15:36:36 Z</pubDate>
+    </item>
+    <item>
+      <link>https://recrutement.example.com/Pages/Offre/detailoffre.aspx?idOffre=4102&amp;idOrigine=502&amp;LCID=1036&amp;offerReference=2026-4102</link>
+      <category>Entretien/Maintenance</category>
+      <category>Convention de stage</category>
+      <category>Valbonne</category>
+      <title>2026-4102 - Stage - Supervision des plateformes F/H</title>
+      <description>&lt;b&gt;Type de contrat : &lt;/b&gt;Convention de stage&lt;br /&gt;Stage de 6 mois.</description>
+      <pubDate>Thu, 19 Nov 2026 09:00:00 Z</pubDate>
+    </item>
+    <item>
+      <link>https://recrutement.example.com/Pages/Offre/detailoffre.aspx?LCID=1036</link>
+      <category>Sans identifiant</category>
+      <title>Offre sans idOffre</title>
+      <description>ignorée</description>
+      <pubDate>Thu, 19 Nov 2026 08:00:00 Z</pubDate>
+    </item>
+  </channel>
+</rss>

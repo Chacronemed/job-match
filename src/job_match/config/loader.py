@@ -35,6 +35,7 @@ from job_match.config.schema import (
     SourcesConfig,
     TargetCompany,
     TitleRelevanceConfig,
+    WorkdayConfig,
 )
 from job_match.domain.models import ContractType
 
@@ -81,12 +82,16 @@ def load_aliases(path: Path) -> dict[str, list[str]]:
     }
 
 
-_ATS_NAMES = ("greenhouse", "lever", "ashby", "smartrecruiters", "workday")
+_ATS_NAMES = ("greenhouse", "lever", "ashby", "smartrecruiters", "workday", "talentsoft")
 _SLUG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 # Workday: <tenant>.<wdN>.myworkdayjobs.com/<tenant>/<site>; the host is pinned to Workday's
 # domain because it is called as is.
 _WORKDAY_RE = re.compile(
     r"^([a-z0-9-]+)\.wd\d{1,3}\.myworkdayjobs\.com/([A-Za-z0-9_-]+)/([A-Za-z0-9_-]+)$")
+# Talentsoft: the career site's own host (`recrutement.airfrance.com`), called as is, so a
+# plain lowercase host name and nothing else (no port, no path, no IP address).
+_TALENTSOFT_RE = re.compile(r"^(?=.{4,253}$)[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$")
+_SLUG_PATTERNS = {"workday": _WORKDAY_RE, "talentsoft": _TALENTSOFT_RE}
 
 
 def load_ats_boards(path: Path) -> list[AtsBoard]:
@@ -94,8 +99,8 @@ def load_ats_boards(path: Path) -> list[AtsBoard]:
 
     Each entry needs `company`, `ats` (one of `_ATS_NAMES`) and `slug`; the slug is
     checked against a strict character class because it ends up in a URL path (Workday's
-    is `<host>/<tenant>/<site>`, host on myworkdayjobs.com). `max_postings` (optional,
-    Workday / SmartRecruiters) caps the listing.
+    is `<host>/<tenant>/<site>`, host on myworkdayjobs.com; Talentsoft's is the career
+    site's host). `max_postings` (optional, Workday / SmartRecruiters) caps the listing.
     """
     if not path.exists():
         return []
@@ -111,7 +116,7 @@ def load_ats_boards(path: Path) -> list[AtsBoard]:
         company, ats, slug = (str(entry.get(k) or "").strip() for k in ("company", "ats", "slug"))
         if ats not in _ATS_NAMES:
             raise ConfigError(f"boards[{i}].ats must be one of {_ATS_NAMES}, got {ats!r} in {path}")
-        pattern = _WORKDAY_RE if ats == "workday" else _SLUG_RE
+        pattern = _SLUG_PATTERNS.get(ats, _SLUG_RE)
         if not company or not pattern.match(slug):
             raise ConfigError(f"boards[{i}] needs a company and a URL-safe slug in {path}")
         cap = entry.get("max_postings")
@@ -326,7 +331,30 @@ def _parse_sources(value: object, path: Path) -> SourcesConfig:
         enabled=_str_list(raw.get("enabled", d.enabled), "sources.enabled", path),
         regions=_str_list(raw.get("regions"), "sources.regions", path),
         limits=limits,
+        workday=_parse_workday(_mapping(raw.get("ats"), "sources.ats", path).get("workday"), path),
     )
+
+
+def _parse_workday(value: object, path: Path) -> WorkdayConfig:
+    """`sources.ats.workday`: every key optional, none may be negative; the two counters
+    are integers (`max_retries` may be 0, `max_consecutive_failures` at least 1)."""
+    raw = _mapping(value, "sources.ats.workday", path)
+    d = WorkdayConfig()
+    out: dict = {}
+    for key in ("request_delay_seconds", "backoff_seconds", "backoff_max_seconds",
+                "retry_after_max_seconds"):
+        v = raw.get(key, getattr(d, key))
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or v < 0:
+            raise ConfigError(
+                f"sources.ats.workday.{key} must be a number of seconds >= 0 (in {path})")
+        out[key] = float(v)
+    for key, minimum in (("max_retries", 0), ("max_consecutive_failures", 1)):
+        v = raw.get(key, getattr(d, key))
+        if isinstance(v, bool) or not isinstance(v, int) or v < minimum:
+            raise ConfigError(
+                f"sources.ats.workday.{key} must be an integer >= {minimum} (in {path})")
+        out[key] = v
+    return WorkdayConfig(**out)
 
 
 def _published_since_days(value: object, key: str, path: Path) -> int | None:

@@ -71,7 +71,7 @@
 
   /* Where an offer comes from: a national board by name, a company board by its ATS. */
   var SOURCE_TEXT = { france_travail: "France Travail", adzuna: "Adzuna", jooble: "Jooble", ats: "Pages carrière (ATS)" };
-  var ATS_TEXT = { greenhouse: "Greenhouse", lever: "Lever", ashby: "Ashby", workday: "Workday", smartrecruiters: "SmartRecruiters" };
+  var ATS_TEXT = { greenhouse: "Greenhouse", lever: "Lever", ashby: "Ashby", workday: "Workday", smartrecruiters: "SmartRecruiters", talentsoft: "Talentsoft" };
   function sourceText(j) {
     if (j.source === "ats") return ATS_TEXT[j.ats] || j.ats || "ATS";
     return SOURCE_TEXT[j.source] || j.source || "";

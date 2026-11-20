@@ -1,11 +1,13 @@
 # Liste d'entreprises cibles (M28) — dédoublonnée.
 # ats_guess vient d'une recherche IA NON vérifiée : `job-match companies detect`
 # doit confirmer l'ATS et l'identifiant réel avant toute collecte.
+# ats_verified: true = l'endpoint public a répondu avec des offres françaises le 2026-11-20
+# et l'entreprise est dans config/ats_boards.yaml (docs/diagnostics/2026-11-20-coverage.md).
 companies:
 - name: Airbus
   careers_url: https://ag.wd3.myworkdayjobs.com/Airbus
   ats_guess: workday
-  ats_verified: false
+  ats_verified: true
   priority: 1
   sector: Aéronautique / Défense / Spatial
   france_sites:
@@ -20,7 +22,7 @@ companies:
 - name: Thales
   careers_url: https://thales.wd3.myworkdayjobs.com/Careers
   ats_guess: workday
-  ats_verified: false
+  ats_verified: true
   priority: 2
   sector: Aéronautique / Défense / Cybersécurité
   france_sites:
@@ -221,7 +223,7 @@ companies:
 - name: Renault Group
   careers_url: https://alliancewd.wd3.myworkdayjobs.com/renault-group-careers
   ats_guess: workday
-  ats_verified: false
+  ats_verified: true
   priority: 18
   sector: Automobile & Mobilité connectée
   france_sites:
@@ -245,7 +247,7 @@ companies:
 - name: Air Liquide
   careers_url: https://airliquidehr.wd3.myworkdayjobs.com/AirLiquideExternalCareer
   ats_guess: workday
-  ats_verified: false
+  ats_verified: true
   priority: 20
   sector: Gaz industriels & Santé
   france_sites:
@@ -256,7 +258,7 @@ companies:
 - name: Sanofi
   careers_url: https://sanofi.wd3.myworkdayjobs.com/SanofiCareers
   ats_guess: workday
-  ats_verified: false
+  ats_verified: true
   priority: 21
   sector: Santé & Pharmaceutique
   france_sites:
@@ -279,7 +281,7 @@ companies:
   why: Environnement Beauty Tech de pointe, forte utilisation de GCP, intéressement/participation historiques très élevés.
 - name: Orange
   careers_url: https://orange.jobs/jobs/v2/search
-  ats_guess: custom
+  ats_guess: phenom
   ats_verified: false
   priority: 23
   sector: Télécommunications
@@ -317,8 +319,8 @@ companies:
   why: Filiale tech 100% cloud public (AWS), trafic colossal lors des ouvertures de ventes, forte culture DevOps/FinOps interne.
 - name: Air France-KLM
   careers_url: https://recrutement.airfrance.com
-  ats_guess: custom
-  ats_verified: false
+  ats_guess: talentsoft
+  ats_verified: true
   priority: 26
   sector: Aérien / Transport
   france_sites:
@@ -490,7 +492,7 @@ companies:
   junior_program: oui (Spring Program / Talents)
   why: Première capitalisation du CAC 40, investissements massifs dans les plateformes data/cloud, intéressement haut de gamme.
 - name: Kering
-  careers_url: https://kering.wd3.myworkdayjobs.com/kering
+  careers_url: https://kering.wd3.myworkdayjobs.com/Kering
   ats_guess: workday
   ats_verified: false
   priority: 42
@@ -732,7 +734,7 @@ companies:
 - name: Michelin
   careers_url: https://michelinhr.wd3.myworkdayjobs.com/Michelin
   ats_guess: workday
-  ats_verified: false
+  ats_verified: true
   priority: 64
   sector: Industrie / Mobilité
   france_sites:
@@ -778,9 +780,9 @@ companies:
   junior_program: non
   why: Intéressement et participation parmi les plus élevés de la défense, cloud privé souverain (OpenStack/K8s).
 - name: Sopra Steria
-  careers_url: https://soprasteria.wd3.myworkdayjobs.com/Careers
-  ats_guess: workday
-  ats_verified: false
+  careers_url: https://careers.smartrecruiters.com/SopraSteria1
+  ats_guess: smartrecruiters
+  ats_verified: true
   priority: 68
   sector: Conseil & Services IT
   france_sites:
@@ -821,7 +823,7 @@ companies:
 - name: Accenture France
   careers_url: https://accenture.wd103.myworkdayjobs.com/AccentureCareers
   ats_guess: workday
-  ats_verified: false
+  ats_verified: true
   priority: 71
   sector: Conseil & Intégration de systèmes
   france_sites:
@@ -834,7 +836,7 @@ companies:
 - name: Kyndryl France
   careers_url: https://kyndryl.wd5.myworkdayjobs.com/KyndrylProfessionalCareers
   ats_guess: workday
-  ats_verified: false
+  ats_verified: true
   priority: 72
   sector: Services d'infrastructure managée
   france_sites:
@@ -1082,9 +1084,9 @@ companies:
   junior_program: non
   why: Leader mondial de la résilience des données dans le cloud hybride, environnement international dynamique.
 - name: Murex
-  careers_url: https://murex.wd3.myworkdayjobs.com/Murex
+  careers_url: https://murex.wd3.myworkdayjobs.com/MurexCareerPage1
   ats_guess: workday
-  ats_verified: false
+  ats_verified: true
   priority: 95
   sector: Fintech / Logiciels de trading & marchés de capitaux
   france_sites:
@@ -1225,9 +1227,9 @@ companies:
   junior_program: non
   why: Protection d'un milliard de boîtes mail dans le monde, flux réseau massifs filtrés en temps réel sur Linux/K8s.
 - name: Inetum
-  careers_url: https://inetum.wd3.myworkdayjobs.com/Inetum_Careers
-  ats_guess: workday
-  ats_verified: false
+  careers_url: https://careers.smartrecruiters.com/Inetum2
+  ats_guess: smartrecruiters
+  ats_verified: true
   priority: 109
   sector: Services numériques
   france_sites:
@@ -1240,7 +1242,7 @@ companies:
 - name: Euronext
   careers_url: https://hrhub.wd3.myworkdayjobs.com/Euronext_Career_Page
   ats_guess: workday
-  ats_verified: false
+  ats_verified: true
   priority: 110
   sector: Bourse & Marchés financiers
   france_sites:
@@ -1262,7 +1264,7 @@ companies:
 - name: Equinix France
   careers_url: https://equinix.wd1.myworkdayjobs.com/External
   ats_guess: workday
-  ats_verified: false
+  ats_verified: true
   priority: 112
   sector: Datacenters & Interconnexion Cloud
   france_sites:

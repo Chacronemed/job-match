@@ -3,7 +3,49 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**Candidatures filters** (branch `feat/apps-filters` from `origin/main`, 2026-11-09, PR in draft).
+**Big-company coverage: Workday, Orange, Air France** (branch `feat/coverage-big-companies` from
+`origin/main`, 2026-11-20, cloud session, PR opened; git done by Claude on this branch only, by
+explicit exception). Report: `docs/diagnostics/2026-11-20-coverage.md` (French, on the
+2026-11-20 snapshot, read outside the repo).
+1. **Finding:** the run's `errors: 28` are 28 closure checks left unclear, all on Workday
+   (Thales 11, Accenture 8, Airbus 7, Sanofi 1, Renault 1). Workday's 429 is Cloudflare's HTML
+   « Security Check » page, no `Retry-After`, served to the Python client whatever the pace
+   (curl 26/26 OK at 3 s, httpx 2/19 up to 5 s); it started on 2026-11-16 (717 → 10–112
+   postings a run). The ten tenants' host / tenant / site were right. **Not circumvented.**
+2. **Workday pacing** (`sources.ats.workday` in settings.yaml → `WorkdayConfig`): one queue
+   for every tenant (1.5 s between two calls), retries in the adapter (`Retry-After` in
+   seconds or HTTP date, else 5 s then 10 s), a tenant left alone for the run after 2 failed
+   calls in a row or a `Retry-After` > 120 s (one warning, no more call, closure UNKNOWN, the
+   other boards run). A board without a country facet is filtered on the French values of its
+   `locations` facet (Euronext 38, Murex 11) instead of being skipped.
+3. **Boards 57 → 61:** + Murex (Workday `murex/MurexCareerPage1`), Sopra Steria
+   (`SopraSteria1`, 1 004 French postings) and Inetum (`Inetum2`, 357) on SmartRecruiters, not
+   Workday, + Air France. `companies.yaml`: `ats_verified: true` for the 14 boards checked
+   that day, nothing else flipped.
+4. **Talentsoft** (ADR 0029, `adapters/jobs/talentsoft.py`): board type `talentsoft` in the
+   `ats` source, the site's own offers RSS feed (20 newest, descriptions included), slug = the
+   career site's host; an offer that left the feed is UNKNOWN, never CLOSED. Orange (Phenom:
+   the search call needs a session token, the list is in the HTML) and SNCF Connect & Tech
+   (site behind a Cloudflare block, ATS not identified): documented, nothing coded.
+5. Tests: `test_ats_paged.py` (shared queue, `Retry-After`, backoff, tenant given up, others
+   still run, French `locations`), `test_talentsoft.py` + made-up `talentsoft_feed.xml`,
+   `test_http_retry_after.py`, loader and factory tests. Ten tests of `main` that failed since
+   mid-November (fixed October dates out of the 30 / 45-day windows) are relative to today.
+   ruff clean; fast suite **1 744 passed, 3 skipped**; browser + worker **93 passed**.
+**Next step:** your review and merge, then the Daily run: read the Workday lines of the log
+(« left alone for the rest of this run », « security check page ») and the per-company table
+(Sopra Steria, Inetum, Murex, Air France). Expect few Workday postings while the check is
+served.
+**Open decisions (report § 6, nothing applied):** seniority keywords read in the title only
+(93 fragile EXPERIENCE rejections, « expert » / « principal » in company blurbs); ignore
+company-age numbers (« depuis 25 ans », 19); `stretch_years` 2 (+37) rather than 3 (+198,
+≈ +107 in the Tri); multi-site locations naming France (68 rejected, 6 would pass); Workday:
+keep as is, allow an HTTP/2 test, or drop the boards.
+**Known:** an eligible Air France offer that left the feed counts as unclear (`errors`) at
+each run until the 45-day cut-off. This container's browser tests ran with Playwright 1.63
+(the preinstalled Chromium), not the 1.65 that `pip install .[dev]` resolves.
+
+Before it: **Candidatures filters** (branch `feat/apps-filters` from `origin/main`, 2026-11-09, PR in draft).
 1. « Expirée » joins the archived: `T.hiddenState` (tracking.js) = expired, else the ADR 0028
    archive state; `board.js archivedKeys` uses it, so expired applications leave the board, the
    table, the sidebar count and the subtitle, and show in « Afficher les archivées » with the

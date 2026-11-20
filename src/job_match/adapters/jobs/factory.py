@@ -104,6 +104,7 @@ def build_sources(
             sources.append(
                 AtsBoardSource(
                     ats_boards,
+                    workday=settings.sources.workday,
                     **({} if limit is None else {"max_results": limit}),
                 )
             )

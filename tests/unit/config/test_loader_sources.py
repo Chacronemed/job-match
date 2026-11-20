@@ -192,3 +192,38 @@ def test_raw_payloads_retention_must_be_a_positive_integer(tmp_path, value):
 
 def test_committed_settings_keep_raw_payloads_60_days():
     assert load_settings(Path("config/settings.yaml")).raw_payloads.retention_days == 60
+
+
+# ---------------------------------------------------------------------- Workday pacing
+
+def test_committed_settings_pace_workday():
+    """config/settings.yaml → sources.ats.workday: the delay between two Workday calls and
+    the retry policy are settings, not constants."""
+    w = load_settings(Path("config/settings.yaml")).sources.workday
+    assert w.request_delay_seconds == 1.5
+    assert (w.max_retries, w.backoff_seconds, w.backoff_max_seconds) == (2, 5.0, 60.0)
+    assert (w.retry_after_max_seconds, w.max_consecutive_failures) == (120.0, 2)
+
+
+def test_workday_pacing_is_read_from_settings_and_defaults_apply(tmp_path):
+    s = load_settings(_write(
+        tmp_path,
+        "sources:\n  ats:\n    workday:\n      request_delay_seconds: 4\n      max_retries: 0\n",
+    ))
+    assert s.sources.workday.request_delay_seconds == 4.0
+    assert s.sources.workday.max_retries == 0
+    assert s.sources.workday.backoff_seconds == 5.0  # untouched keys keep their default
+    assert load_settings(_write(tmp_path, "sources: {}\n")).sources.workday.max_retries == 2
+
+
+@pytest.mark.parametrize("body", [
+    "request_delay_seconds: -1",
+    "request_delay_seconds: fast",
+    "backoff_seconds: true",
+    "max_retries: 1.5",
+    "max_retries: -1",
+    "max_consecutive_failures: 0",
+])
+def test_invalid_workday_pacing_is_refused(tmp_path, body):
+    with pytest.raises(ConfigError, match="sources.ats.workday"):
+        load_settings(_write(tmp_path, f"sources:\n  ats:\n    workday:\n      {body}\n"))
