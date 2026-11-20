@@ -6,7 +6,7 @@ Tests that the digest command:
 - Marks jobs only after a successful send.
 - --resend-since resets notified_at and allows a re-send.
 """
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -18,7 +18,9 @@ from job_match.persistence.repositories import JobRepository
 
 MIGRATIONS = Path(__file__).parent.parent.parent.parent / "src" / "job_match" / "migrations"
 
-_NOW = datetime(2026, 10, 3, 8, 0, 0, tzinfo=UTC)
+# Relative to today: the digest hides an offer collected more than `jobs.max_age_days`
+# ago against the real clock, so a fixed date ages out and the tests start failing.
+_NOW = datetime.now(UTC).replace(microsecond=0) - timedelta(hours=1)
 
 
 # ---------------------------------------------------------------------------

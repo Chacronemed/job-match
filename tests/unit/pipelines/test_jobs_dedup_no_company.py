@@ -29,7 +29,9 @@ from job_match.persistence.repositories import JobRepository
 from job_match.pipelines.jobs import run_jobs
 
 MIGRATIONS = Path(__file__).parent.parent.parent.parent / "src" / "job_match" / "migrations"
-_NOW = datetime(2026, 10, 11, 12, 0, 0, tzinfo=UTC)
+# Relative to today: the pipeline compares `collected_at` with the real clock (the dedup
+# window is 30 days), so a fixed date ages out of it and the tests start failing.
+_NOW = datetime.now(UTC).replace(microsecond=0) - timedelta(hours=1)
 
 DESC = (
     "Au sein de notre equipe infrastructure vous administrez nos clusters Kubernetes, "
