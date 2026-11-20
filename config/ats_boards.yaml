@@ -1,12 +1,15 @@
 # Company career boards read through their ATS's public JSON endpoint (ADR 0020).
 # Public, unauthenticated endpoints only: boards-api.greenhouse.io, api.lever.co/v0/postings,
-# api.ashbyhq.com/posting-api, api.smartrecruiters.com/v1 and Workday's /wday/cxs/ JSON.
+# api.ashbyhq.com/posting-api, api.smartrecruiters.com/v1, Workday's /wday/cxs/ JSON and
+# the offers RSS feed a Talentsoft career site publishes (ADR 0029).
 # No HTML scraping.
 #
 # Every board below answered 200 with at least one posting: the first 30 on 2026-11-04
 # (`scripts/ats_probe.py`), the rest on 2026-11-05 (`job-match companies detect`, results in
-# config/companies_detected.yaml). Re-check before adding one; a board that answers 404 is
-# skipped at run time with a warning, never a crash.
+# config/companies_detected.yaml), the ten Workday boards again on 2026-11-20 together with
+# Murex, Sopra Steria, Inetum and Air France (docs/diagnostics/2026-11-20-coverage.md).
+# Re-check before adding one; a board that answers 404 is skipped at run time with a
+# warning, never a crash.
 #
 # Greenhouse / Lever / Ashby: offers from every office are fetched and the location gate
 # keeps the French ones. Workday / SmartRecruiters: only the French postings are listed
@@ -65,8 +68,12 @@ boards:
   - {company: Klaxoon,        ats: smartrecruiters, slug: klaxoon}
   - {company: Dailymotion,    ats: smartrecruiters, slug: dailymotion}
   - {company: Cegid,          ats: smartrecruiters, slug: cegid}
+  - {company: Sopra Steria,   ats: smartrecruiters, slug: SopraSteria1}
+  - {company: Inetum,         ats: smartrecruiters, slug: Inetum2}
   # Workday — POST https://<host>/wday/cxs/<tenant>/<site>/jobs, slug <host>/<tenant>/<site>.
-  # `cgm.wd3` is CompuGroup Medical, not CMA CGM: not listed.
+  # `cgm.wd3` is CompuGroup Medical, not CMA CGM: not listed. Paced apart from the other
+  # ATS (settings.yaml → sources.ats.workday). France comes from the country facet;
+  # Euronext and Murex have none and are filtered on their French `locations` values.
   - {company: Airbus,       ats: workday, slug: ag.wd3.myworkdayjobs.com/ag/Airbus}
   - {company: Thales,       ats: workday, slug: thales.wd3.myworkdayjobs.com/thales/Careers}
   - {company: Sanofi,       ats: workday, slug: sanofi.wd3.myworkdayjobs.com/sanofi/SanofiCareers}
@@ -77,3 +84,7 @@ boards:
   - {company: Kyndryl,      ats: workday, slug: kyndryl.wd5.myworkdayjobs.com/kyndryl/KyndrylProfessionalCareers}
   - {company: Euronext,     ats: workday, slug: hrhub.wd3.myworkdayjobs.com/hrhub/Euronext_Career_Page}
   - {company: Equinix,      ats: workday, slug: equinix.wd1.myworkdayjobs.com/equinix/External}
+  - {company: Murex,        ats: workday, slug: murex.wd3.myworkdayjobs.com/murex/MurexCareerPage1}
+  # Talentsoft: GET https://<slug>/handlers/offerRss.ashx?LCID=1036, the 20 newest offers,
+  # descriptions included; slug = the career site's host.
+  - {company: Air France,   ats: talentsoft, slug: recrutement.airfrance.com}
