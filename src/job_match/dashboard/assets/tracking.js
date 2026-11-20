@@ -318,6 +318,45 @@
     return n;
   }
 
+  /* Two more filters under the segments (#candidatures?co=…&d=…): one company, and when the
+     application dates from. Its day is the day it was sent, else the day I kept the offer
+     (or reactivated it), else the day of its last change. */
+  var APPS_PERIODS = ["7", "30", "old"];
+  var APPS_PERIOD_TEXT = { "7": "7 derniers jours", "30": "30 derniers jours", old: "Plus de 30 jours" };
+  function appsPeriodOf(value) {
+    return APPS_PERIODS.indexOf(value) >= 0 ? value : "";
+  }
+  function appDay(app, decision) {
+    return dayOf(app && app.applied_at) || keptDay(app, decision) || dayOf(app && app.updated_at);
+  }
+  function inPeriod(day, period, today) {
+    if (!period) return true;
+    if (!day) return false;  /* no date at all: only « Toutes les dates » shows it */
+    var age = daysBetween(day, today);
+    if (period === "old") return age > 30;
+    return age >= 0 && age < Number(period);
+  }
+  /* The companies of the applications on screen, sorted, each once; an offer with no
+     employer name (or no longer in the list) has none. */
+  function appsCompanies(keys, postings) {
+    var seen = {};
+    (keys || []).forEach(function (k) {
+      var name = postings && postings[k] && postings[k].company;
+      if (name) seen[name] = true;
+    });
+    return Object.keys(seen).sort(function (a, b) { return a.localeCompare(b, "fr", { sensitivity: "base" }); });
+  }
+  /* `keys` narrowed to one company and one period; "" for either means no filter. */
+  function appsNarrow(apps, keys, opts, postings, decisions, today) {
+    var company = (opts && opts.company) || "";
+    var period = appsPeriodOf(opts && opts.period);
+    if (!company && !period) return (keys || []).slice();
+    return (keys || []).filter(function (k) {
+      if (company && !(postings && postings[k] && postings[k].company === company)) return false;
+      return inPeriod(appDay(apps[k], decisions && decisions[k]), period, today);
+    });
+  }
+
   /* « gardée il y a 17 jours » / « publiée il y a 23 jours » / « offre expirée ». */
   function archiveReason(state) {
     if (!state) return "";
@@ -494,6 +533,12 @@
     appsFilterOf: appsFilterOf,
     appsFilterKeys: appsFilterKeys,
     appsFilterCounts: appsFilterCounts,
+    APPS_PERIODS: APPS_PERIODS,
+    APPS_PERIOD_TEXT: APPS_PERIOD_TEXT,
+    appsPeriodOf: appsPeriodOf,
+    appDay: appDay,
+    appsCompanies: appsCompanies,
+    appsNarrow: appsNarrow,
     canPrefill: canPrefill,
     applyList: applyList,
     APPLY_FORMS: APPLY_FORMS,

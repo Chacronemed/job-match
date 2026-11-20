@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from job_match.adapters.jobs.workday import BLOCKED, CAPPED, OK, SKIPPED, STATUS_TEXT
 from job_match.domain.models import RunRecord, RunSummary
 from job_match.pipelines.outage import SourceOutage, banner, outages_of
 
@@ -56,6 +57,7 @@ def jobs_markdown(summary: RunSummary, elapsed_s: float) -> str:
         lines.append("")
         for o in summary.outages:
             lines.append(f"⚠️ **{banner(SourceOutage.from_dict(o))}**")
+    lines += workday_markdown(summary.workday_boards)
     lines += [
         "",
         "| Gate | Rejected |",
@@ -80,6 +82,51 @@ def jobs_markdown(summary: RunSummary, elapsed_s: float) -> str:
             f"{'s' if summary.archived != 1 else ''} au total (ADR 0028)"
         )
     return "\n".join(lines)
+
+
+def workday_counts(boards: list[dict]) -> str:
+    """« 2 OK · 9 sautés par fréquence · 0 bloqué anti-robot », plus the errors if any."""
+    n = {status: sum(1 for b in boards if b.get("status") == status) for status in STATUS_TEXT}
+    parts = [
+        f"{n[OK] + n[CAPPED]} OK",
+        f"{n[SKIPPED]} sauté{'s' if n[SKIPPED] > 1 else ''} par fréquence",
+        f"{n[BLOCKED]} bloqué{'s' if n[BLOCKED] > 1 else ''} anti-robot",
+    ]
+    if n["error"]:
+        parts.append(f"{n['error']} en erreur")
+    return " · ".join(parts)
+
+
+def workday_status_text(board: dict) -> str:
+    """One board's status as the summaries show it; a skipped board says when it is next."""
+    status = str(board.get("status") or "")
+    text = STATUS_TEXT.get(status, status or "?")
+    due_in = int(board.get("due_in") or 0)
+    if status == SKIPPED and due_in:
+        text += f" (prochaine lecture dans {due_in} j)"
+    return text
+
+
+def workday_markdown(boards: list[dict]) -> list[str]:
+    """The Workday boards of the run, one line each; nothing when no Workday board ran."""
+    if not boards:
+        return []
+    calls = sum(int(b.get("calls") or 0) for b in boards)
+    lines = [
+        "",
+        f"**Workday : {workday_counts(boards)}** · {calls} appel{'s' if calls != 1 else ''}",
+        "",
+        "| Board Workday | Statut | Appels | Listées | Lues |",
+        "|---|---|---:|---:|---:|",
+    ]
+    for b in boards:
+        flag = "⚠️ " if b.get("status") in (BLOCKED, "error") else ""
+        lines.append(
+            f"| {b.get('company', '?')} | {flag}{workday_status_text(b)} | "
+            f"{int(b.get('calls') or 0)} | {int(b.get('listed') or 0)} | "
+            f"{int(b.get('fetched') or 0)} |"
+        )
+    return lines
 
 
 def funding_markdown(summary: RunSummary, elapsed_s: float) -> str:

@@ -66,17 +66,27 @@ the other boards still run, and a run with every board down yields nothing inste
 failing. A posting whose detail call fails is skipped. The gates, dedup and scoring
 downstream are the same as for any other source.
 
-Workday is paced apart (`sources.ats.workday` in settings.yaml, `WorkdayConfig`): every
-tenant sits behind the same edge, so all of them share one queue, read one tenant after the
-other, with `request_delay_seconds` between two calls whatever the tenant. A 429 or a 5xx
-is retried here, not in `HttpClient`: the wait is the response's `Retry-After` when there
-is one, else a backoff that doubles from `backoff_seconds`. After
-`max_consecutive_failures` failed calls in a row, or a `Retry-After` beyond
-`retry_after_max_seconds`, the tenant is left alone until the next run (one warning, no
-further call, its closure checks answer UNKNOWN) and the other boards go on. Since
-2026-11-16 Workday's edge answers some clients 429 with an HTML "Security Check" page and
-no `Retry-After` (docs/diagnostics/2026-11-20-coverage.md): it is retried like any 429,
-named as such in the log, and given up quickly. Nothing here tries to get around it.
+Workday is paced apart and called sparingly (`sources.ats.workday` in settings.yaml,
+`WorkdayConfig`, workday.py): every tenant sits behind the same edge, so all of them share
+one queue, read one tenant after the other, with `request_delay_seconds` between two calls
+whatever the tenant. Since 2026-11-16 that edge answers the project's client with an HTML
+« Security Check » page (HTTP 429, no `Retry-After`): an anti-robot protection, never
+worked around. The source only makes fewer calls (amendment 2026-11-20, part 2):
+
+- with `sources.ats.search_keywords`, a board is searched, not listed: Workday one
+  `searchText` call per keyword with the France facet (one page of 20), SmartRecruiters one
+  `q` with every keyword and `country=fr`;
+- a detail call only for a posting worth one: its title passes the title filter and, on
+  Workday, it is not stored yet (`set_known_ids`), the freshest first;
+- `max_calls_per_run` requests per Workday tenant and run at most, retries and closure
+  probes included; a tenant read every `frequency_days` days, spread over the days;
+- a security check stops the tenant at once for the run, without a retry; a plain 429, a
+  5xx or a timeout is still retried here, not in `HttpClient` (`Retry-After` when there is
+  one, else a backoff doubling from `backoff_seconds`).
+
+`board_statuses` says what happened to each Workday board (ok / capped / skipped / blocked /
+error) for the run summary; a board that was skipped or blocked answers NOT_ASKED to the
+closure check: nothing is closed, and it is not an error.
 
 `source_job_id` is `<ats>:<board id>:<id>` so `check_offer` can find the board again: an
 id missing from a complete listing that answered 200 is CLOSED, a board that could not be
@@ -88,8 +98,9 @@ The board id is the slug, except Workday's `<host>/<tenant>/<site>`, which becom
 """
 import logging
 import time
-from collections.abc import Callable, Iterator
-from datetime import UTC, datetime
+from collections.abc import Callable, Iterable, Iterator, Sequence
+from dataclasses import dataclass
+from datetime import UTC, date, datetime
 from typing import Any, NamedTuple
 from urllib.parse import urlsplit
 
@@ -97,11 +108,11 @@ import httpx
 
 from job_match.adapters.http import HttpClient, retry_after_seconds
 from job_match.adapters.jobs import talentsoft
+from job_match.adapters.jobs import workday as wd
 from job_match.adapters.jobs.base import OfferStatus, QueryStat, RawItem, RequestStats
 from job_match.config.schema import AtsBoard, WorkdayConfig
 from job_match.domain.models import Job, WorkplaceType
 from job_match.normalization.contract import parse_contract_type
-from job_match.normalization.location import french_location
 from job_match.normalization.text import html_to_text
 
 logger = logging.getLogger(__name__)
@@ -121,11 +132,10 @@ ENDPOINTS: dict[str, str] = {
 }
 PAGED_ATS = ("workday", "smartrecruiters")
 DEFAULT_MAX_POSTINGS = 100  # per paged board and run: the newest French postings
-WORKDAY_PAGE = 20  # Workday refuses a larger `limit`
+WORKDAY_PAGE = wd.PAGE
 SMARTRECRUITERS_PAGE = 100
 SMARTRECRUITERS_COUNTRY = "fr"
-WORKDAY_COUNTRY = "france"  # the facet value's descriptor, case-insensitive
-WORKDAY_DOMAIN = ".myworkdayjobs.com"  # every tenant's host: one shared queue
+WORKDAY_DOMAIN = wd.DOMAIN
 
 _WORKPLACE: dict[str, WorkplaceType] = {
     "remote": WorkplaceType.REMOTE,
@@ -164,6 +174,24 @@ class _Listing(NamedTuple):
     complete: bool         # every posting listed: a missing id means closed
 
 
+@dataclass
+class _Tenant:
+    """One Workday board this run: what the run summary says of it."""
+
+    company: str
+    board: str             # "<tenant>.<site>"
+    due_in: int = 0        # days until its next read; 0 = today
+    status: str = wd.OK
+    calls: int = 0         # requests sent to the tenant, retries and closure probes included
+    listed: int = 0        # postings its searches returned
+    fetched: int = 0       # postings read in full (one detail call each)
+
+    def as_dict(self) -> dict:
+        return {"board": f"workday:{self.board}", "company": self.company,
+                "status": self.status, "calls": self.calls, "listed": self.listed,
+                "fetched": self.fetched, "due_in": self.due_in}
+
+
 class AtsBoardSource:
     name = SOURCE_NAME
     reports_by_company = True  # the run summary counts fetched / eligible per board company
@@ -177,7 +205,16 @@ class AtsBoardSource:
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
         workday: WorkdayConfig | None = None,
+        keywords: Sequence[str] = (),
+        title_filter: Callable[[str], bool] | None = None,
+        title_filter_ats: Sequence[str] = PAGED_ATS,
+        today: date | None = None,
     ) -> None:
+        """`keywords`: what the paged ATS are searched for instead of listing everything
+        (Workday one call per keyword, SmartRecruiters one `q`); empty lists the whole
+        French board. `title_filter`: on the ATS of `title_filter_ats`, a posting whose
+        title it refuses gets no detail call. `today` places each Workday tenant in its
+        frequency (UTC date by default)."""
         self._boards = list(boards)
         self._http = http or HttpClient()
         # Workday retries are decided here (Retry-After, longer backoff, per-tenant
@@ -185,7 +222,18 @@ class AtsBoardSource:
         self._workday = workday or WorkdayConfig()
         self._workday_http = HttpClient(max_retries=0)
         self._workday_failures: dict[str, int] = {}  # host → failed calls in a row
-        self._workday_skipped: dict[str, str] = {}   # host → why it is left alone this run
+        self._workday_stopped: dict[str, str] = {}   # host → why it is left alone this run
+        self._keywords = tuple(k.strip() for k in keywords if k and k.strip())
+        self._title_filter = title_filter
+        self._title_filter_ats = frozenset(title_filter_ats)
+        self._known: frozenset[str] = frozenset()  # source_job_ids already stored
+        self._listed: dict[str, int] = {}  # "<ats>:<board id>" → postings listed this run
+        day = today or datetime.now(UTC).date()
+        self._tenants: dict[str, _Tenant] = {}  # Workday host → its state this run
+        for index, board in enumerate(b for b in self._boards if b.ats == "workday"):
+            every = board.frequency_days or self._workday.frequency_days
+            self._tenants.setdefault(board.slug.split("/", 1)[0], _Tenant(
+                board.company, board_id(board), wd.due_in_days(index, every, day)))
         self._max_results = max_results
         self._min_interval = 1.0 / requests_per_second if requests_per_second > 0 else 0.0
         self._sleep = sleep
@@ -212,6 +260,24 @@ class AtsBoardSource:
         """Requests made and failed this run, every board and detail call included (ADR
         0026). A 404 is an answer (the board or the posting is gone), not a failure."""
         return RequestStats(self._attempted, self._failed)
+
+    @property
+    def listed_by_board(self) -> dict[str, int]:
+        """"<ats>:<board id>" → postings the board listed this run, before any filter: what
+        the outage guard compares from one run to the next. A board that was not read
+        (unreachable, not its day, blocked) is absent, not 0."""
+        return dict(self._listed)
+
+    @property
+    def board_statuses(self) -> list[dict]:
+        """One entry per Workday board, in config order: `{board, company, status, calls,
+        listed, fetched, due_in}`, status one of ok / capped / skipped / blocked / error."""
+        return [tenant.as_dict() for tenant in self._tenants.values()]
+
+    def set_known_ids(self, source_job_ids: Iterable[str]) -> None:
+        """The `source_job_id`s already stored: a Workday posting among them gets no detail
+        call (its listing still says it is open). Called by the pipeline before `fetch`."""
+        self._known = frozenset(source_job_ids)
 
     # ------------------------------------------------------------------ HTTP
 
@@ -258,12 +324,16 @@ class AtsBoardSource:
 
     def _call_workday(self, method: str, url: str, label: str,
                       **kwargs: Any) -> tuple[int | None, Any]:
-        """`_call` for a Workday tenant: paced on the shared queue, 429 / 5xx / timeouts
-        retried with `Retry-After` or the configured backoff, and a tenant that keeps
-        failing left alone for the rest of the run ((None, None), no request made)."""
+        """`_call` for a Workday tenant: paced on the shared queue, every request counted
+        against the tenant's cap, a security check stopping it at once (no retry), a plain
+        429 / 5xx / timeout retried with `Retry-After` or the configured backoff. A stopped
+        tenant answers (None, None) without a request."""
         cfg = self._workday
         host = urlsplit(url).hostname or ""
-        if host in self._workday_skipped:
+        tenant = self._tenants.setdefault(host, _Tenant(host, host))
+        if host in self._workday_stopped:
+            return None, None
+        if self._workday_capped(host, tenant):
             return None, None
         self._attempted += 1
         headers = {"Accept": "application/json"}
@@ -271,7 +341,10 @@ class AtsBoardSource:
         reason = "no answer"
         give_up: str | None = None
         for attempt in range(cfg.max_retries + 1):
+            if attempt and self._workday_capped(host, tenant):
+                break
             self._throttle(url)
+            tenant.calls += 1
             asked: float | None = None
             try:
                 if method == "POST":
@@ -280,12 +353,17 @@ class AtsBoardSource:
                     resp = self._workday_http.get(url, headers=headers, **kwargs)
             except httpx.HTTPStatusError as exc:  # 429 / 5xx: HttpClient(max_retries=0) raises
                 status = exc.response.status_code
+                reason = wd.failure_reason(exc.response)
+                if wd.is_security_check(exc.response):
+                    return self._workday_blocked(host, tenant, label, status, reason)
                 asked = retry_after_seconds(exc.response)
-                reason = _workday_failure(exc.response)
             except Exception as exc:  # timeout, connection reset, DNS
                 status, reason = None, type(exc).__name__
             else:
                 self._api_calls += 1
+                if wd.is_security_check(resp):  # the same page served with a 403
+                    return self._workday_blocked(host, tenant, label, resp.status_code,
+                                                 wd.failure_reason(resp))
                 self._workday_failures[host] = 0
                 if resp.status_code == 404:
                     logger.warning("%s: %s answers 404 (gone?)", self.name, label)
@@ -316,13 +394,44 @@ class AtsBoardSource:
         if give_up is None and failures >= cfg.max_consecutive_failures:
             give_up = f"{failures} calls failed in a row (last: {reason})"
         if give_up is not None:
-            self._workday_skipped[host] = give_up
-            logger.warning("%s: workday tenant %s left alone for the rest of this run: %s",
-                           self.name, host, give_up)
+            self._workday_stop(host, tenant, wd.ERROR, give_up)
         return status, None
 
-    def _workday_is_skipped(self, board: AtsBoard) -> bool:
-        return board.ats == "workday" and board.slug.split("/", 1)[0] in self._workday_skipped
+    def _workday_stop(self, host: str, tenant: _Tenant, status: str, why: str) -> None:
+        """No further call to this tenant this run. A blocked tenant stays blocked."""
+        if host in self._workday_stopped:
+            return
+        self._workday_stopped[host] = why
+        if tenant.status != wd.BLOCKED:
+            tenant.status = status
+        logger.warning("%s: workday tenant %s left alone for the rest of this run: %s",
+                       self.name, host, why)
+
+    def _workday_capped(self, host: str, tenant: _Tenant) -> bool:
+        """True (and the tenant stopped) once its calls reach the cap; 0 = no cap."""
+        cap = self._workday.max_calls_per_run
+        if not cap or tenant.calls < cap:
+            return False
+        self._workday_stop(host, tenant, wd.CAPPED, f"call cap reached ({cap} calls)")
+        return True
+
+    def _workday_blocked(self, host: str, tenant: _Tenant, label: str, status: int,
+                         reason: str) -> tuple[int | None, Any]:
+        """The edge served its security check: an anti-robot answer. One warning, the
+        tenant stopped at once, no retry (insisting is what the protection is against)."""
+        self._failed += 1
+        logger.warning("%s: %s refused: %s", self.name, label, reason)
+        self._workday_stop(host, tenant, wd.BLOCKED,
+                           f"{reason}: anti-robot protection, not retried")
+        return status, None
+
+    def _workday_is_stopped(self, board: AtsBoard) -> bool:
+        return board.ats == "workday" and board.slug.split("/", 1)[0] in self._workday_stopped
+
+    def _tenant(self, board: AtsBoard) -> _Tenant | None:
+        if board.ats != "workday":
+            return None
+        return self._tenants.get(board.slug.split("/", 1)[0])
 
     def _json(self, method: str, url: str, label: str, **kwargs: Any) -> Any:
         """The decoded body, or None when the call failed (logged, never raised)."""
@@ -359,7 +468,7 @@ class AtsBoardSource:
         first = self._json("POST", url, label, json=query)
         if not isinstance(first, dict):
             return None
-        facet = _workday_france_facet(first.get("facets"))
+        facet = wd.france_facet(first.get("facets"))
         if facet is None:
             logger.warning("%s: %s has no country facet, skipped (cannot keep France only)",
                            self.name, label)
@@ -367,6 +476,8 @@ class AtsBoardSource:
         param, values = facet
         if not values:
             return _Listing([], 0, True)  # a facet without a French value: no French posting
+        if self._keywords:
+            return self._search_workday(board, {param: values})
         cap = self._cap(board)
         jobs: list[dict] = []
         total: int | None = None
@@ -385,7 +496,7 @@ class AtsBoardSource:
             page = [p for p in body.get("jobPostings") or []
                     if isinstance(p, dict) and p.get("externalPath")]
             for posting in page:
-                posting["id"] = _workday_id(str(posting["externalPath"]))
+                posting["id"] = wd.posting_id(str(posting["externalPath"]))
             jobs.extend(page)
             offset += WORKDAY_PAGE
             if not page or (total is not None and offset >= total):
@@ -393,6 +504,33 @@ class AtsBoardSource:
         jobs = jobs[:cap]
         complete = total is not None and len(jobs) >= total
         return _Listing(jobs, total, complete)
+
+    def _search_workday(self, board: AtsBoard, france: dict[str, list[str]]) -> _Listing | None:
+        """One search per keyword, France only, one page each: Workday reads several words
+        as AND, so the keywords cannot share a call. The postings come back by relevance;
+        they are handed over the freshest first, since the detail calls are counted."""
+        label = f"workday/{board_id(board)} search"
+        url = board_url(board)
+        found: dict[str, dict] = {}
+        answered = False
+        for keyword in self._keywords:
+            body = self._json("POST", url, label, json={
+                "appliedFacets": france, "limit": WORKDAY_PAGE, "offset": 0,
+                "searchText": keyword,
+            })
+            if not isinstance(body, dict):
+                if self._workday_is_stopped(board):
+                    break
+                continue
+            answered = True
+            for posting in body.get("jobPostings") or []:
+                if isinstance(posting, dict) and posting.get("externalPath"):
+                    posting["id"] = wd.posting_id(str(posting["externalPath"]))
+                    found.setdefault(posting["id"], posting)
+        if not answered:
+            return None
+        jobs = sorted(found.values(), key=lambda p: wd.posted_days(p.get("postedOn")))
+        return _Listing(jobs[:self._cap(board)], len(jobs), False)
 
     def _list_smartrecruiters(self, board: AtsBoard) -> _Listing | None:
         label = f"smartrecruiters/{board.slug}"
@@ -402,10 +540,13 @@ class AtsBoardSource:
         total: int | None = None
         offset = 0
         while len(jobs) < cap:
-            body = self._json("GET", url, label, params={
+            params: dict[str, Any] = {
                 "country": SMARTRECRUITERS_COUNTRY, "limit": SMARTRECRUITERS_PAGE,
                 "offset": offset,
-            })
+            }
+            if self._keywords:  # full text, several words read as OR (measured 2026-11-20)
+                params["q"] = " ".join(self._keywords)
+            body = self._json("GET", url, label, params=params)
             if not isinstance(body, dict) or not isinstance(body.get("content"), list):
                 if not jobs:
                     if body is not None:
@@ -454,15 +595,26 @@ class AtsBoardSource:
         unreachable = 0
         for board in self._boards:
             key = f"{board.ats}:{board_id(board)}"
+            tenant = self._tenant(board)
+            if tenant is not None and tenant.due_in > 0:
+                tenant.status = wd.SKIPPED  # not its day: no call, no stat, no error
+                logger.info("%s: workday/%s not read today (next read in %d day(s))",
+                            self.name, board_id(board), tenant.due_in)
+                continue
             listing = self._list_board(board)
             if listing is None:
                 unreachable += 1
                 self._board_ids[key] = None
-                self._query_stats.append(
-                    QueryStat(board_id(board), board.ats, 0, None, self.name))
+                if tenant is not None and tenant.status == wd.OK:
+                    tenant.status = wd.ERROR
+                if tenant is None or tenant.status != wd.BLOCKED:
+                    # A refused tenant is reported by its status, not as a board at 0.
+                    self._query_stats.append(
+                        QueryStat(board_id(board), board.ats, 0, None, self.name))
                 continue
             self._board_ids[key] = ({str(j["id"]) for j in listing.jobs}, listing.complete)
-            fetched = skipped = 0
+            self._listed[key] = len(listing.jobs)
+            fetched = skipped = filtered = known = 0
             for item in listing.jobs:
                 if board.ats == "ashby" and item.get("isListed") is False:
                     continue
@@ -470,10 +622,21 @@ class AtsBoardSource:
                     published = _published_at(board.ats, item)
                     if published is not None and published < since:
                         continue
-                if self._workday_is_skipped(board):
-                    skipped += 1  # left alone for this run: no further call
-                    continue
                 if board.ats in PAGED_ATS:
+                    # A detail call only for a posting worth one: its title first, then
+                    # (Workday, whose calls are counted) whether it is stored already.
+                    title = str(item.get("title") or item.get("name") or "")
+                    if (self._title_filter is not None and board.ats in self._title_filter_ats
+                            and not self._title_filter(title)):
+                        filtered += 1
+                        continue
+                    if (board.ats == "workday" and self._workday.skip_known
+                            and f"{key}:{item['id']}" in self._known):
+                        known += 1
+                        continue
+                    if self._workday_is_stopped(board):
+                        skipped += 1  # left alone for this run: no further call
+                        continue
                     detail = self._detail(board, item)
                     if detail is None:
                         skipped += 1
@@ -485,11 +648,15 @@ class AtsBoardSource:
                 fetched += 1
                 if self._max_results is not None and fetched >= self._max_results:
                     break
+            if tenant is not None:
+                tenant.listed, tenant.fetched = len(listing.jobs), fetched
             self._query_stats.append(
                 QueryStat(board_id(board), board.ats, fetched, listing.available, self.name)
             )
-            logger.info("%s: %s/%s fetched=%d available=%s%s",
+            logger.info("%s: %s/%s fetched=%d available=%s%s%s%s",
                         self.name, board.ats, board_id(board), fetched, listing.available,
+                        f" title_filtered={filtered}" if filtered else "",
+                        f" already_stored={known}" if known else "",
                         f" detail_failed={skipped}" if skipped else "")
         if unreachable:
             logger.warning("%s: %d/%d boards skipped as unreachable",
@@ -528,9 +695,12 @@ class AtsBoardSource:
         except ValueError:
             return OfferStatus.UNKNOWN
         key = f"{ats}:{bid}"
+        board = next((b for b in self._boards if f"{b.ats}:{board_id(b)}" == key), None)
+        tenant = self._tenant(board) if board is not None else None
+        if tenant is not None and (
+                tenant.due_in > 0 or tenant.status in (wd.SKIPPED, wd.BLOCKED)):
+            return OfferStatus.NOT_ASKED  # not its day, or refused today: nothing to learn
         if key not in self._board_ids:
-            board = next((b for b in self._boards
-                          if f"{b.ats}:{board_id(b)}" == key), None)
             if board is None:
                 return OfferStatus.UNKNOWN  # no longer configured: nothing to ask
             listing = self._list_board(board)
@@ -546,8 +716,11 @@ class AtsBoardSource:
             return OfferStatus.OPEN
         if complete:
             return OfferStatus.CLOSED
-        board = next(b for b in self._boards if f"{b.ats}:{board_id(b)}" == key)
-        return self._probe(board, job_id)
+        status = self._probe(board, job_id)
+        if (status is OfferStatus.UNKNOWN and tenant is not None
+                and tenant.status in (wd.CAPPED, wd.BLOCKED)):
+            return OfferStatus.NOT_ASKED  # the cap or the security check, not an error
+        return status
 
     def _probe(self, board: AtsBoard, job_id: str) -> OfferStatus:
         """A capped listing did not list the id: ask the board about that one posting.
@@ -570,84 +743,10 @@ class AtsBoardSource:
             if not isinstance(body, dict) or not isinstance(body.get("jobPostings"), list):
                 return OfferStatus.UNKNOWN
             found = any(isinstance(p, dict) and p.get("externalPath")
-                        and _workday_id(str(p["externalPath"])) == job_id
+                        and wd.posting_id(str(p["externalPath"])) == job_id
                         for p in body["jobPostings"])
             return OfferStatus.OPEN if found else OfferStatus.CLOSED
         return OfferStatus.UNKNOWN
-
-
-# ---------------------------------------------------------------------- Workday helpers
-
-def _workday_country_facet(facets: Any) -> tuple[str, str | None] | None:
-    """(facet parameter, France value id or None) of the first country facet, nested
-    groups included (`locationMainGroup` → `locationCountry`); None without one."""
-    for facet in facets or []:
-        if not isinstance(facet, dict):
-            continue
-        values = facet.get("values") or []
-        if values and isinstance(values[0], dict) and "facetParameter" in values[0]:
-            found = _workday_country_facet(values)
-            if found is not None:
-                return found
-            continue
-        param = str(facet.get("facetParameter") or "")
-        if "country" not in param.lower():
-            continue
-        france = next((v.get("id") for v in values if isinstance(v, dict)
-                       and str(v.get("descriptor") or "").strip().lower() == WORKDAY_COUNTRY
-                       and v.get("id")), None)
-        return param, (str(france) if france else None)
-    return None
-
-
-def _workday_france_facet(facets: Any) -> tuple[str, list[str]] | None:
-    """(facet parameter, the value ids that mean France), or None when the board cannot
-    be filtered. The country facet when there is one; else the `locations` facet, keeping
-    the places `french_location` reads as French (Euronext lists cities only: "Paris").
-    An empty list is a facet without any French value: no French posting."""
-    country = _workday_country_facet(facets)
-    if country is not None:
-        param, value = country
-        return param, ([value] if value else [])
-    places = _workday_facet(facets, "locations")
-    if places is None:
-        return None
-    return "locations", [
-        str(v["id"]) for v in places if isinstance(v, dict) and v.get("id")
-        and french_location(str(v.get("descriptor") or "")) is True
-    ]
-
-
-def _workday_facet(facets: Any, parameter: str) -> list | None:
-    """The values of the facet named `parameter`, nested groups included; None without it."""
-    for facet in facets or []:
-        if not isinstance(facet, dict):
-            continue
-        values = facet.get("values") or []
-        if facet.get("facetParameter") == parameter:
-            return values
-        if values and isinstance(values[0], dict) and "facetParameter" in values[0]:
-            found = _workday_facet(values, parameter)
-            if found is not None:
-                return found
-    return None
-
-
-def _workday_failure(resp: httpx.Response) -> str:
-    """What a failed Workday answer was, for the log: its status, and whether a 429 is the
-    edge's HTML "Security Check" page rather than a quota answer."""
-    if resp.status_code == 429 and "html" in resp.headers.get("Content-Type", "").lower():
-        return "HTTP 429 (security check page)"
-    return f"HTTP {resp.status_code}"
-
-
-def _workday_id(external_path: str) -> str:
-    """`/job/Brest/Ingenieur-CFD_R0347114-1` → `R0347114-1`: the requisition id Workday
-    ends every posting path with. A path without one keeps its last segment."""
-    tail = external_path.rstrip("/").rsplit("/", 1)[-1]
-    ident = tail.rsplit("_", 1)[-1] if "_" in tail else tail
-    cleaned = "".join(ch for ch in ident if ch.isalnum() or ch in "-.")
-    return cleaned[:100] or "unknown"
 
 
 # ---------------------------------------------------------------------- per-ATS mapping

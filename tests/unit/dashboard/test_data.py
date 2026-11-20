@@ -27,6 +27,7 @@ RUN_KEYS = {
     "eligible", "strong", "stretch", "errors", "api_calls", "checked", "closed",
     "suspended", "outages", "by_source", "by_company", "rejected",
     "archived", "archived_today", "by_source", "by_company", "rejected",
+    "workday_boards", "workday_blocked",
 }
 
 

@@ -513,6 +513,14 @@ class JobRepository:
 
     # -- closure check (M20) ------------------------------------------------
 
+    def list_source_job_ids(self, source: str) -> set[str]:
+        """Every `source_job_id` stored for `source`, whatever became of the job: what a
+        source that pays per detail call does not need to read again."""
+        rows = self._conn.execute(
+            "SELECT source_job_id FROM jobs WHERE source_id = ?", (source,)
+        ).fetchall()
+        return {str(row[0]) for row in rows}
+
     def list_to_check(
         self, now: datetime, max_age_days: int, *, recheck_after: timedelta
     ) -> list[tuple[int, str, str]]:
@@ -893,6 +901,8 @@ class RunRepository:
                         "by_source": summary.by_source,
                         "by_board": summary.by_board,
                         "by_company": summary.by_company,
+                        "workday_boards": summary.workday_boards,
+                        "workday_blocked": summary.workday_blocked,
                         "queries": summary.queries,
                         "by_area": summary.by_area,
                         "by_department": summary.by_department,

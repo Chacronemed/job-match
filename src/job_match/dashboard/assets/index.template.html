@@ -108,6 +108,17 @@ __CSS__
     </div>
   </header>
   <div class="seg apps-filter" id="apps-filter" role="group" aria-label="Filtrer les candidatures" hidden></div>
+  <div class="apps-narrow" id="apps-narrow" hidden>
+    <label class="field">
+      <span class="field-label">Entreprise</span>
+      <select id="apps-company" name="apps-company"><option value="">Toutes</option></select>
+    </label>
+    <label class="field">
+      <span class="field-label">Date <span class="field-hint">(envoi, sinon jour où je l’ai gardée)</span></span>
+      <select id="apps-period" name="apps-period"><option value="">Toutes</option></select>
+    </label>
+    <button type="button" class="btn btn-small" id="apps-narrow-reset" hidden>Effacer</button>
+  </div>
   <p class="tri-note" id="kb-off" hidden>Les candidatures viennent du suivi : il demande le tableau de bord hébergé.</p>
   <div class="kb-inbox" id="kb-inbox" hidden></div>
   <div class="kb-due" id="kb-due" hidden></div>

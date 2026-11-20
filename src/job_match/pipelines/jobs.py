@@ -97,6 +97,10 @@ def run_jobs(
         counts = by_source.setdefault(
             source.name, {"fetched": 0, "eligible": 0, "duplicates": 0, "calls": 0}
         )
+        # A source that pays for each detail call (ats: Workday) is told what is stored
+        # already, so it only reads the postings it has never seen.
+        if (set_known := getattr(source, "set_known_ids", None)) is not None:
+            set_known(job_repo.list_source_job_ids(source.name))
         try:
             items = list(source.fetch(since=None))
         except Exception as exc:
@@ -272,6 +276,12 @@ def run_jobs(
         by_area[stat.area] = by_area.get(stat.area, 0) + stat.fetched
         by_keyword[stat.query] = by_keyword.get(stat.query, 0) + stat.fetched
 
+    # Read after the closure check: its probes count in each board's calls.
+    workday_boards = [
+        dict(entry) for source in source_list
+        for entry in getattr(source, "board_statuses", ())
+    ]
+
     summary = RunSummary(
         pipeline="jobs",
         fetched=fetched,
@@ -300,6 +310,8 @@ def run_jobs(
         by_source=by_source,
         by_board=by_board,
         by_company=by_company,
+        workday_boards=workday_boards,
+        workday_blocked=sum(1 for b in workday_boards if b.get("status") == "blocked"),
         queries=len(stats),
     )
 
@@ -317,6 +329,15 @@ def _by_board(sources: list) -> dict[str, dict[str, int]]:
         if not getattr(source, "reports_by_company", False):
             continue
         boards = out.setdefault(source.name, {})
+        listed = getattr(source, "listed_by_board", None)
+        if listed is not None:
+            # What each board listed, not what was read in full: a board whose postings
+            # were all filtered out or stored already is not an empty board, and a board
+            # that was not read today (not its day, refused) is absent, not at 0.
+            boards.update(listed)
+            for stat in getattr(source, "query_stats", ()):
+                boards.setdefault(f"{stat.area}:{stat.query}", 0)  # unreachable: 0
+            continue
         for stat in getattr(source, "query_stats", ()):
             key = f"{stat.area}:{stat.query}"
             boards[key] = boards.get(key, 0) + stat.fetched

@@ -151,3 +151,100 @@ def test_badge_reason_and_menu_never_overlap_in_both_themes_and_at_390(open_dash
             page.locator("#theme-toggle").click()
             page.wait_for_timeout(50)
         assert errors == []
+
+
+# ---------------------------------------------------------------- company and date
+
+def _dated_api(keys):
+    """Three applications on listed offers, dated from today: sent 2 days ago, sent 20 days
+    ago, sent 45 days ago."""
+    from datetime import date, timedelta
+
+    def ago(n):
+        return (date.today() - timedelta(days=n)).isoformat()
+
+    apps = [_app(keys[0], "applied", applied_at=ago(2)),
+            _app(keys[1], "applied", applied_at=ago(20)),
+            _app(keys[2], "applied", applied_at=ago(45))]
+    return {"applications": apps, "decisions": [], "skill_overrides": [], "ai_verdicts": [],
+            "ai_runs": [], "documents": [], "documents_budget": None}
+
+
+def _rows(page):
+    return page.locator("#kb-table tbody tr")
+
+
+def _open_dated(open_dashboard, keys, hash_="#candidatures?f=tout&view=table", **kw):
+    page, errors = open_dashboard(_dated_api(keys), hash_=hash_, **kw)
+    page.wait_for_selector("#apps-narrow:not([hidden]) #apps-company")
+    page.wait_for_function(HAS_TABLE)
+    return page, errors
+
+
+def test_the_company_filter_lists_the_companies_on_screen_and_narrows_both_views(
+        open_dashboard, job_keys):
+    page, errors = _open_dated(open_dashboard, job_keys)
+    companies = _rows(page).locator("td.apps-company").all_inner_texts()
+    assert len(companies) == 3
+    options = page.locator("#apps-company option").all_inner_texts()
+    assert options == [f"Toutes ({len(set(companies))})", *sorted(set(companies), key=str.lower)]
+    assert page.locator("#apps-narrow-reset").is_hidden()
+
+    pick = companies[0]
+    expected = companies.count(pick)
+    page.select_option("#apps-company", pick)
+    page.wait_for_function(
+        f"() => document.querySelectorAll('#kb-table tbody tr').length === {expected}")
+    assert set(_rows(page).locator("td.apps-company").all_inner_texts()) == {pick}
+    # the segments count what is left: counts = rows
+    assert int(_segment(page, "tout").locator(".tab-count").inner_text()) == expected
+    assert "co=" in page.evaluate("location.hash")
+    page.click("#apps-view-kanban")
+    assert page.locator("#kb-board .kb-card").count() == expected
+
+    # kept across a reload, then cleared
+    page.reload()
+    page.wait_for_selector("#apps-narrow:not([hidden]) #apps-company")
+    assert page.locator("#apps-company").input_value() == pick
+    page.click("#apps-view-table")
+    assert _rows(page).count() == expected
+    page.click("#apps-narrow-reset")
+    assert _rows(page).count() == 3 and "co=" not in page.evaluate("location.hash")
+    assert page.locator("#apps-company").input_value() == ""
+    assert errors == []
+
+
+def test_the_date_filter_keeps_the_applications_of_the_period(open_dashboard, job_keys):
+    page, errors = _open_dated(open_dashboard, job_keys)
+    assert page.locator("#apps-period option").all_inner_texts() == [
+        "Toutes", "7 derniers jours", "30 derniers jours", "Plus de 30 jours"]
+    for value, expected in (("7", 1), ("30", 2), ("old", 1), ("", 3)):
+        page.select_option("#apps-period", value)
+        page.wait_for_function(
+            f"() => document.querySelectorAll('#kb-table tbody tr').length === {expected}")
+        assert int(_segment(page, "tout").locator(".tab-count").inner_text()) == expected
+        assert ("d=" + value in page.evaluate("location.hash")) == bool(value)
+    # a period with nothing in a segment says so instead of an empty table
+    page.select_option("#apps-period", "7")
+    _segment(page, "refus").click()
+    assert page.locator("#kb-table .kb-empty").inner_text() == "Aucune candidature dans ce filtre."
+    assert errors == []
+
+
+def test_a_link_with_a_period_and_an_unknown_company_opens_on_the_period_only(open_dashboard,
+                                                                              job_keys):
+    page, errors = _open_dated(open_dashboard, job_keys,
+                               hash_="#candidatures?f=tout&co=Nobody%20SA&d=30&view=table")
+    assert page.locator("#apps-period").input_value() == "30"
+    assert page.locator("#apps-company").input_value() == ""  # no application of that company
+    assert _rows(page).count() == 2
+    assert errors == []
+
+
+def test_the_two_filters_fit_a_phone(open_dashboard, job_keys):
+    page, errors = _open_dated(open_dashboard, job_keys, viewport=(390, 844))
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+    for sel in ("#apps-company", "#apps-period"):
+        box = page.locator(sel).bounding_box()
+        assert box["height"] >= 44 and box["x"] >= 0 and box["x"] + box["width"] <= 390
+    assert errors == []

@@ -446,3 +446,67 @@ def test_outage_windows_respects_since_and_the_per_source_counters():
     assert [w.run_id for w in windows] == [100]
     assert windows[0].reason == "6/12 offres vérifiées fermées (50 %)"
     assert outage_windows(runs, "france_travail", since, GUARD) == []
+
+
+# ---------------------------------------------------------------- Workday read sparingly
+
+class SparingSource(BoardSource):
+    """The `ats` source as the pipeline sees it since the Workday amendment (ADR 0020,
+    2026-11-20, part 2): what each board listed, the Workday boards' statuses, the known ids."""
+
+    def __init__(self, *args, listed=None, statuses=(), **kwargs):
+        super().__init__(*args, **kwargs)
+        self.listed_by_board = dict(listed or {})
+        self.board_statuses = list(statuses)
+        self.known: set[str] | None = None
+
+    def set_known_ids(self, ids):
+        self.known = set(ids)
+
+
+def test_workday_boards_skipped_or_blocked_are_statuses_not_errors_nor_outages(db):
+    """Thales is not read today (its day is Thursday), Airbus was refused by the anti-robot
+    page, Sanofi listed 5 postings that were all filtered out or stored already. Yesterday
+    each listed 12. None of that is an outage, and none of it is an error."""
+    repo = RunRepository(db.conn)
+    yesterday = NOW - timedelta(days=1)
+    repo.save(RunSummary(
+        pipeline="jobs", by_source={"ats": {"fetched": 36}},
+        by_board={"ats": {"workday:thales.Careers": 12, "workday:ag.Airbus": 12,
+                          "workday:sanofi.SanofiCareers": 12}},
+    ), yesterday, yesterday)
+    stored = _store(db, [_job("workday:thales.Careers:R1", source="ats"),
+                         _job("workday:ag.Airbus:R2", source="ats"),
+                         _job("workday:sanofi.SanofiCareers:R3", source="ats")])
+    statuses = [
+        {"board": "workday:ag.Airbus", "company": "Airbus", "status": "blocked", "calls": 1,
+         "listed": 0, "fetched": 0, "due_in": 0},
+        {"board": "workday:thales.Careers", "company": "Thales", "status": "skipped",
+         "calls": 0, "listed": 0, "fetched": 0, "due_in": 3},
+        {"board": "workday:sanofi.SanofiCareers", "company": "Sanofi", "status": "ok",
+         "calls": 6, "listed": 5, "fetched": 0, "due_in": 0},
+    ]
+    ats = SparingSource(
+        "ats", items=[_job(f"greenhouse:acme:{i}", source="ats") for i in range(4)],
+        answers={"workday:thales.Careers:R1": OfferStatus.NOT_ASKED,
+                 "workday:ag.Airbus:R2": OfferStatus.NOT_ASKED,
+                 "workday:sanofi.SanofiCareers:R3": OfferStatus.OPEN},
+        query_stats=[QueryStat("sanofi.SanofiCareers", "workday", 0, 5, "ats"),
+                     QueryStat("acme", "greenhouse", 4, 4, "ats")],
+        listed={"workday:sanofi.SanofiCareers": 5, "greenhouse:acme": 4}, statuses=statuses,
+    )
+
+    summary = run_jobs([ats], _profile(), SETTINGS, db, {})
+
+    assert ats.known == {"workday:thales.Careers:R1", "workday:ag.Airbus:R2",
+                         "workday:sanofi.SanofiCareers:R3"}  # told before it fetched
+    assert summary.outages == [] and summary.suspended == 0
+    assert summary.errors == 0  # « not asked » is not « no clear answer »
+    assert summary.checked == 1 and summary.closed == 0
+    assert summary.by_board == {
+        "ats": {"workday:sanofi.SanofiCareers": 5, "greenhouse:acme": 4}}
+    assert summary.workday_boards == statuses and summary.workday_blocked == 1
+    assert all(_closed(db, i) is None for i in stored)
+    saved = RunRepository(db.conn).list_recent(("jobs",), limit=1)[0].summary
+    assert saved["workday_blocked"] == 1
+    assert [b["status"] for b in saved["workday_boards"]] == ["blocked", "skipped", "ok"]

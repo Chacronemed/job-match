@@ -448,6 +448,48 @@ describe("Candidatures filters and hidden applications", () => {
     assert.equal(T.appsFilterOf("nope"), "postuler");
     assert.deepEqual(T.appsFilterKeys(apps, Object.keys(apps), "refus"), ["r"]);
   });
+  test("an application's day: sent, else kept (or reactivated), else last changed", () => {
+    assert.equal(T.appDay({ applied_at: "2026-10-15", updated_at: "2026-10-20T08:00:00Z" },
+      { label: "good_fit", created_at: "2026-10-01T08:00:00Z" }), "2026-10-15");
+    assert.equal(T.appDay({ updated_at: "2026-10-20T08:00:00Z" },
+      { label: "good_fit", created_at: "2026-10-01T08:00:00Z" }), "2026-10-01");
+    assert.equal(T.appDay({ reactivated_at: "2026-10-12T09:00:00Z" },
+      { label: "good_fit", created_at: "2026-10-01T08:00:00Z" }), "2026-10-12");
+    assert.equal(T.appDay({ updated_at: "2026-10-20T08:00:00Z" }, null), "2026-10-20");
+    assert.equal(T.appDay({}, null), null);
+  });
+  test("narrowed to one company and one period, both optional", () => {
+    const day = (n) => new Date(Date.parse(TODAY + "T12:00:00Z") - n * 86400000).toISOString().slice(0, 10);
+    const dated = {
+      a: { status: "to_apply", updated_at: day(2) + "T08:00:00Z" },   // 2 days ago
+      b: { status: "applied", applied_at: day(20) },                   // 20 days ago
+      c: { status: "rejected", applied_at: day(45) },                  // 45 days ago
+      n: { status: "to_apply" },                                       // no date at all
+    };
+    const postings = { a: { company: "Acme" }, b: { company: "Zeta" }, c: { company: "Acme" },
+                       n: { company: null } };
+    const keys = Object.keys(dated);
+    const narrow = (opts) => T.appsNarrow(dated, keys, opts, postings, {}, TODAY);
+    assert.deepEqual(narrow({}), keys);
+    assert.deepEqual(narrow({ company: "Acme" }), ["a", "c"]);
+    assert.deepEqual(narrow({ period: "7" }), ["a"]);
+    assert.deepEqual(narrow({ period: "30" }), ["a", "b"]);
+    assert.deepEqual(narrow({ period: "old" }), ["c"]);
+    assert.deepEqual(narrow({ company: "Acme", period: "old" }), ["c"]);
+    assert.deepEqual(narrow({ period: "nope" }), keys);  // an unknown period filters nothing
+    assert.deepEqual(narrow({ company: "Nobody" }), []);
+    // the segments count what is left: counts = rows
+    assert.deepEqual(T.appsFilterCounts(dated, narrow({ company: "Acme" })),
+      { postuler: 1, envoyees: 0, entretiens: 0, refus: 1, tout: 2 });
+  });
+  test("the companies of the applications on screen, sorted, each once", () => {
+    const postings = { a: { company: "Zeta" }, b: { company: "acme" }, c: { company: "Zeta" },
+                       d: { company: "" }, e: { company: "Élan" } };
+    assert.deepEqual(T.appsCompanies(["a", "b", "c", "d", "e", "gone"], postings),
+      ["acme", "Élan", "Zeta"]);
+    assert.equal(T.appsPeriodOf("30"), "30");
+    assert.equal(T.appsPeriodOf("365"), "");
+  });
   test("an expired application is hidden with its reason, and comes back when the offer does", () => {
     const app = { status: "to_apply" };
     const state = T.hiddenState(app, { closed: true }, null, TODAY);

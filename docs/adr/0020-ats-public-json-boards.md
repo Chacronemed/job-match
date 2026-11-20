@@ -138,3 +138,43 @@ and the pipeline calls `fetch(since=None)`).
   filtered on the places `french_location` reads as French (Euronext, Murex: « Paris »).
   SmartRecruiters gains Sopra Steria and Inetum, which `companies.yaml` guessed on Workday.
   Talentsoft sites are read through their RSS feed: ADR 0029.
+
+## Amendment 2026-11-20, part 2: Workday called sparingly, its security check never retried
+
+- **Context.** The first run with the pacing above (Daily run 96) was refused on the eleven
+  Workday tenants: 41 requests answered by the « Security Check » page, 8 postings read. That
+  page is an anti-robot protection. Decision of the owner: it is **forbidden to work around
+  it** (no IP or proxy rotation, no headless browser, no browser headers); the project only
+  reduces its calls. `docs/diagnostics/2026-11-20-workday-calls.md`.
+- **Decision.**
+  - **Search, not listing.** `sources.ats.search_keywords` (devops, cloud, sre, platform):
+    Workday one `searchText` call per keyword with the France facet, one page of 20 (it reads
+    several words as AND); SmartRecruiters one `q` with every keyword and `country=fr` (read
+    as OR). An empty list lists the whole French board as before.
+  - **A detail call only for a posting worth one.** On the ATS of
+    `sources.ats.title_prefilter` (Workday), the title must be in the core or near family
+    and not a developer role; on Workday the posting must also not be stored yet (the
+    pipeline hands the source the stored ids, `set_known_ids`); the freshest first.
+  - **A cap.** `workday.max_calls_per_run` (15) requests per tenant and run, retries and
+    closure probes included.
+  - **A frequency.** `workday.frequency_days` (7): the board at position *i* among the Workday
+    boards is read on day *i* modulo 7; a board may carry its own `frequency_days`. No state.
+  - **The security check stops the tenant at once**, without a retry (HTTP 429 or 403 with an
+    HTML body). A plain 429, a 5xx or a timeout is retried as before, within the cap.
+  - **Statuses, not errors.** Each Workday board ends the run as ok / capped / skipped /
+    blocked / error (`RunSummary.workday_boards`, `workday_blocked`), shown in the CLI
+    summary, the job summary and Exécutions. A skipped or blocked board answers
+    `OfferStatus.NOT_ASKED` to the closure check (neither checked nor an error) and is absent
+    from `by_board` (the outage guard does not read it as an empty board); `by_board` now
+    counts what a board listed, not what was read in full.
+- **Measured** on a fixture of the eleven boards (`test_workday_budget.py`): 5 733 calls a
+  week before, 145 after.
+- **Alternatives.** A stored « last read » per tenant instead of the stateless slot (survives
+  a missed run, but needs a table and makes every tenant due on the first day); deeper search
+  pages when the cap is not used up (more calls for postings ranked low); the title filter on
+  SmartRecruiters too (78 % fewer detail calls, 1 of 8 Tri offers lost on the 2026-11-20
+  collection: left off, one line to turn on); dropping Workday altogether (a tenant now costs
+  one call a week while it is refused, and comes back by itself if the check is lifted).
+- **Consequences.** A Workday offer is discovered and checked for closure once a week at
+  best, ten new postings a tenant; the companies still refused are to be covered later by
+  email alerts outside this project (n8n), not coded here.

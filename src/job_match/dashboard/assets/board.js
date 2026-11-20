@@ -644,6 +644,47 @@
       bar.appendChild(b);
     });
   }
+  /* Under the segments: one company, one period (T.appsNarrow). The company list is the
+     companies of the applications on screen; a company from an old link that has none left
+     is dropped. Returns the narrowed keys: the segments count those, so counts = rows. */
+  function fillSelect(select, options, value) {
+    clear(select);
+    options.forEach(function (o) {
+      var opt = el("option", { value: o[0], text: o[1] });
+      if (o[0] === value) opt.selected = true;
+      select.appendChild(opt);
+    });
+  }
+  function renderNarrow(keys, today) {
+    var box = byId("apps-narrow");
+    box.hidden = track.status !== "ready";
+    if (box.hidden) return keys;
+    var companies = T.appsCompanies(keys, postingByKey);
+    if (V.appsCompany && companies.indexOf(V.appsCompany) < 0) V.appsCompany = "";
+    V.appsPeriod = T.appsPeriodOf(V.appsPeriod);
+    fillSelect(byId("apps-company"), [["", "Toutes (" + companies.length + ")"]].concat(
+      companies.map(function (c) { return [c, c]; })), V.appsCompany);
+    fillSelect(byId("apps-period"), [["", "Toutes"]].concat(
+      T.APPS_PERIODS.map(function (p) { return [p, T.APPS_PERIOD_TEXT[p]]; })), V.appsPeriod);
+    byId("apps-narrow-reset").hidden = !V.appsCompany && !V.appsPeriod;
+    return T.appsNarrow(track.apps, keys, { company: V.appsCompany, period: V.appsPeriod },
+      postingByKey, decisionsIndex(), today);
+  }
+  function narrowChanged() {
+    V.appsCompany = byId("apps-company").value;
+    V.appsPeriod = byId("apps-period").value;
+    renderApps();
+    JM.syncHash();
+  }
+  byId("apps-company").addEventListener("change", narrowChanged);
+  byId("apps-period").addEventListener("change", narrowChanged);
+  byId("apps-narrow-reset").addEventListener("click", function () {
+    V.appsCompany = "";
+    V.appsPeriod = "";
+    renderApps();
+    JM.syncHash();
+    byId("apps-company").focus({ preventScroll: true });
+  });
   function scoreOf(k) { var j = postingByKey[k]; var v = j ? aiOf(j) : null; return v ? v.score : null; }
 
   function renderApps() {
@@ -667,6 +708,7 @@
       due.hidden = true;
       byId("apps-show-archived").hidden = true;
       byId("kb-archived").hidden = true;
+      byId("apps-narrow").hidden = true;
       renderFilter([]);
       renderStats([], 0);
       updateCounts();
@@ -689,8 +731,9 @@
     var dueKeys = JM.dueKeys(today);
     renderStats(keys, dueKeys.length);
     V.appsFilter = T.appsFilterOf(V.appsFilter);
-    renderFilter(keys);
-    var shown = T.appsFilterKeys(track.apps, keys, V.appsFilter, scoreOf, decisionsIndex());
+    var narrowed = renderNarrow(keys, today);
+    renderFilter(narrowed);
+    var shown = T.appsFilterKeys(track.apps, narrowed, V.appsFilter, scoreOf, decisionsIndex());
     due.hidden = dueKeys.length === 0;
     if (dueKeys.length) {
       due.appendChild(el("h2", { class: "kb-due-title", icon: "calendar-clock", text: dueKeys.length + (dueKeys.length > 1 ? " relances en retard" : " relance en retard") }));

@@ -11,6 +11,7 @@ from job_match.config.schema import (
     AiConfig,
     ArchiveConfig,
     AtsBoard,
+    AtsSearchConfig,
     Candidate,
     ConfigError,
     DigestConfig,
@@ -83,6 +84,7 @@ def load_aliases(path: Path) -> dict[str, list[str]]:
 
 
 _ATS_NAMES = ("greenhouse", "lever", "ashby", "smartrecruiters", "workday", "talentsoft")
+_PAGED_ATS = ("workday", "smartrecruiters")  # a listing, then one detail call per posting
 _SLUG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 # Workday: <tenant>.<wdN>.myworkdayjobs.com/<tenant>/<site>; the host is pinned to Workday's
 # domain because it is called as is.
@@ -122,7 +124,12 @@ def load_ats_boards(path: Path) -> list[AtsBoard]:
         cap = entry.get("max_postings")
         if cap is not None and (not isinstance(cap, int) or isinstance(cap, bool) or cap < 1):
             raise ConfigError(f"boards[{i}].max_postings must be a positive integer in {path}")
-        boards.append(AtsBoard(company=company, ats=ats, slug=slug, max_postings=cap))
+        every = entry.get("frequency_days")
+        if every is not None and (
+                not isinstance(every, int) or isinstance(every, bool) or every < 1):
+            raise ConfigError(f"boards[{i}].frequency_days must be a positive integer in {path}")
+        boards.append(AtsBoard(company=company, ats=ats, slug=slug, max_postings=cap,
+                               frequency_days=every))
     return boards
 
 
@@ -332,6 +339,22 @@ def _parse_sources(value: object, path: Path) -> SourcesConfig:
         regions=_str_list(raw.get("regions"), "sources.regions", path),
         limits=limits,
         workday=_parse_workday(_mapping(raw.get("ats"), "sources.ats", path).get("workday"), path),
+        ats_search=_parse_ats_search(_mapping(raw.get("ats"), "sources.ats", path), path),
+    )
+
+
+def _parse_ats_search(raw: dict, path: Path) -> AtsSearchConfig:
+    """`sources.ats.search_keywords` (a list of words) and `sources.ats.title_prefilter`
+    (a list among the paged ATS: workday, smartrecruiters)."""
+    prefilter = _str_list(raw.get("title_prefilter"), "sources.ats.title_prefilter", path)
+    unknown = sorted(set(prefilter) - set(_PAGED_ATS))
+    if unknown:
+        raise ConfigError(
+            f"sources.ats.title_prefilter must list {_PAGED_ATS} only, got {unknown} (in {path})")
+    keywords = _str_list(raw.get("search_keywords"), "sources.ats.search_keywords", path)
+    return AtsSearchConfig(
+        search_keywords=tuple(k.strip() for k in keywords if k.strip()),
+        title_prefilter=tuple(prefilter),
     )
 
 
@@ -348,13 +371,17 @@ def _parse_workday(value: object, path: Path) -> WorkdayConfig:
             raise ConfigError(
                 f"sources.ats.workday.{key} must be a number of seconds >= 0 (in {path})")
         out[key] = float(v)
-    for key, minimum in (("max_retries", 0), ("max_consecutive_failures", 1)):
+    for key, minimum in (("max_retries", 0), ("max_consecutive_failures", 1),
+                         ("max_calls_per_run", 0), ("frequency_days", 1)):
         v = raw.get(key, getattr(d, key))
         if isinstance(v, bool) or not isinstance(v, int) or v < minimum:
             raise ConfigError(
                 f"sources.ats.workday.{key} must be an integer >= {minimum} (in {path})")
         out[key] = v
-    return WorkdayConfig(**out)
+    skip_known = raw.get("skip_known", d.skip_known)
+    if not isinstance(skip_known, bool):
+        raise ConfigError(f"sources.ats.workday.skip_known must be true or false (in {path})")
+    return WorkdayConfig(**out, skip_known=skip_known)
 
 
 def _published_since_days(value: object, key: str, path: Path) -> int | None:

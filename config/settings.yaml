@@ -48,6 +48,19 @@ sources:
   adzuna:
     max_calls_per_run: 20
   ats:
+    # The paged ATS (Workday, SmartRecruiters) are searched for these words instead of
+    # being listed whole: Workday one searchText call per keyword (it reads several words as
+    # AND), SmartRecruiters one `q` with all of them (read as OR); both keep France only.
+    # Measured 2026-11-20 on one SmartRecruiters board: 1 004 French postings, 291 for
+    # « devops cloud ». An empty list reads the whole French board again.
+    search_keywords: [devops, cloud, sre, platform]
+    # On the ATS listed here (workday, smartrecruiters), a posting gets its detail call only
+    # when its title is in the core or near family (title_relevance) and is not a developer
+    # role (relevance.dev_titles); the gates downstream are unchanged. Workday only: its
+    # calls are counted. Measured on the 2026-11-20 collection, adding smartrecruiters would
+    # spare 78 % of its detail calls (335 -> 74) and lose 1 of its 8 offers that reached the
+    # Tri (a title of the « other » family with the right skills).
+    title_prefilter: [workday]
     # Workday boards only. Every tenant (Airbus, Thales, ...) answers from the same edge, so
     # they share one queue: read one tenant after the other, never two calls closer than
     # request_delay_seconds. A 429 or a 5xx is retried max_retries times; the wait is the
@@ -60,6 +73,20 @@ sources:
     # Cost on a day it refuses (HTTP 429 "Security Check", measured 2026-11-20: a client
     # check that no pace gets through): about a minute per tenant, then it is given up.
     # Raising max_retries or the backoff only makes that day longer.
+    #
+    # Since 2026-11-20 (part 2) that « Security Check » page is treated as what it is, an anti-robot
+    # protection: the tenant stops at once for the run, without a retry, and the run summary
+    # counts it (« bloqué anti-robot »). It is never worked around. The source calls less:
+    #   max_calls_per_run  requests per tenant and run at most, retries and closure probes
+    #                      included (0 = no cap): 1 for the facets, 1 per keyword, the rest
+    #                      for the details of the freshest postings not stored yet;
+    #   frequency_days     a tenant is read every N days, the tenants spread over the days
+    #                      by their position in ats_boards.yaml (7 = two tenants a day for
+    #                      eleven boards; 1 = every run). A board may carry its own
+    #                      `frequency_days` in ats_boards.yaml;
+    #   skip_known         no detail call for a posting already stored.
+    # Simulation (tests/unit/adapters/test_workday_budget.py): 5 733 calls a week before,
+    # 145 now (165 at most: eleven boards at the cap).
     workday:
       request_delay_seconds: 1.5
       max_retries: 2
@@ -67,6 +94,9 @@ sources:
       backoff_max_seconds: 60
       retry_after_max_seconds: 120
       max_consecutive_failures: 2
+      max_calls_per_run: 15
+      frequency_days: 7
+      skip_known: true
 
 # Seniority keywords → minimum required years.  Explicit number in the text wins.
 seniority_min_years:

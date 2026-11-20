@@ -1,0 +1,25 @@
+{
+  "_comment": "Made up. The French posting counts are the totals each public board announced on 2026-11-20 (docs/diagnostics/2026-11-20-coverage.md); every posting is generated from the title pool below, no real offer is stored here.",
+  "tenants": [
+    {"company": "Airbus", "slug": "ag.wd3.myworkdayjobs.com/ag/Airbus", "french_postings": 817},
+    {"company": "Thales", "slug": "thales.wd3.myworkdayjobs.com/thales/Careers", "french_postings": 2000},
+    {"company": "Sanofi", "slug": "sanofi.wd3.myworkdayjobs.com/sanofi/SanofiCareers", "french_postings": 121},
+    {"company": "Renault Group", "slug": "alliancewd.wd3.myworkdayjobs.com/alliancewd/renault-group-careers", "french_postings": 363},
+    {"company": "Air Liquide", "slug": "airliquidehr.wd3.myworkdayjobs.com/airliquidehr/AirLiquideExternalCareer", "french_postings": 306},
+    {"company": "Michelin", "slug": "michelinhr.wd3.myworkdayjobs.com/michelinhr/Michelin", "french_postings": 214},
+    {"company": "Accenture", "slug": "accenture.wd103.myworkdayjobs.com/accenture/AccentureCareers", "french_postings": 211},
+    {"company": "Kyndryl", "slug": "kyndryl.wd5.myworkdayjobs.com/kyndryl/KyndrylProfessionalCareers", "french_postings": 9},
+    {"company": "Euronext", "slug": "hrhub.wd3.myworkdayjobs.com/hrhub/Euronext_Career_Page", "french_postings": 38},
+    {"company": "Equinix", "slug": "equinix.wd1.myworkdayjobs.com/equinix/External", "french_postings": 10},
+    {"company": "Murex", "slug": "murex.wd3.myworkdayjobs.com/murex/MurexCareerPage1", "french_postings": 11}
+  ],
+  "titles": [
+    "Ingénieur DevOps", "Ingénieur Cloud AWS", "Site Reliability Engineer (SRE)",
+    "Platform Engineer Kubernetes", "Administrateur systèmes Linux",
+    "Développeur Java Cloud", "Chef de projet Cloud", "Acheteur IT",
+    "Ingénieur systèmes embarqués", "Technicien de maintenance", "Comptable",
+    "Ingénieur mécanique", "Responsable qualité", "Assistant RH", "Juriste",
+    "Ingénieur optronique", "Chargé de recrutement", "Contrôleur de gestion",
+    "Ingénieur structure", "Monteur câbleur"
+  ]
+}

@@ -70,6 +70,7 @@ class AtsBoard:
     slug: str  # the board's identifier in the ATS URL; Workday: <host>/<tenant>/<site>;
     #            Talentsoft: the career site's host
     max_postings: int | None = None  # Workday / SmartRecruiters: listing cap (None = 100)
+    frequency_days: int | None = None  # Workday: read every N days (None = the setting's)
 
 
 @dataclass(frozen=True)
@@ -98,7 +99,15 @@ class WorkdayConfig:
     The defaults keep a refusing edge cheap: a failed call costs 15 s of backoff (5 + 10),
     so a tenant that answers nothing is given up after about half a minute. Measured
     2026-11-20: the 429 Workday serves is a client check, not a quota, and no pace gets
-    through it, so waiting longer or retrying more only makes the run longer."""
+    through it, so waiting longer or retrying more only makes the run longer.
+
+    Since 2026-11-20 (part 2) that 429 (an HTML « Security Check » page: an anti-robot protection)
+    is never retried: the tenant stops at once for the run. And the source calls less:
+    `max_calls_per_run` requests per tenant and run at most, every request counted, retries
+    and closure probes included (0 = no cap); a tenant read every `frequency_days` days,
+    the tenants spread over the days by their position in ats_boards.yaml (1 = every run;
+    a board may carry its own `frequency_days`); `skip_known`: no detail call for a posting
+    already stored."""
 
     request_delay_seconds: float = 1.5
     max_retries: int = 2
@@ -106,6 +115,27 @@ class WorkdayConfig:
     backoff_max_seconds: float = 60.0
     retry_after_max_seconds: float = 120.0
     max_consecutive_failures: int = 2
+    max_calls_per_run: int = 15
+    frequency_days: int = 7
+    skip_known: bool = True
+
+
+@dataclass(frozen=True)
+class AtsSearchConfig:
+    """What the paged ATS (Workday, SmartRecruiters) are asked for (`sources.ats`).
+
+    `search_keywords`: the board is searched for these instead of being listed whole:
+    Workday one `searchText` call per keyword (several words are read as AND),
+    SmartRecruiters one `q` with all of them (read as OR). Empty = the whole French board.
+    `title_prefilter`: the ATS (`workday`, `smartrecruiters`) on which a posting whose title
+    is neither in the core nor in the near family (`title_relevance`), or is a developer
+    role (`relevance.dev_titles`), gets no detail call; the gates downstream are unchanged.
+    Measured on the 2026-11-20 collection: it spares 78 % of the SmartRecruiters detail
+    calls and loses 1 of the 8 SmartRecruiters offers that reached the Tri, none on Workday;
+    so the committed settings apply it to Workday, whose calls are counted, only."""
+
+    search_keywords: tuple[str, ...] = ()
+    title_prefilter: tuple[str, ...] = ()
 
 
 @dataclass
@@ -121,6 +151,7 @@ class SourcesConfig:
     regions: list[str] = field(default_factory=list)
     limits: dict[str, SourceLimits] = field(default_factory=dict)
     workday: WorkdayConfig = field(default_factory=WorkdayConfig)
+    ats_search: AtsSearchConfig = field(default_factory=AtsSearchConfig)
 
     def is_enabled(self, name: str) -> bool:
         return name in self.enabled

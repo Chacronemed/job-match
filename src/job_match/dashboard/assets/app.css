@@ -733,6 +733,11 @@ table.data.apps td.link-col > * { vertical-align: middle; margin-right: 8px; }
 /* The Candidatures filters: segments with their counts, above the views. */
 .apps-filter { display: flex; flex-wrap: wrap; width: fit-content; max-width: 100%; margin: 0 0 14px; }
 .apps-filter .chip .tab-count { margin-left: 2px; color: var(--ink-3); font-size: var(--fs-xs); }
+/* Company and date, under the segments: two selects and « Effacer » when one is set. */
+.apps-narrow { display: flex; flex-wrap: wrap; align-items: end; gap: 10px 12px; margin: 0 0 14px; max-width: 620px; }
+.apps-narrow .field { flex: 1 1 200px; }
+.apps-narrow select { width: 100%; min-height: 32px; }
+.apps-narrow[hidden] { display: none; }
 .apps-filter .chip[aria-pressed="true"] .tab-count { color: var(--ink-2); }
 .kb-board.is-single { grid-template-columns: minmax(0, 560px); }
 table.data.apps tr.is-expired td.apps-title, table.data.apps tr.is-expired td.apps-company { color: var(--ink-3); }
@@ -1061,6 +1066,7 @@ html:active-view-transition-type(record)::view-transition-new(main) { animation:
   .kb-board, .kb-board.is-single { grid-template-columns: 1fr; overflow: visible; padding-bottom: 0; }
   .apps-filter { width: 100%; flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
   .apps-filter .chip { flex: 1 0 auto; min-height: 44px; padding: 0 5px; white-space: nowrap; }
+  .apps-narrow select, .apps-narrow .btn { min-height: 44px; }
   .apps-status-stack { padding: 0; }
   .kb-col { min-height: 0; }
   .kb-status, .btn-small { min-height: 44px; }

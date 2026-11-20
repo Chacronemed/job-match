@@ -59,6 +59,8 @@ RUN_KEYS: tuple[str, ...] = (
     "archived_today",
     "by_source",
     "by_company",
+    "workday_boards",
+    "workday_blocked",
 )
 
 _STRETCH_YEARS_RE = re.compile(r"requires (\d+(?:\.\d+)?)y")
@@ -283,7 +285,8 @@ def run_entry(run: RunRecord) -> dict:
     }
     for key in RUN_KEYS:
         mapping = key in ("rejected_by_reason", "by_source", "by_company")
-        default: object = [] if key == "outages" else ({} if mapping else 0)
+        default: object = [] if key in ("outages", "workday_boards") else (
+            {} if mapping else 0)
         entry[key] = s.get(key, default)
     # Unique rejected jobs are not stored (the per-reason map may count a job twice),
     # but the funnel is exact: everything fetched is rejected, a duplicate, eligible or stretch.
