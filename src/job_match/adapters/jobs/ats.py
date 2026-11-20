@@ -60,6 +60,18 @@ the other boards still run, and a run with every board down yields nothing inste
 failing. A posting whose detail call fails is skipped. The gates, dedup and scoring
 downstream are the same as for any other source.
 
+Workday is paced apart (`sources.ats.workday` in settings.yaml, `WorkdayConfig`): every
+tenant sits behind the same edge, so all of them share one queue, read one tenant after the
+other, with `request_delay_seconds` between two calls whatever the tenant. A 429 or a 5xx
+is retried here, not in `HttpClient`: the wait is the response's `Retry-After` when there
+is one, else a backoff that doubles from `backoff_seconds`. After
+`max_consecutive_failures` failed calls in a row, or a `Retry-After` beyond
+`retry_after_max_seconds`, the tenant is left alone until the next run (one warning, no
+further call, its closure checks answer UNKNOWN) and the other boards go on. Since
+2026-11-16 Workday's edge answers some clients 429 with an HTML "Security Check" page and
+no `Retry-After` (docs/diagnostics/2026-11-20-coverage.md): it is retried like any 429 and
+named as such in the log, and nothing here tries to get around it.
+
 `source_job_id` is `<ats>:<board id>:<id>` so `check_offer` can find the board again: an
 id missing from a complete listing that answered 200 is CLOSED, a board that could not be
 read is UNKNOWN. A listing cut at `max_postings` proves nothing for an id it did not list,
@@ -75,11 +87,14 @@ from datetime import UTC, datetime
 from typing import Any, NamedTuple
 from urllib.parse import urlsplit
 
-from job_match.adapters.http import HttpClient
+import httpx
+
+from job_match.adapters.http import HttpClient, retry_after_seconds
 from job_match.adapters.jobs.base import OfferStatus, QueryStat, RawItem, RequestStats
-from job_match.config.schema import AtsBoard
+from job_match.config.schema import AtsBoard, WorkdayConfig
 from job_match.domain.models import Job, WorkplaceType
 from job_match.normalization.contract import parse_contract_type
+from job_match.normalization.location import french_location
 from job_match.normalization.text import html_to_text
 
 logger = logging.getLogger(__name__)
@@ -102,6 +117,7 @@ WORKDAY_PAGE = 20  # Workday refuses a larger `limit`
 SMARTRECRUITERS_PAGE = 100
 SMARTRECRUITERS_COUNTRY = "fr"
 WORKDAY_COUNTRY = "france"  # the facet value's descriptor, case-insensitive
+WORKDAY_DOMAIN = ".myworkdayjobs.com"  # every tenant's host: one shared queue
 
 _WORKPLACE: dict[str, WorkplaceType] = {
     "remote": WorkplaceType.REMOTE,
@@ -150,9 +166,16 @@ class AtsBoardSource:
         requests_per_second: float = 1.0,
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
+        workday: WorkdayConfig | None = None,
     ) -> None:
         self._boards = list(boards)
         self._http = http or HttpClient()
+        # Workday retries are decided here (Retry-After, longer backoff, per-tenant
+        # give-up), so its client must not retry underneath.
+        self._workday = workday or WorkdayConfig()
+        self._workday_http = HttpClient(max_retries=0)
+        self._workday_failures: dict[str, int] = {}  # host → failed calls in a row
+        self._workday_skipped: dict[str, str] = {}   # host → why it is left alone this run
         self._max_results = max_results
         self._min_interval = 1.0 / requests_per_second if requests_per_second > 0 else 0.0
         self._sleep = sleep
@@ -184,9 +207,12 @@ class AtsBoardSource:
 
     def _throttle(self, url: str) -> None:
         host = urlsplit(url).hostname or ""
+        interval = self._min_interval
+        if host.endswith(WORKDAY_DOMAIN):  # one queue for every tenant
+            host, interval = WORKDAY_DOMAIN, self._workday.request_delay_seconds
         last = self._last_request.get(host)
         if last is not None:
-            wait = self._min_interval - (self._clock() - last)
+            wait = interval - (self._clock() - last)
             if wait > 0:
                 self._sleep(wait)
         self._last_request[host] = self._clock()
@@ -194,6 +220,8 @@ class AtsBoardSource:
     def _call(self, method: str, url: str, label: str, **kwargs: Any) -> tuple[int | None, Any]:
         """(HTTP status, decoded body): (None, None) on a network error, (404, None) for a
         404, (status, None) for any other error status. Logged, never raised."""
+        if (urlsplit(url).hostname or "").endswith(WORKDAY_DOMAIN):
+            return self._call_workday(method, url, label, **kwargs)
         self._attempted += 1
         try:
             self._throttle(url)
@@ -213,6 +241,74 @@ class AtsBoardSource:
             logger.warning("%s: %s unreachable: %s", self.name, label, type(exc).__name__)
             status = getattr(getattr(exc, "response", None), "status_code", None)
             return status, None
+
+    def _call_workday(self, method: str, url: str, label: str,
+                      **kwargs: Any) -> tuple[int | None, Any]:
+        """`_call` for a Workday tenant: paced on the shared queue, 429 / 5xx / timeouts
+        retried with `Retry-After` or the configured backoff, and a tenant that keeps
+        failing left alone for the rest of the run ((None, None), no request made)."""
+        cfg = self._workday
+        host = urlsplit(url).hostname or ""
+        if host in self._workday_skipped:
+            return None, None
+        self._attempted += 1
+        headers = {"Accept": "application/json"}
+        status: int | None = None
+        reason = "no answer"
+        give_up: str | None = None
+        for attempt in range(cfg.max_retries + 1):
+            self._throttle(url)
+            asked: float | None = None
+            try:
+                if method == "POST":
+                    resp = self._workday_http.post(url, headers=headers, **kwargs)
+                else:
+                    resp = self._workday_http.get(url, headers=headers, **kwargs)
+            except httpx.HTTPStatusError as exc:  # 429 / 5xx: HttpClient(max_retries=0) raises
+                status = exc.response.status_code
+                asked = retry_after_seconds(exc.response)
+                reason = _workday_failure(exc.response)
+            except Exception as exc:  # timeout, connection reset, DNS
+                status, reason = None, type(exc).__name__
+            else:
+                self._api_calls += 1
+                self._workday_failures[host] = 0
+                if resp.status_code == 404:
+                    logger.warning("%s: %s answers 404 (gone?)", self.name, label)
+                    return 404, None
+                try:
+                    resp.raise_for_status()  # 422: wrong site name, not worth a retry
+                    return resp.status_code, resp.json()
+                except Exception as exc:
+                    self._failed += 1
+                    logger.warning("%s: %s unreachable: %s", self.name, label,
+                                   type(exc).__name__)
+                    return resp.status_code, None
+            if asked is not None and asked > cfg.retry_after_max_seconds:
+                give_up = f"Retry-After {asked:.0f}s is beyond {cfg.retry_after_max_seconds:.0f}s"
+                break
+            if attempt == cfg.max_retries:
+                break
+            wait = asked if asked is not None else min(
+                cfg.backoff_seconds * 2**attempt, cfg.backoff_max_seconds)
+            logger.warning("%s: %s: %s on attempt %d/%d, waiting %.1fs%s",
+                           self.name, label, reason, attempt + 1, cfg.max_retries + 1, wait,
+                           " (Retry-After)" if asked is not None else "")
+            self._sleep(wait)
+        self._failed += 1
+        failures = self._workday_failures.get(host, 0) + 1
+        self._workday_failures[host] = failures
+        logger.warning("%s: %s unreachable: %s", self.name, label, reason)
+        if give_up is None and failures >= cfg.max_consecutive_failures:
+            give_up = f"{failures} calls failed in a row (last: {reason})"
+        if give_up is not None:
+            self._workday_skipped[host] = give_up
+            logger.warning("%s: workday tenant %s left alone for the rest of this run: %s",
+                           self.name, host, give_up)
+        return status, None
+
+    def _workday_is_skipped(self, board: AtsBoard) -> bool:
+        return board.ats == "workday" and board.slug.split("/", 1)[0] in self._workday_skipped
 
     def _json(self, method: str, url: str, label: str, **kwargs: Any) -> Any:
         """The decoded body, or None when the call failed (logged, never raised)."""
@@ -247,21 +343,21 @@ class AtsBoardSource:
         first = self._json("POST", url, label, json=query)
         if not isinstance(first, dict):
             return None
-        facet = _workday_country_facet(first.get("facets"))
+        facet = _workday_france_facet(first.get("facets"))
         if facet is None:
             logger.warning("%s: %s has no country facet, skipped (cannot keep France only)",
                            self.name, label)
             return None
-        param, value = facet
-        if value is None:
-            return _Listing([], 0, True)  # a country facet without France: no French posting
+        param, values = facet
+        if not values:
+            return _Listing([], 0, True)  # a facet without a French value: no French posting
         cap = self._cap(board)
         jobs: list[dict] = []
         total: int | None = None
         offset = 0
         while len(jobs) < cap:
             body = self._json("POST", url, label, json={
-                "appliedFacets": {param: [value]}, "limit": WORKDAY_PAGE,
+                "appliedFacets": {param: values}, "limit": WORKDAY_PAGE,
                 "offset": offset, "searchText": "",
             })
             if not isinstance(body, dict):
@@ -349,6 +445,9 @@ class AtsBoardSource:
                     published = _published_at(board.ats, item)
                     if published is not None and published < since:
                         continue
+                if self._workday_is_skipped(board):
+                    skipped += 1  # left alone for this run: no further call
+                    continue
                 if board.ats in PAGED_ATS:
                     detail = self._detail(board, item)
                     if detail is None:
@@ -473,6 +572,47 @@ def _workday_country_facet(facets: Any) -> tuple[str, str | None] | None:
                        and v.get("id")), None)
         return param, (str(france) if france else None)
     return None
+
+
+def _workday_france_facet(facets: Any) -> tuple[str, list[str]] | None:
+    """(facet parameter, the value ids that mean France), or None when the board cannot
+    be filtered. The country facet when there is one; else the `locations` facet, keeping
+    the places `french_location` reads as French (Euronext lists cities only: "Paris").
+    An empty list is a facet without any French value: no French posting."""
+    country = _workday_country_facet(facets)
+    if country is not None:
+        param, value = country
+        return param, ([value] if value else [])
+    places = _workday_facet(facets, "locations")
+    if places is None:
+        return None
+    return "locations", [
+        str(v["id"]) for v in places if isinstance(v, dict) and v.get("id")
+        and french_location(str(v.get("descriptor") or "")) is True
+    ]
+
+
+def _workday_facet(facets: Any, parameter: str) -> list | None:
+    """The values of the facet named `parameter`, nested groups included; None without it."""
+    for facet in facets or []:
+        if not isinstance(facet, dict):
+            continue
+        values = facet.get("values") or []
+        if facet.get("facetParameter") == parameter:
+            return values
+        if values and isinstance(values[0], dict) and "facetParameter" in values[0]:
+            found = _workday_facet(values, parameter)
+            if found is not None:
+                return found
+    return None
+
+
+def _workday_failure(resp: httpx.Response) -> str:
+    """What a failed Workday answer was, for the log: its status, and whether a 429 is the
+    edge's HTML "Security Check" page rather than a quota answer."""
+    if resp.status_code == 429 and "html" in resp.headers.get("Content-Type", "").lower():
+        return "HTTP 429 (security check page)"
+    return f"HTTP {resp.status_code}"
 
 
 def _workday_id(external_path: str) -> str:

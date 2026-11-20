@@ -1,5 +1,7 @@
 import logging
 import time
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 
 import httpx
 
@@ -8,14 +10,30 @@ logger = logging.getLogger(__name__)
 DEFAULT_USER_AGENT = "job-match/0.1 (+https://github.com/Chacronemed/job-match)"
 
 
+def retry_after_seconds(resp: httpx.Response, now: datetime | None = None) -> float | None:
+    """What the response's `Retry-After` asks for, in seconds; None without a usable one.
+
+    Both forms of RFC 9110 are read: a number of seconds, or an HTTP date (then the wait is
+    the time left until it, never negative)."""
+    header = (resp.headers.get("Retry-After") or "").strip()
+    if not header:
+        return None
+    try:
+        return max(float(header), 0.0)
+    except ValueError:
+        pass
+    try:
+        when = parsedate_to_datetime(header)
+    except (TypeError, ValueError):
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=UTC)
+    return max((when - (now or datetime.now(UTC))).total_seconds(), 0.0)
+
+
 def _retry_after(resp: httpx.Response, attempt: int) -> float:
-    header = resp.headers.get("Retry-After")
-    if header:
-        try:
-            return float(header)
-        except ValueError:
-            pass
-    return min(2**attempt, 60)
+    asked = retry_after_seconds(resp)
+    return asked if asked is not None else min(2**attempt, 60)
 
 
 class HttpClient:

@@ -247,6 +247,16 @@ def test_ats_runs_without_credentials_when_boards_are_given():
     assert missing_env("ats") == []
 
 
+def test_ats_source_gets_the_workday_pacing_of_the_settings():
+    from job_match.config.schema import AtsBoard, WorkdayConfig
+
+    pacing = WorkdayConfig(request_delay_seconds=4.0, max_retries=1)
+    settings = Settings(sources=SourcesConfig(enabled=["ats"], workday=pacing))
+    boards = [AtsBoard(company="Dataiku", ats="greenhouse", slug="dataiku")]
+    (source,) = build_sources(_profile(), settings, ats_boards=boards)
+    assert source._workday is pacing
+
+
 def test_ats_enabled_without_boards_is_skipped_with_a_warning(caplog):
     settings = Settings(sources=SourcesConfig(enabled=["ats"]))
     with caplog.at_level(logging.WARNING):

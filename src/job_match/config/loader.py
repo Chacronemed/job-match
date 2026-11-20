@@ -35,6 +35,7 @@ from job_match.config.schema import (
     SourcesConfig,
     TargetCompany,
     TitleRelevanceConfig,
+    WorkdayConfig,
 )
 from job_match.domain.models import ContractType
 
@@ -326,7 +327,30 @@ def _parse_sources(value: object, path: Path) -> SourcesConfig:
         enabled=_str_list(raw.get("enabled", d.enabled), "sources.enabled", path),
         regions=_str_list(raw.get("regions"), "sources.regions", path),
         limits=limits,
+        workday=_parse_workday(_mapping(raw.get("ats"), "sources.ats", path).get("workday"), path),
     )
+
+
+def _parse_workday(value: object, path: Path) -> WorkdayConfig:
+    """`sources.ats.workday`: every key optional, none may be negative; the two counters
+    are integers (`max_retries` may be 0, `max_consecutive_failures` at least 1)."""
+    raw = _mapping(value, "sources.ats.workday", path)
+    d = WorkdayConfig()
+    out: dict = {}
+    for key in ("request_delay_seconds", "backoff_seconds", "backoff_max_seconds",
+                "retry_after_max_seconds"):
+        v = raw.get(key, getattr(d, key))
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or v < 0:
+            raise ConfigError(
+                f"sources.ats.workday.{key} must be a number of seconds >= 0 (in {path})")
+        out[key] = float(v)
+    for key, minimum in (("max_retries", 0), ("max_consecutive_failures", 1)):
+        v = raw.get(key, getattr(d, key))
+        if isinstance(v, bool) or not isinstance(v, int) or v < minimum:
+            raise ConfigError(
+                f"sources.ats.workday.{key} must be an integer >= {minimum} (in {path})")
+        out[key] = v
+    return WorkdayConfig(**out)
 
 
 def _published_since_days(value: object, key: str, path: Path) -> int | None:
