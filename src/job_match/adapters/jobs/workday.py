@@ -3,7 +3,7 @@
 Since 2026-11-16 Workday's edge answers the project's client with an HTML « Security Check »
 page (HTTP 429, no `Retry-After`): an anti-robot protection. It is never worked around (no
 proxy or IP rotation, no headless browser, no browser-like headers). The source only makes
-fewer calls (ADR 0020, amendment 2026-11-21):
+fewer calls (ADR 0020, amendment 2026-11-20, part 2):
 
 - **a filtered search** instead of the whole French listing: one `searchText` call per
   keyword (Workday reads several words as AND, measured 2026-11-20), the France facet applied,

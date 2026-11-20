@@ -452,7 +452,7 @@ def test_outage_windows_respects_since_and_the_per_source_counters():
 
 class SparingSource(BoardSource):
     """The `ats` source as the pipeline sees it since the Workday amendment (ADR 0020,
-    2026-11-21): what each board listed, the Workday boards' statuses, the known ids."""
+    2026-11-20, part 2): what each board listed, the Workday boards' statuses, the known ids."""
 
     def __init__(self, *args, listed=None, statuses=(), **kwargs):
         super().__init__(*args, **kwargs)

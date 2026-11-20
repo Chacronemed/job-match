@@ -234,12 +234,13 @@ def test_invalid_workday_pacing_is_refused(tmp_path, body):
 def test_ats_search_and_workday_caps_are_read_from_settings(tmp_path):
     s = load_settings(_write(
         tmp_path,
-        "sources:\n  ats:\n    search_keywords: [devops, ' sre ']\n    title_prefilter: true\n"
+        "sources:\n  ats:\n    search_keywords: [devops, ' sre ']\n"
+        "    title_prefilter: [workday, smartrecruiters]\n"
         "    workday:\n      max_calls_per_run: 8\n      frequency_days: 3\n"
         "      skip_known: false\n",
     )).sources
     assert s.ats_search.search_keywords == ("devops", "sre")
-    assert s.ats_search.title_prefilter is True
+    assert s.ats_search.title_prefilter == ("workday", "smartrecruiters")
     assert (s.workday.max_calls_per_run, s.workday.frequency_days, s.workday.skip_known) == (
         8, 3, False)
 
@@ -248,13 +249,14 @@ def test_without_settings_workday_is_capped_and_weekly_and_nothing_is_searched(t
     s = load_settings(_write(tmp_path, "sources: {}\n")).sources
     assert (s.workday.max_calls_per_run, s.workday.frequency_days, s.workday.skip_known) == (
         15, 7, True)
-    assert s.ats_search.search_keywords == () and s.ats_search.title_prefilter is False
+    assert s.ats_search.search_keywords == () and s.ats_search.title_prefilter == ()
 
 
 @pytest.mark.parametrize("body", [
     "search_keywords: devops",
     "search_keywords: [1, 2]",
-    "title_prefilter: yes please",
+    "title_prefilter: true",
+    "title_prefilter: [lever]",
     "workday: {max_calls_per_run: -1}",
     "workday: {frequency_days: 0}",
     "workday: {frequency_days: 1.5}",

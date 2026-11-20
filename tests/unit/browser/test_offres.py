@@ -177,7 +177,7 @@ def test_runs_show_fetched_and_eligible_per_company_board(open_dashboard, job_ke
 
 
 def test_runs_show_each_workday_board_with_its_status(open_dashboard, job_keys):
-    """ADR 0020, amendment 2026-11-21: OK / sauté par fréquence / bloqué anti-robot."""
+    """ADR 0020, amendment 2026-11-20, part 2: OK / sauté par fréquence / bloqué anti-robot."""
     page, errors = open_dashboard(_api(job_keys), hash_="#executions")
     page.wait_for_selector("#runs-list .run")
     box = page.locator("#runs-list .run-workday").first

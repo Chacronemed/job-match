@@ -101,7 +101,7 @@ class WorkdayConfig:
     2026-11-20: the 429 Workday serves is a client check, not a quota, and no pace gets
     through it, so waiting longer or retrying more only makes the run longer.
 
-    Since 2026-11-21 that 429 (an HTML « Security Check » page: an anti-robot protection)
+    Since 2026-11-20 (part 2) that 429 (an HTML « Security Check » page: an anti-robot protection)
     is never retried: the tenant stops at once for the run. And the source calls less:
     `max_calls_per_run` requests per tenant and run at most, every request counted, retries
     and closure probes included (0 = no cap); a tenant read every `frequency_days` days,
@@ -127,12 +127,15 @@ class AtsSearchConfig:
     `search_keywords`: the board is searched for these instead of being listed whole:
     Workday one `searchText` call per keyword (several words are read as AND),
     SmartRecruiters one `q` with all of them (read as OR). Empty = the whole French board.
-    `title_prefilter`: a posting whose title is neither in the core nor in the near family
-    (`title_relevance`), or is a developer role (`relevance.dev_titles`), gets no detail
-    call; the gates downstream are unchanged."""
+    `title_prefilter`: the ATS (`workday`, `smartrecruiters`) on which a posting whose title
+    is neither in the core nor in the near family (`title_relevance`), or is a developer
+    role (`relevance.dev_titles`), gets no detail call; the gates downstream are unchanged.
+    Measured on the 2026-11-20 collection: it spares 78 % of the SmartRecruiters detail
+    calls and loses 1 of the 8 SmartRecruiters offers that reached the Tri, none on Workday;
+    so the committed settings apply it to Workday, whose calls are counted, only."""
 
     search_keywords: tuple[str, ...] = ()
-    title_prefilter: bool = False
+    title_prefilter: tuple[str, ...] = ()
 
 
 @dataclass

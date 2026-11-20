@@ -129,6 +129,7 @@ def build_sources(
                     keywords=settings.sources.ats_search.search_keywords,
                     title_filter=(paged_title_filter(settings)
                                   if settings.sources.ats_search.title_prefilter else None),
+                    title_filter_ats=settings.sources.ats_search.title_prefilter,
                     **({} if limit is None else {"max_results": limit}),
                 )
             )

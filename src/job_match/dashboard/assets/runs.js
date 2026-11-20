@@ -167,7 +167,7 @@
         box.appendChild(ul);
         card.appendChild(box);
       });
-      /* The Workday boards (ADR 0020, amendment 2026-11-21): each is read once a week,
+      /* The Workday boards (ADR 0020, amendment 2026-11-20, part 2): each is read once a week,
          within a call cap, and stopped at once when the edge serves its anti-robot page.
          One line per board: OK / sauté par fréquence / bloqué anti-robot. */
       var wd = r.workday_boards || [];

@@ -1,4 +1,4 @@
-"""How many Workday calls a week, before and after (ADR 0020, amendment 2026-11-21).
+"""How many Workday calls a week, before and after (ADR 0020, amendment 2026-11-20, part 2).
 
 A simulation on a fixture: the eleven boards of config/ats_boards.yaml with the number of
 French postings each announced on 2026-11-20, every posting generated from a pool of made-up
@@ -9,7 +9,7 @@ titles (tests/fixtures/workday_simulation.json). The same fake server answers bo
 - **after**: the committed settings: a search per keyword, a detail call only for a title
   worth one and not stored yet, 15 calls a tenant and run at most, one read a week.
 
-The numbers asserted here are the ones docs/diagnostics/2026-11-21-workday-calls.md quotes.
+The numbers asserted here are the ones docs/diagnostics/2026-11-20-workday-calls.md quotes.
 """
 import json
 from datetime import date, timedelta

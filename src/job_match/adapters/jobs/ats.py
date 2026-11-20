@@ -71,7 +71,7 @@ Workday is paced apart and called sparingly (`sources.ats.workday` in settings.y
 one queue, read one tenant after the other, with `request_delay_seconds` between two calls
 whatever the tenant. Since 2026-11-16 that edge answers the project's client with an HTML
 « Security Check » page (HTTP 429, no `Retry-After`): an anti-robot protection, never
-worked around. The source only makes fewer calls (amendment 2026-11-21):
+worked around. The source only makes fewer calls (amendment 2026-11-20, part 2):
 
 - with `sources.ats.search_keywords`, a board is searched, not listed: Workday one
   `searchText` call per keyword with the France facet (one page of 20), SmartRecruiters one
@@ -207,12 +207,14 @@ class AtsBoardSource:
         workday: WorkdayConfig | None = None,
         keywords: Sequence[str] = (),
         title_filter: Callable[[str], bool] | None = None,
+        title_filter_ats: Sequence[str] = PAGED_ATS,
         today: date | None = None,
     ) -> None:
         """`keywords`: what the paged ATS are searched for instead of listing everything
         (Workday one call per keyword, SmartRecruiters one `q`); empty lists the whole
-        French board. `title_filter`: a paged posting whose title it refuses gets no detail
-        call. `today` places each Workday tenant in its frequency (UTC date by default)."""
+        French board. `title_filter`: on the ATS of `title_filter_ats`, a posting whose
+        title it refuses gets no detail call. `today` places each Workday tenant in its
+        frequency (UTC date by default)."""
         self._boards = list(boards)
         self._http = http or HttpClient()
         # Workday retries are decided here (Retry-After, longer backoff, per-tenant
@@ -223,6 +225,7 @@ class AtsBoardSource:
         self._workday_stopped: dict[str, str] = {}   # host → why it is left alone this run
         self._keywords = tuple(k.strip() for k in keywords if k and k.strip())
         self._title_filter = title_filter
+        self._title_filter_ats = frozenset(title_filter_ats)
         self._known: frozenset[str] = frozenset()  # source_job_ids already stored
         self._listed: dict[str, int] = {}  # "<ats>:<board id>" → postings listed this run
         day = today or datetime.now(UTC).date()
@@ -623,7 +626,8 @@ class AtsBoardSource:
                     # A detail call only for a posting worth one: its title first, then
                     # (Workday, whose calls are counted) whether it is stored already.
                     title = str(item.get("title") or item.get("name") or "")
-                    if self._title_filter is not None and not self._title_filter(title):
+                    if (self._title_filter is not None and board.ats in self._title_filter_ats
+                            and not self._title_filter(title)):
                         filtered += 1
                         continue
                     if (board.ats == "workday" and self._workday.skip_known

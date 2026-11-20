@@ -3,7 +3,39 @@
 > Updated by Claude at the end of every session. Read this first when resuming.
 
 ## Current milestone
-**Big-company coverage: Workday, Orange, Air France** (branch `feat/coverage-big-companies` from
+**Workday called sparingly** (branch `feat/coverage-big-companies`, fast-forwarded to `main`
+after PR #27 was merged; 2026-11-20, cloud session, new PR; git by Claude on this branch only).
+Report: `docs/diagnostics/2026-11-20-workday-calls.md`; ADR 0020, amendment part 2.
+1. **Rule:** Workday's « Security Check » (HTTP 429, HTML) is an anti-robot protection, never
+   worked around; the project only calls less. Daily run 96: refused on 11 tenants of 11.
+2. **Fewer calls** (`sources.ats` in settings.yaml): `search_keywords` (Workday one
+   `searchText` per keyword + France facet, SmartRecruiters one `q` + `country=fr`);
+   `title_prefilter: [workday]` (no detail call for a title outside core / near);
+   `workday.max_calls_per_run: 15`, `frequency_days: 7` (board *i* read on day *i* mod 7,
+   per-board override in ats_boards.yaml), `skip_known` (stored postings not read again);
+   a security check stops the tenant at once, no retry. `adapters/jobs/workday.py` holds
+   the pure parts.
+3. **Statuses:** `RunSummary.workday_boards` + `workday_blocked` (ok / capped / skipped /
+   blocked / error) in the CLI summary, the job summary and Exécutions. `OfferStatus.NOT_ASKED`
+   (skipped, blocked, capped) is neither checked nor an error; `by_board` counts postings
+   listed, a board not read is absent.
+4. **Simulation** (`test_workday_budget.py`, fixture `workday_simulation.json`): 5 733 calls a
+   week before, 145 after (125 the week after).
+5. SmartRecruiters ids: `dailymotion` right but 0 posting on the public API; `cegid` right,
+   one posting in Canada. Both kept, commented in ats_boards.yaml.
+6. Tests: `test_workday_calls.py`, `test_workday_budget.py`, pipeline / closure / summary /
+   loader / browser additions. ruff clean; fast suite **1 783 passed, 3 skipped**; browser +
+   worker **94 passed**.
+**Next step:** merge, Daily run, read the « Workday par board » block. Expect one or two
+tenants a day, most of them « bloqué anti-robot » while the check is served.
+**Open decisions:** the title filter on SmartRecruiters (−78 % detail calls, 1 of 8 Tri offers
+lost: off); the Workday companies still blocked → email alerts via n8n, later, not coded;
+which filter to add to the Candidatures table (asked, not built); the § 6 settings of the
+coverage report, still not applied.
+**Known:** a Workday offer is found and checked for closure once a week at best; two runs the
+same day read the same tenants twice; Cegid's own site could not be reached from here.
+
+Before it: **Big-company coverage: Workday, Orange, Air France** (branch `feat/coverage-big-companies` from
 `origin/main`, 2026-11-20, cloud session, PR opened; git done by Claude on this branch only, by
 explicit exception). Report: `docs/diagnostics/2026-11-20-coverage.md` (French, on the
 2026-11-20 snapshot, read outside the repo).

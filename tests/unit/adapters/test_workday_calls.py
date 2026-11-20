@@ -1,4 +1,4 @@
-"""Workday called as little as possible (ADR 0020, amendment 2026-11-21): a search by
+"""Workday called as little as possible (ADR 0020, amendment 2026-11-20, part 2): a search by
 keyword instead of the whole listing, a detail call only for a posting worth one, a cap of
 calls per tenant and run, one read a week per tenant, and a security check that stops the
 tenant at once. Plus SmartRecruiters searched by keyword. A fake server, no network."""
@@ -346,7 +346,8 @@ def test_the_committed_title_filter_keeps_the_core_and_near_families():
 
 def test_committed_settings_search_the_paged_ats_and_cap_workday():
     s = load_settings(Path("config/settings.yaml")).sources
-    assert s.ats_search.search_keywords == KEYWORDS and s.ats_search.title_prefilter is True
+    assert s.ats_search.search_keywords == KEYWORDS
+    assert s.ats_search.title_prefilter == ("workday",)  # SmartRecruiters reads every title
     assert (s.workday.max_calls_per_run, s.workday.frequency_days, s.workday.skip_known) == (
         15, 7, True)
 
@@ -389,6 +390,12 @@ def test_smartrecruiters_is_searched_by_keyword_in_france_and_paged():
         ("fr", "devops cloud sre platform", "100", "200")]
     # 230 postings listed in 3 calls; one detail call per « Ingénieur DevOps » only.
     assert detail.call_count == len(items) == 77
+
+    # The committed settings keep the title filter for Workday: here every posting is read.
+    detail.reset()
+    src = AtsBoardSource([SR], requests_per_second=1000.0, sleep=lambda _s: None,
+                         keywords=KEYWORDS, title_filter=worth, title_filter_ats=("workday",))
+    assert len(list(src.fetch())) == detail.call_count == 230
 
 
 @respx.mock

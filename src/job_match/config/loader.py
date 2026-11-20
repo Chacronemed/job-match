@@ -84,6 +84,7 @@ def load_aliases(path: Path) -> dict[str, list[str]]:
 
 
 _ATS_NAMES = ("greenhouse", "lever", "ashby", "smartrecruiters", "workday", "talentsoft")
+_PAGED_ATS = ("workday", "smartrecruiters")  # a listing, then one detail call per posting
 _SLUG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 # Workday: <tenant>.<wdN>.myworkdayjobs.com/<tenant>/<site>; the host is pinned to Workday's
 # domain because it is called as is.
@@ -343,15 +344,17 @@ def _parse_sources(value: object, path: Path) -> SourcesConfig:
 
 
 def _parse_ats_search(raw: dict, path: Path) -> AtsSearchConfig:
-    """`sources.ats.search_keywords` (a list of words) and `sources.ats.title_prefilter`."""
-    d = AtsSearchConfig()
-    prefilter = raw.get("title_prefilter", d.title_prefilter)
-    if not isinstance(prefilter, bool):
-        raise ConfigError(f"sources.ats.title_prefilter must be true or false (in {path})")
+    """`sources.ats.search_keywords` (a list of words) and `sources.ats.title_prefilter`
+    (a list among the paged ATS: workday, smartrecruiters)."""
+    prefilter = _str_list(raw.get("title_prefilter"), "sources.ats.title_prefilter", path)
+    unknown = sorted(set(prefilter) - set(_PAGED_ATS))
+    if unknown:
+        raise ConfigError(
+            f"sources.ats.title_prefilter must list {_PAGED_ATS} only, got {unknown} (in {path})")
     keywords = _str_list(raw.get("search_keywords"), "sources.ats.search_keywords", path)
     return AtsSearchConfig(
         search_keywords=tuple(k.strip() for k in keywords if k.strip()),
-        title_prefilter=prefilter,
+        title_prefilter=tuple(prefilter),
     )
 
 

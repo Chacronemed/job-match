@@ -12,9 +12,12 @@
 # warning, never a crash.
 #
 # Greenhouse / Lever / Ashby: offers from every office are fetched and the location gate
-# keeps the French ones. Workday / SmartRecruiters: only the French postings are listed
-# (country facet / `country=fr`), newest first, at most `max_postings` (default 100) per
-# board and run, each with one detail call for its description.
+# keeps the French ones. Workday / SmartRecruiters: only the French postings are asked for
+# (country facet / `country=fr`), searched by keyword (settings.yaml →
+# sources.ats.search_keywords), at most `max_postings` (default 100) per board and run, each
+# with one detail call for its description. Workday on top of that: 15 calls a tenant and
+# run, one read a week (a board may carry its own `frequency_days`), and a tenant stopped at
+# once when its edge serves the anti-robot page (sources.ats.workday).
 boards:
   # Greenhouse — https://boards-api.greenhouse.io/v1/boards/<slug>/jobs?content=true
   - {company: Dataiku,          ats: greenhouse, slug: dataiku}
@@ -66,6 +69,10 @@ boards:
   - {company: Saint-Gobain,   ats: smartrecruiters, slug: saintgobain}
   - {company: LVMH,           ats: smartrecruiters, slug: lvmh}
   - {company: Klaxoon,        ats: smartrecruiters, slug: klaxoon}
+  # Both ids checked again on 2026-11-20 and right, but empty: Dailymotion's careers page
+  # links to smartrecruiters.com/Dailymotion postings the public API no longer lists
+  # (0 posting, the one read directly is `active: false`); Cegid's id holds one posting, in
+  # Canada (its own site careers.cegid.com could not be reached). One call a run each.
   - {company: Dailymotion,    ats: smartrecruiters, slug: dailymotion}
   - {company: Cegid,          ats: smartrecruiters, slug: cegid}
   - {company: Sopra Steria,   ats: smartrecruiters, slug: SopraSteria1}
