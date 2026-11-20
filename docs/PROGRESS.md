@@ -23,15 +23,20 @@ Report: `docs/diagnostics/2026-11-20-workday-calls.md`; ADR 0020, amendment part
    week before, 145 after (125 the week after).
 5. SmartRecruiters ids: `dailymotion` right but 0 posting on the public API; `cegid` right,
    one posting in Canada. Both kept, commented in ats_boards.yaml.
-6. Tests: `test_workday_calls.py`, `test_workday_budget.py`, pipeline / closure / summary /
-   loader / browser additions. ruff clean; fast suite **1 783 passed, 3 skipped**; browser +
-   worker **94 passed**.
+6. **Candidatures: two more filters** under the segments, « Entreprise » (the companies of
+   the applications on screen) and « Date » (7 / 30 derniers jours, plus de 30 jours; an
+   application's day = sent, else kept or reactivated, else last changed), for the Kanban and
+   the table, in the hash (`co=`, `d=`), « Effacer » when one is set. The segments count what
+   is left, so counts = rows. `T.appsNarrow`, `T.appsCompanies`, `T.appDay` (tracking.js,
+   Node-tested), `renderNarrow` (board.js).
+7. Tests: `test_workday_calls.py`, `test_workday_budget.py`, pipeline / closure / summary /
+   loader / browser additions, `test_apps_filters.py` (company, date, reload, phone). ruff
+   clean; fast suite **1 783 passed, 3 skipped**; browser + worker **98 passed**.
 **Next step:** merge, Daily run, read the « Workday par board » block. Expect one or two
 tenants a day, most of them « bloqué anti-robot » while the check is served.
 **Open decisions:** the title filter on SmartRecruiters (−78 % detail calls, 1 of 8 Tri offers
 lost: off); the Workday companies still blocked → email alerts via n8n, later, not coded;
-which filter to add to the Candidatures table (asked, not built); the § 6 settings of the
-coverage report, still not applied.
+the § 6 settings of the coverage report, still not applied.
 **Known:** a Workday offer is found and checked for closure once a week at best; two runs the
 same day read the same tenants twice; Cegid's own site could not be reached from here.
 
