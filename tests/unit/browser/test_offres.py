@@ -176,6 +176,22 @@ def test_runs_show_fetched_and_eligible_per_company_board(open_dashboard, job_ke
     assert errors == []
 
 
+def test_runs_show_each_workday_board_with_its_status(open_dashboard, job_keys):
+    """ADR 0020, amendment 2026-11-21: OK / sauté par fréquence / bloqué anti-robot."""
+    page, errors = open_dashboard(_api(job_keys), hash_="#executions")
+    page.wait_for_selector("#runs-list .run")
+    box = page.locator("#runs-list .run-workday").first
+    assert box.locator("summary").inner_text() == (
+        "Workday par board (3) : 1 OK, 1 sauté par fréquence, 1 bloqué anti-robot")
+    box.locator("summary").click()
+    assert box.locator("li").all_inner_texts() == [
+        "Alpha : OK, 9 appels, 14 listées, 4 lues",
+        "Beta : sauté par fréquence (prochaine lecture dans 3 j)",
+        "Delta : bloqué anti-robot, 1 appel, 0 listées, 0 lues"]
+    assert box.locator("li[data-status=blocked]").count() == 1
+    assert errors == []
+
+
 def test_runs_show_the_source_down_and_its_closure_counters(open_dashboard, job_keys):
     """ADR 0027: the newest jobs run of the seed read France Travail as down."""
     page, errors = open_dashboard(_api(job_keys), hash_="#executions")

@@ -1229,6 +1229,18 @@ def _print_summary(summary: RunSummary, *, dry_run: bool = False) -> None:
         print(f"  api_calls:  {summary.api_calls}")
     if summary.errors:
         print(f"  errors:     {summary.errors}")
+    if summary.workday_boards:
+        from job_match.ops.summary import workday_counts, workday_status_text
+
+        calls = sum(int(b.get("calls") or 0) for b in summary.workday_boards)
+        print(f"  workday:    {workday_counts(summary.workday_boards)}  ({calls} calls)")
+        print(f"  workday blocked (anti-robot, not retried): {summary.workday_blocked}")
+        for b in summary.workday_boards:
+            print(
+                f"    {str(b.get('company', '?')):<16} {workday_status_text(b)}"
+                f" · {int(b.get('calls') or 0)} calls, {int(b.get('listed') or 0)} listed,"
+                f" {int(b.get('fetched') or 0)} read"
+            )
     if summary.by_source:
         print("  per source (fetched / eligible / duplicates / api calls):")
         for name in sorted(summary.by_source):

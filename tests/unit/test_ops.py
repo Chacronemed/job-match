@@ -279,3 +279,49 @@ def test_reopen_command_prints_and_writes_counts_only_to_the_summary(tmp_path, m
     assert "1 offer(s) reopened" in capsys.readouterr().out
     with Database(path=str(tmp_path / "data" / "jobs.sqlite")) as db:
         assert db.conn.execute("SELECT closed_at FROM jobs").fetchone()[0] is None
+
+
+# ---------------------------------------------------------------- Workday boards
+
+WORKDAY_BOARDS = [
+    {"board": "workday:ag.Airbus", "company": "Airbus", "status": "blocked", "calls": 1,
+     "listed": 0, "fetched": 0, "due_in": 0},
+    {"board": "workday:thales.Careers", "company": "Thales", "status": "skipped", "calls": 0,
+     "listed": 0, "fetched": 0, "due_in": 3},
+    {"board": "workday:sanofi.SanofiCareers", "company": "Sanofi", "status": "ok", "calls": 9,
+     "listed": 14, "fetched": 4, "due_in": 0},
+    {"board": "workday:kyndryl.Jobs", "company": "Kyndryl", "status": "capped", "calls": 15,
+     "listed": 40, "fetched": 10, "due_in": 0},
+]
+
+
+def test_jobs_markdown_lists_each_workday_board_with_its_status():
+    from job_match.ops.summary import workday_counts
+
+    summary = RunSummary(pipeline="jobs", fetched=10, workday_boards=WORKDAY_BOARDS,
+                         workday_blocked=1)
+    md = jobs_markdown(summary, 12.0)
+
+    assert workday_counts(WORKDAY_BOARDS) == (
+        "2 OK · 1 sauté par fréquence · 1 bloqué anti-robot")
+    assert "**Workday : 2 OK · 1 sauté par fréquence · 1 bloqué anti-robot** · 25 appels" in md
+    assert "| Airbus | ⚠️ bloqué anti-robot | 1 | 0 | 0 |" in md
+    assert "| Thales | sauté par fréquence (prochaine lecture dans 3 j) | 0 | 0 | 0 |" in md
+    assert "| Sanofi | OK | 9 | 14 | 4 |" in md
+    assert "| Kyndryl | OK, plafond d'appels atteint | 15 | 40 | 10 |" in md
+
+
+def test_jobs_markdown_without_a_workday_board_says_nothing_of_workday():
+    assert "Workday" not in jobs_markdown(RunSummary(pipeline="jobs", fetched=3), 1.0)
+
+
+def test_the_executions_page_uses_the_same_status_words():
+    """runs.js repeats `STATUS_TEXT` (the page has no Python): keep the two equal."""
+    import re
+    from pathlib import Path
+
+    from job_match.adapters.jobs.workday import STATUS_TEXT
+
+    js = Path("src/job_match/dashboard/assets/runs.js").read_text(encoding="utf-8")
+    block = re.search(r"var WORKDAY_STATUS = \{(.*?)\};", js, re.S).group(1)
+    assert dict(re.findall(r'(\w+): "([^"]*)"', block)) == STATUS_TEXT

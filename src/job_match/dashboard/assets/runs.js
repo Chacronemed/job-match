@@ -8,6 +8,9 @@
     NOT_RELEVANT: "hors sujet", RESERVED_RQTH: "réservée RQTH"
   };
   var SOURCE_TEXT = { france_travail: "France Travail", adzuna: "Adzuna", jooble: "Jooble", ats: "Pages carrière" };
+  /* The same words as adapters/jobs/workday.py STATUS_TEXT (a test keeps them equal). */
+  var WORKDAY_STATUS = { ok: "OK", capped: "OK, plafond d'appels atteint", skipped: "sauté par fréquence",
+    blocked: "bloqué anti-robot", error: "erreur" };
 
   /* From the other files (app.js first; the screens after it): values are read once,
      functions through the namespace at call time, so the load order never matters. */
@@ -164,6 +167,34 @@
         box.appendChild(ul);
         card.appendChild(box);
       });
+      /* The Workday boards (ADR 0020, amendment 2026-11-21): each is read once a week,
+         within a call cap, and stopped at once when the edge serves its anti-robot page.
+         One line per board: OK / sauté par fréquence / bloqué anti-robot. */
+      var wd = r.workday_boards || [];
+      if (wd.length) {
+        var count = function (statuses) {
+          return wd.filter(function (b) { return statuses.indexOf(b.status) !== -1; }).length;
+        };
+        var blocked = count(["blocked"]), skipped = count(["skipped"]);
+        var wbox = el("details", { class: "run-companies run-workday" }, [
+          el("summary", { text: "Workday par board (" + wd.length + ") : " +
+            count(["ok", "capped"]) + " OK, " + skipped + " sauté" + (skipped > 1 ? "s" : "") +
+            " par fréquence, " + blocked + " bloqué" + (blocked > 1 ? "s" : "") + " anti-robot" })
+        ]);
+        var wul = el("ul");
+        wd.forEach(function (b) {
+          var text = WORKDAY_STATUS[b.status] || b.status || "?";
+          if (b.status === "skipped" && b.due_in) text += " (prochaine lecture dans " + b.due_in + " j)";
+          var parts = [(b.company || "?") + " : ", el("b", { text: text })];
+          if (b.status !== "skipped") {
+            parts.push(", " + (b.calls || 0) + " appel" + (b.calls === 1 ? "" : "s") +
+              ", " + (b.listed || 0) + " listées, " + (b.fetched || 0) + " lues");
+          }
+          wul.appendChild(el("li", { "data-status": b.status || "" }, parts));
+        });
+        wbox.appendChild(wul);
+        card.appendChild(wbox);
+      }
       list.appendChild(card);
     });
   }
