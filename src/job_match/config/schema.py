@@ -66,8 +66,9 @@ class AtsBoard:
     """One company career board behind a public ATS JSON endpoint (config/ats_boards.yaml)."""
 
     company: str
-    ats: str   # greenhouse | lever | ashby | smartrecruiters | workday
-    slug: str  # the board's identifier in the ATS URL; Workday: <host>/<tenant>/<site>
+    ats: str   # greenhouse | lever | ashby | smartrecruiters | workday | talentsoft
+    slug: str  # the board's identifier in the ATS URL; Workday: <host>/<tenant>/<site>;
+    #            Talentsoft: the career site's host
     max_postings: int | None = None  # Workday / SmartRecruiters: listing cap (None = 100)
 
 

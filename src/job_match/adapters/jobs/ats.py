@@ -44,6 +44,12 @@ the parameter name is not. A Workday board without a country facet is skipped (i
 filtered); one whose country facet has no France value has no French posting.
 A listing stops at `max_postings` (100 by default, per board): the newest first.
 
+One more board type is not JSON: a Talentsoft career site publishes an RSS feed of its 20
+newest offers, descriptions included (talentsoft.py, ADR 0029). One GET per board, no
+detail call; the listing is never complete, so a missing id is UNKNOWN, never CLOSED.
+
+    talentsoft       GET https://<host>/handlers/offerRss.ashx?LCID=1036   (slug = <host>)
+
 The Greenhouse / Lever / Ashby shapes follow the provider modules of career-ops
 (https://github.com/career-ops-hq/career-ops, `providers/greenhouse.mjs`, `lever.mjs`,
 `ashby.mjs`; MIT License, Copyright (c) 2026 Santiago Fernández de Valderrama), read for
@@ -90,6 +96,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from job_match.adapters.http import HttpClient, retry_after_seconds
+from job_match.adapters.jobs import talentsoft
 from job_match.adapters.jobs.base import OfferStatus, QueryStat, RawItem, RequestStats
 from job_match.config.schema import AtsBoard, WorkdayConfig
 from job_match.domain.models import Job, WorkplaceType
@@ -110,6 +117,7 @@ ENDPOINTS: dict[str, str] = {
     "ashby": "https://api.ashbyhq.com/posting-api/job-board/{slug}",
     "smartrecruiters": "https://api.smartrecruiters.com/v1/companies/{slug}/postings",
     "workday": "https://{host}/wday/cxs/{tenant}/{site}/jobs",
+    "talentsoft": talentsoft.FEED_URL,
 }
 PAGED_ATS = ("workday", "smartrecruiters")
 DEFAULT_MAX_POSTINGS = 100  # per paged board and run: the newest French postings
@@ -145,6 +153,8 @@ def board_url(board: AtsBoard) -> str:
     if board.ats == "workday":
         host, tenant, site = board.slug.split("/", 2)
         return ENDPOINTS["workday"].format(host=host, tenant=tenant, site=site)
+    if board.ats == "talentsoft":
+        return ENDPOINTS["talentsoft"].format(host=board.slug)
     return ENDPOINTS[board.ats].format(slug=board.slug)
 
 
@@ -217,15 +227,19 @@ class AtsBoardSource:
                 self._sleep(wait)
         self._last_request[host] = self._clock()
 
-    def _call(self, method: str, url: str, label: str, **kwargs: Any) -> tuple[int | None, Any]:
+    def _call(self, method: str, url: str, label: str, *,
+              decode: Callable[[httpx.Response], Any] | None = None,
+              **kwargs: Any) -> tuple[int | None, Any]:
         """(HTTP status, decoded body): (None, None) on a network error, (404, None) for a
-        404, (status, None) for any other error status. Logged, never raised."""
+        404, (status, None) for any other error status. Logged, never raised. `decode`
+        reads a body that is not JSON (Talentsoft's feed)."""
         if (urlsplit(url).hostname or "").endswith(WORKDAY_DOMAIN):
             return self._call_workday(method, url, label, **kwargs)
         self._attempted += 1
         try:
             self._throttle(url)
-            headers = {"Accept": "application/json"}
+            headers = {"Accept": "application/json" if decode is None
+                       else "application/rss+xml, application/xml;q=0.9"}
             if method == "POST":
                 resp = self._http.post(url, headers=headers, **kwargs)
             else:
@@ -235,7 +249,7 @@ class AtsBoardSource:
                 logger.warning("%s: %s answers 404 (gone?)", self.name, label)
                 return 404, None
             resp.raise_for_status()
-            return resp.status_code, resp.json()
+            return resp.status_code, (resp.json() if decode is None else decode(resp))
         except Exception as exc:
             self._failed += 1
             logger.warning("%s: %s unreachable: %s", self.name, label, type(exc).__name__)
@@ -321,6 +335,8 @@ class AtsBoardSource:
             return self._list_workday(board)
         if board.ats == "smartrecruiters":
             return self._list_smartrecruiters(board)
+        if board.ats == "talentsoft":
+            return self._list_talentsoft(board)
         label = f"{board.ats}/{board.slug}"
         body = self._json("GET", board_url(board), label)
         if body is None:
@@ -408,6 +424,15 @@ class AtsBoardSource:
         complete = total is not None and len(jobs) >= total
         return _Listing(jobs, total, complete)
 
+    def _list_talentsoft(self, board: AtsBoard) -> _Listing | None:
+        """The feed's offers. Never complete: it only shows the newest ones."""
+        _status, jobs = self._call(
+            "GET", board_url(board), f"talentsoft/{board.slug}",
+            decode=lambda resp: talentsoft.parse_feed(resp.content))
+        if jobs is None:
+            return None
+        return _Listing(jobs, len(jobs), False)
+
     def _detail(self, board: AtsBoard, item: dict) -> dict | None:
         """The detail payload of one Workday / SmartRecruiters posting, or None."""
         if board.ats == "workday":
@@ -476,7 +501,8 @@ class AtsBoardSource:
         ats, bid = str(raw[BOARD_KEY]).split(":", 1)
         company = str(raw.get(COMPANY_KEY) or raw.get("company_name") or bid)
         mapper = {"greenhouse": _greenhouse, "lever": _lever, "ashby": _ashby,
-                  "workday": _workday, "smartrecruiters": _smartrecruiters}[ats]
+                  "workday": _workday, "smartrecruiters": _smartrecruiters,
+                  "talentsoft": _talentsoft}[ats]
         title, url, location, workplace, contract_hint, description = mapper(raw)
         return Job(
             source=self.name,
@@ -738,6 +764,11 @@ def _smartrecruiters(raw: dict) -> _Mapped:
     )
 
 
+def _talentsoft(raw: dict) -> _Mapped:
+    title, url, location, contract, description = talentsoft.map_item(raw)
+    return title, url, location, WorkplaceType.UNKNOWN, contract, description
+
+
 def _dedupe(values: list[str]) -> list[str]:
     seen: list[str] = []
     for v in values:
@@ -754,6 +785,7 @@ def _workplace(value: Any) -> WorkplaceType:
 def _published_at(ats: str, raw: dict) -> datetime | None:
     value = {"greenhouse": raw.get("first_published"), "lever": raw.get("createdAt"),
              "ashby": raw.get("publishedAt"), "smartrecruiters": raw.get("releasedDate"),
+             "talentsoft": raw.get("published"),
              "workday": (raw.get(DETAIL_KEY) or {}).get("startDate")}.get(ats)
     if value in (None, ""):
         return None

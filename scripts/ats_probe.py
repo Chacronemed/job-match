@@ -14,7 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from job_match.adapters.http import HttpClient  # noqa: E402
-from job_match.adapters.jobs.ats import ENDPOINTS, board_url  # noqa: E402
+from job_match.adapters.jobs.ats import board_url  # noqa: E402
 from job_match.config.loader import load_ats_boards  # noqa: E402
 from job_match.config.schema import AtsBoard  # noqa: E402
 
@@ -40,7 +40,9 @@ def probe(http: HttpClient, board: AtsBoard) -> tuple[int, int | None]:
 
 def main(argv: list[str]) -> int:
     if argv:
-        boards = [AtsBoard(company=slug, ats=ats, slug=slug) for slug in argv for ats in ENDPOINTS]
+        # the three single-GET boards: the paged ATS and Talentsoft need more than a slug
+        boards = [AtsBoard(company=slug, ats=ats, slug=slug)
+                  for slug in argv for ats in ("greenhouse", "lever", "ashby")]
     else:
         boards = load_ats_boards(Path("config/ats_boards.yaml"))
     dead = 0
