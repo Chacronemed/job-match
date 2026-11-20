@@ -113,3 +113,28 @@ Alternatives: one source per ATS (rejected above, same reason); fetching the des
 lazily only for offers that pass the gates (the gates need the description: experience is
 read there); no cap with a `since` filter (Workday's list gives only « Posted 3 Days Ago »,
 and the pipeline calls `fetch(since=None)`).
+
+## Amendment 2026-11-20: Workday paced apart, and what its 429 is
+
+- **Context.** From 2026-11-16 the Workday boards fell from about 717 postings a run to
+  between 0 and 112, with 28 closure checks left unclear on the last run. The 429 is not a
+  quota: it is an HTML « Security Check » page from Workday's edge, without `Retry-After`,
+  served to the Python client whatever the pace (measured 2026-11-20: curl 26 answers out of
+  26 at 3 s, httpx 2 out of 19 up to 5 s apart). The ten slugs were right.
+  `docs/diagnostics/2026-11-20-coverage.md`.
+- **Decision.** Workday gets its own pacing (`sources.ats.workday`, `WorkdayConfig`): one
+  queue for every tenant, since they share the edge (`request_delay_seconds`, 1.5 s);
+  retries decided in the adapter, with the answer's `Retry-After` when there is one, else a
+  backoff of 5 s then 10 s; a tenant left alone for the rest of the run after two failed calls
+  in a row or a `Retry-After` beyond 120 s. Left alone means one warning, no further call,
+  UNKNOWN to the closure check, and the other boards run. The check itself is **not worked
+  around**: no browser-like headers, no other TLS or HTTP fingerprint. Fewer retries than
+  before on purpose: against a client check, insisting only lengthens the run.
+- **Alternatives.** Keep the 1 s / 2 s / 4 s retries of `HttpClient` (25 minutes of the last
+  run, 568 retries, for 112 postings); a global Workday circuit breaker (some tenants still
+  answer on a bad day); HTTP/2 or a curl-like client (changes the fingerprint to pass a bot
+  check: not without an explicit decision).
+- **Also.** A board without a country facet is no longer skipped: its `locations` facet is
+  filtered on the places `french_location` reads as French (Euronext, Murex: « Paris »).
+  SmartRecruiters gains Sopra Steria and Inetum, which `companies.yaml` guessed on Workday.
+  Talentsoft sites are read through their RSS feed: ADR 0029.
