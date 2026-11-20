@@ -201,8 +201,8 @@ def test_committed_settings_pace_workday():
     the retry policy are settings, not constants."""
     w = load_settings(Path("config/settings.yaml")).sources.workday
     assert w.request_delay_seconds == 1.5
-    assert (w.max_retries, w.backoff_seconds, w.backoff_max_seconds) == (3, 5.0, 60.0)
-    assert (w.retry_after_max_seconds, w.max_consecutive_failures) == (120.0, 3)
+    assert (w.max_retries, w.backoff_seconds, w.backoff_max_seconds) == (2, 5.0, 60.0)
+    assert (w.retry_after_max_seconds, w.max_consecutive_failures) == (120.0, 2)
 
 
 def test_workday_pacing_is_read_from_settings_and_defaults_apply(tmp_path):
@@ -213,7 +213,7 @@ def test_workday_pacing_is_read_from_settings_and_defaults_apply(tmp_path):
     assert s.sources.workday.request_delay_seconds == 4.0
     assert s.sources.workday.max_retries == 0
     assert s.sources.workday.backoff_seconds == 5.0  # untouched keys keep their default
-    assert load_settings(_write(tmp_path, "sources: {}\n")).sources.workday.max_retries == 3
+    assert load_settings(_write(tmp_path, "sources: {}\n")).sources.workday.max_retries == 2
 
 
 @pytest.mark.parametrize("body", [

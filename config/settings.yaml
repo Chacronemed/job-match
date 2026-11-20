@@ -52,18 +52,21 @@ sources:
     # they share one queue: read one tenant after the other, never two calls closer than
     # request_delay_seconds. A 429 or a 5xx is retried max_retries times; the wait is the
     # answer's Retry-After when it sends one, else backoff_seconds doubled at each attempt
-    # (5, 10, 20), capped at backoff_max_seconds. A Retry-After longer than
+    # (5, 10), capped at backoff_max_seconds. A Retry-After longer than
     # retry_after_max_seconds, or max_consecutive_failures failed calls in a row, and the
     # tenant is left alone until the next run (logged; the other boards still run).
-    # Cost: about 760 calls on a full day (7 boards at the 100 cap), so 1.5 s is ~19 min of
-    # Workday; lower a board's max_postings in ats_boards.yaml before lowering the delay.
+    # Cost on a day Workday answers: about 760 calls (7 boards at the 100 cap), so 1.5 s is
+    # ~19 min; lower a board's max_postings in ats_boards.yaml before lowering the delay.
+    # Cost on a day it refuses (HTTP 429 "Security Check", measured 2026-11-20: a client
+    # check that no pace gets through): about a minute per tenant, then it is given up.
+    # Raising max_retries or the backoff only makes that day longer.
     workday:
       request_delay_seconds: 1.5
-      max_retries: 3
+      max_retries: 2
       backoff_seconds: 5
       backoff_max_seconds: 60
       retry_after_max_seconds: 120
-      max_consecutive_failures: 3
+      max_consecutive_failures: 2
 
 # Seniority keywords → minimum required years.  Explicit number in the text wins.
 seniority_min_years:

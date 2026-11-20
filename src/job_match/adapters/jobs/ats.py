@@ -75,8 +75,8 @@ is one, else a backoff that doubles from `backoff_seconds`. After
 `retry_after_max_seconds`, the tenant is left alone until the next run (one warning, no
 further call, its closure checks answer UNKNOWN) and the other boards go on. Since
 2026-11-16 Workday's edge answers some clients 429 with an HTML "Security Check" page and
-no `Retry-After` (docs/diagnostics/2026-11-20-coverage.md): it is retried like any 429 and
-named as such in the log, and nothing here tries to get around it.
+no `Retry-After` (docs/diagnostics/2026-11-20-coverage.md): it is retried like any 429,
+named as such in the log, and given up quickly. Nothing here tries to get around it.
 
 `source_job_id` is `<ats>:<board id>:<id>` so `check_offer` can find the board again: an
 id missing from a complete listing that answered 200 is CLOSED, a board that could not be
